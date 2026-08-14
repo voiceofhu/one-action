@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+CALLER="$PROJECT_ROOT/.github/workflows/node.yml"
+BUILD="$PROJECT_ROOT/.github/workflows/reusable-build-node.yml"
+PREPARE="$PROJECT_ROOT/.github/workflows/reusable-prepare.yml"
+DISPATCHER="$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+
+fail() {
+  printf 'FAIL: %s\n' "$*" >&2
+  exit 1
+}
+
+require_text() {
+  local file=$1 text=$2
+  grep -Fq -- "$text" "$file" || fail "missing One Node contract in ${file##*/}: $text"
+}
+
+for entrypoint in install.sh upgrade.sh uninstall.sh; do
+  [[ -f "$PROJECT_ROOT/node/$entrypoint" ]] ||
+    fail "missing namespaced Node entrypoint: node/$entrypoint"
+  [[ ! -e "$PROJECT_ROOT/$entrypoint" ]] ||
+    fail "ambiguous root lifecycle entrypoint must not exist: $entrypoint"
+done
+
+require_text "$CALLER" "'on':"
+require_text "$CALLER" 'workflow_dispatch:'
+require_text "$CALLER" 'expected_action_sha:'
+require_text "$CALLER" 'node_repository:'
+require_text "$CALLER" 'node_ref:'
+require_text "$CALLER" 'publish_supported: false'
+require_text "$CALLER" 'deploy: ${{ inputs.deploy }}'
+require_text "$CALLER" 'uses: ./.github/workflows/reusable-prepare.yml'
+require_text "$CALLER" 'uses: ./.github/workflows/reusable-build-node.yml'
+require_text "$CALLER" 'source_sha: ${{ needs.prepare.outputs.primary_sha }}'
+
+require_text "$PREPARE" 'expected_primary_repository=voiceofhu/one-node-node'
+require_text "$PREPARE" 'expected_publish_supported=false'
+require_text "$DISPATCHER" 'require_repository node_repository voiceofhu/one-node-node'
+
+require_text "$BUILD" 'runs-on: ubuntu-24.04'
+require_text "$BUILD" '[ "$ACTION_REPOSITORY" = voiceofhu/one-action ]'
+require_text "$BUILD" '[ "$SOURCE_REPOSITORY" = voiceofhu/one-node-node ]'
+require_text "$BUILD" 'Action and One Node revisions must be exact commit SHAs.'
+require_text "$BUILD" 'git -C action rev-parse --verify HEAD'
+require_text "$BUILD" 'git -C source rev-parse --verify HEAD'
+require_text "$BUILD" 'go mod verify'
+require_text "$BUILD" 'make test'
+require_text "$BUILD" 'go test -race ./one/access ./one/binding ./one/control ./one/runtime ./one/session ./one/state'
+require_text "$BUILD" 'make test-e2e'
+require_text "$BUILD" 'working-directory: action'
+require_text "$BUILD" 'run: make node-check'
+require_text "$BUILD" 'make build-linux-amd64'
+require_text "$BUILD" 'make build-linux-arm64'
+require_text "$BUILD" 'action/scripts/release/write-checksums.sh'
+require_text "$BUILD" 'cd source/dist'
+require_text "$BUILD" 'one-node-linux-amd64'
+require_text "$BUILD" 'one-node-linux-arm64'
+require_text "$BUILD" 'sha256sum -c ../../provenance/SHA256SUMS'
+require_text "$BUILD" 'published: false, deployed: false'
+require_text "$BUILD" 'Artifact upload/GHCR/Release/deploy: not run'
+
+if grep -Eq 'contents:[[:space:]]*write|packages:[[:space:]]*write|docker/login-action|docker push|gh release|actions/upload-artifact|environment:[[:space:]]*(public-release|ghcr-publish)' \
+  "$CALLER" "$BUILD"; then
+  fail 'non-publishing One Node workflow exposes mutation authority'
+fi
+
+if grep -Fq 'voiceofhu/one-node-action' "$CALLER" "$BUILD" "$PREPARE" "$DISPATCHER"; then
+  fail 'One Node workflow still trusts the legacy Action repository'
+fi
+
+printf '%s\n' 'One Node exact-SHA non-publishing workflow contract tests passed.'

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+output=
+url=
+header_file=
+write_out=
+head_request=false
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --output) output=$2; shift 2 ;;
+    --dump-header) header_file=$2; shift 2 ;;
+    --write-out) write_out=$2; shift 2 ;;
+    --config)
+      [[ "$2" == - ]] || exit 64
+      IFS= read -r config_line
+      [[ "$config_line" =~ ^url[[:space:]]=[[:space:]]\"([^\"]+)\"$ ]] || exit 64
+      url=${BASH_REMATCH[1]}
+      shift 2
+      ;;
+    --connect-timeout|--max-time|--max-filesize|--proto|--max-redirs)
+      shift 2
+      ;;
+    --head) head_request=true; shift ;;
+    -q|--tlsv1.2|--fail|--silent|--show-error)
+      shift
+      ;;
+    https://*) url=$1; shift ;;
+    *) printf 'fake curl rejected argument: %s\n' "$1" >&2; exit 64 ;;
+  esac
+done
+
+[[ -n "$output" && -n "$url" ]] || exit 64
+asset_name=${url%%\?*}
+asset_name=${asset_name##*/}
+if [[ "$head_request" == true ]]; then
+  [[ "$url" == https://github.com/voiceofhu/one-action/releases/download/egress-v1.2.3/* ]] || exit 64
+  [[ -n "$header_file" && "$output" == /dev/null ]] || exit 64
+  printf '%s\n' "$url" >>"${EGRESS_FAKE_LOG:?}"
+  redirect_host=${EGRESS_FAKE_REDIRECT_HOST:-release-assets.githubusercontent.com}
+  printf 'HTTP/2 302\r\nlocation: https://%s/github-production-release-asset/example/%s?sig=example_only\r\n\r\n' \
+    "$redirect_host" "$asset_name" >"$header_file"
+  [[ "$write_out" == '%{http_code}' ]] && printf 302
+  exit 0
+fi
+
+[[ "$url" == https://release-assets.githubusercontent.com/github-production-release-asset/example/*\?sig=example_only ]] || exit 64
+printf 'https://release-assets.githubusercontent.com/[SIGNED_QUERY_REDACTED]/%s\n' \
+  "$asset_name" >>"${EGRESS_FAKE_LOG:?}"
+case "$asset_name" in
+  manifest.json)
+    manifest_source=${EGRESS_FAKE_MANIFEST:-${EGRESS_FIXTURE_DIR:?}/manifest.json}
+    fixture_binary=${EGRESS_FIXTURE_DIR:?}/one-browser-egress-linux-amd64
+    fixture_size=$(wc -c <"$fixture_binary")
+    if command -v sha256sum >/dev/null 2>&1; then
+      fixture_sha=$(sha256sum "$fixture_binary" | awk '{print $1}')
+    else
+      fixture_sha=$(shasum -a 256 "$fixture_binary" | awk '{print $1}')
+    fi
+    jq --argjson size "$fixture_size" --arg sha "$fixture_sha" '
+      (.artifacts[] | select(.platform == "linux" and .arch == "amd64") | .size) = $size |
+      (.artifacts[] | select(.platform == "linux" and .arch == "amd64") | .sha256) = $sha
+    ' "$manifest_source" >"$output"
+    ;;
+  SHA256SUMS)
+    if [[ "${EGRESS_FAKE_BAD_CHECKSUM:-false}" == true ]]; then
+      printf '%064d  one-browser-egress-linux-amd64\n' 0 >"$output"
+    elif command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "${EGRESS_FIXTURE_DIR:?}/one-browser-egress-linux-amd64" |
+        awk '{ print $1 "  one-browser-egress-linux-amd64" }' >"$output"
+    else
+      shasum -a 256 "${EGRESS_FIXTURE_DIR:?}/one-browser-egress-linux-amd64" |
+        awk '{ print $1 "  one-browser-egress-linux-amd64" }' >"$output"
+    fi
+    ;;
+  one-browser-egress-linux-amd64)
+    cp "${EGRESS_FIXTURE_DIR:?}/one-browser-egress-linux-amd64" "$output"
+    ;;
+  *) printf 'fake curl rejected URL: %s\n' "$url" >&2; exit 64 ;;
+esac
+[[ "$write_out" == '%{http_code}' ]] && printf 200

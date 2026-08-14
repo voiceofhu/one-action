@@ -1,0 +1,388 @@
+name: Prepare immutable sources
+
+'on':
+  workflow_call:
+    inputs:
+      workflow_name:
+        required: true
+        type: string
+      expected_action_sha:
+        required: true
+        type: string
+      primary_label:
+        required: true
+        type: string
+      primary_repository:
+        required: true
+        type: string
+      primary_ref:
+        required: true
+        type: string
+      secondary_label:
+        required: false
+        type: string
+        default: ''
+      secondary_repository:
+        required: false
+        type: string
+        default: ''
+      secondary_ref:
+        required: false
+        type: string
+        default: ''
+      version:
+        required: false
+        type: string
+        default: ''
+      environment:
+        required: false
+        type: string
+        default: dev
+      publish:
+        required: false
+        type: boolean
+        default: false
+      publish_supported:
+        required: false
+        type: boolean
+        default: false
+      deploy:
+        required: false
+        type: boolean
+        default: false
+      upload_artifact:
+        required: false
+        type: boolean
+        default: false
+      confirmation:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      source_read_token:
+        description: Optional token limited to reading the fixed private source repositories
+        required: false
+    outputs:
+      primary_sha:
+        description: Verified exact commit SHA for the primary source
+        value: ${{ jobs.prepare.outputs.primary_sha }}
+      secondary_sha:
+        description: Verified exact commit SHA for the secondary source
+        value: ${{ jobs.prepare.outputs.secondary_sha }}
+      publish_authorized:
+        description: Whether the fixed workflow passed its publication mistake guard
+        value: ${{ jobs.prepare.outputs.publish_authorized }}
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Resolve and verify fixed source commits
+    runs-on: ubuntu-24.04
+    outputs:
+      primary_sha: ${{ steps.refs.outputs.primary_sha }}
+      secondary_sha: ${{ steps.refs.outputs.secondary_sha }}
+      publish_authorized: ${{ steps.contract.outputs.publish_authorized }}
+    steps:
+      - name: Validate fixed workflow and mutation contract
+        id: contract
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          ACTUAL_ACTION_SHA: ${{ github.sha }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          PRIMARY_LABEL: ${{ inputs.primary_label }}
+          PRIMARY_REPOSITORY: ${{ inputs.primary_repository }}
+          PRIMARY_REF: ${{ inputs.primary_ref }}
+          SECONDARY_LABEL: ${{ inputs.secondary_label }}
+          SECONDARY_REPOSITORY: ${{ inputs.secondary_repository }}
+          SECONDARY_REF: ${{ inputs.secondary_ref }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          PUBLISH: ${{ inputs.publish }}
+          PUBLISH_SUPPORTED: ${{ inputs.publish_supported }}
+          DEPLOY: ${{ inputs.deploy }}
+          UPLOAD_ARTIFACT: ${{ inputs.upload_artifact }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          [ "$ACTION_REPOSITORY" = voiceofhu/one-action ] \
+            && [ "$ACTION_SERVER_URL" = https://github.com ] || {
+            echo "Prepare must run in the fixed central GitHub Action repository." >&2
+            exit 1
+          }
+          [[ "$ACTUAL_ACTION_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            && [ "$EXPECTED_ACTION_SHA" = "$ACTUAL_ACTION_SHA" ] || {
+            echo "Dispatcher-bound Action SHA is missing, invalid, or stale." >&2
+            exit 1
+          }
+          [[ "$PRIMARY_REF" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Primary source ref must already be an exact commit SHA." >&2
+            exit 1
+          }
+          if [ -n "$SECONDARY_REF" ]; then
+            [[ "$SECONDARY_REF" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "Secondary source ref must already be an exact commit SHA." >&2
+              exit 1
+            }
+          fi
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            dev|stage|prod) ;;
+            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
+          esac
+          if [ -n "$VERSION" ]; then
+            [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+              && ((${#VERSION} <= 32)) || {
+              echo "version must be an unprefixed three-component numeric version" >&2
+              exit 1
+            }
+          fi
+
+          case "$WORKFLOW_NAME" in
+            one-user)
+              expected_primary_label=backend
+              expected_primary_repository=voiceofhu/one-user-backend-next
+              expected_secondary_label=web
+              expected_secondary_repository=voiceofhu/one-user-web-next
+              expected_publish_supported=true
+              ;;
+            one-amz)
+              expected_primary_label=backend
+              expected_primary_repository=voiceofhu/one-amz-backend-next
+              expected_secondary_label=web
+              expected_secondary_repository=voiceofhu/one-amz-web-next
+              expected_publish_supported=true
+              ;;
+            one-browser-backend)
+              expected_primary_label=backend
+              expected_primary_repository=voiceofhu/one-browser-backend-next
+              expected_secondary_label=
+              expected_secondary_repository=
+              expected_publish_supported=true
+              ;;
+            app)
+              expected_primary_label=app
+              expected_primary_repository=voiceofhu/one-browser-app-next
+              expected_secondary_label=
+              expected_secondary_repository=
+              expected_publish_supported=false
+              [ "$DEPLOYMENT_ENVIRONMENT" = dev ] || {
+                echo "App validation requires environment=dev." >&2
+                exit 1
+              }
+              ;;
+            app-debug)
+              expected_primary_label=app
+              expected_primary_repository=voiceofhu/one-browser-app-next
+              expected_secondary_label=
+              expected_secondary_repository=
+              expected_publish_supported=false
+              [ "$DEPLOYMENT_ENVIRONMENT" = dev ] && [ -z "$VERSION" ] || {
+                echo "App Debug requires environment=dev and an empty version." >&2
+                exit 1
+              }
+              ;;
+            egress)
+              expected_primary_label=egress
+              expected_primary_repository=voiceofhu/one-browser-egress-next
+              expected_secondary_label=
+              expected_secondary_repository=
+              expected_publish_supported=true
+              ;;
+            node)
+              expected_primary_label=node
+              expected_primary_repository=voiceofhu/one-node-node
+              expected_secondary_label=
+              expected_secondary_repository=
+              expected_publish_supported=false
+              [ "$DEPLOYMENT_ENVIRONMENT" = dev ] || {
+                echo "One Node validation requires environment=dev." >&2
+                exit 1
+              }
+              ;;
+            browser-runtime)
+              echo "Browser Runtime source trust root is unresolved; prepare is blocked." >&2
+              exit 1
+              ;;
+            *) echo "workflow is outside the fixed prepare allowlist" >&2; exit 1 ;;
+          esac
+          [ "$PRIMARY_LABEL" = "$expected_primary_label" ] \
+            && [ "$PRIMARY_REPOSITORY" = "$expected_primary_repository" ] \
+            && [ "$SECONDARY_LABEL" = "$expected_secondary_label" ] \
+            && [ "$SECONDARY_REPOSITORY" = "$expected_secondary_repository" ] \
+            && [ "$PUBLISH_SUPPORTED" = "$expected_publish_supported" ] || {
+            echo "Prepare labels, repositories, or publication policy differ from the fixed contract." >&2
+            exit 1
+          }
+          if [ -n "$expected_secondary_repository" ]; then
+            [ -n "$SECONDARY_REF" ] || {
+              echo "Fixed secondary source SHA is missing." >&2
+              exit 1
+            }
+          elif [ -n "$SECONDARY_REF" ]; then
+            echo "Unexpected secondary source SHA was supplied." >&2
+            exit 1
+          fi
+          [ "$DEPLOY" = false ] || {
+            echo "Deployment is not implemented; refusing mutation." >&2
+            exit 1
+          }
+          [ "$UPLOAD_ARTIFACT" = false ] || {
+            echo "Artifact upload is not implemented; refusing mutation." >&2
+            exit 1
+          }
+
+          publish_authorized=false
+          if [ "$PUBLISH" = true ]; then
+            [ "$expected_publish_supported" = true ] && [ -n "$VERSION" ] || {
+              echo "This workflow cannot publish or lacks a canonical version." >&2
+              exit 1
+            }
+            expected="enable:$WORKFLOW_NAME:$EXPECTED_ACTION_SHA"
+            [ "$CONFIRMATION" = "$expected" ] || {
+              echo "Publication lacks the dispatcher-owned Action-bound confirmation." >&2
+              exit 1
+            }
+            if [ "$WORKFLOW_NAME" = egress ] && [ "$DEPLOYMENT_ENVIRONMENT" != prod ]; then
+              echo "Public Egress releases require environment=prod." >&2
+              exit 1
+            fi
+            publish_authorized=true
+          elif [ -n "$CONFIRMATION" ]; then
+            echo "Non-publishing preparation rejects confirmation input." >&2
+            exit 1
+          fi
+          printf 'publish_authorized=%s\n' "$publish_authorized" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Action tooling at exact workflow commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact Action tooling checkout
+        shell: bash
+        env:
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+        run: |
+          set -Eeuo pipefail
+          actual="$(GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse --verify HEAD)"
+          [ "$actual" = "$EXPECTED_ACTION_SHA" ] || {
+            echo "Action tooling checkout HEAD does not match the dispatcher-bound SHA." >&2
+            exit 1
+          }
+          for path in action/scripts/github/common.sh action/scripts/github/resolve-ref.sh; do
+            [ -f "$path" ] && [ ! -L "$path" ] || {
+              echo "Required ref-resolution tooling is missing or symlinked." >&2
+              exit 1
+            }
+            size="$(wc -c < "$path" | tr -d '[:space:]')"
+            [[ "$size" =~ ^[0-9]+$ ]] && ((size > 0 && size <= 65536)) || {
+              echo "Ref-resolution tooling exceeds its fixed size boundary." >&2
+              exit 1
+            }
+          done
+
+      - name: Resolve exact source commits through fixed GitHub API
+        id: refs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.source_read_token || github.token }}
+          PRIMARY_REPOSITORY: ${{ inputs.primary_repository }}
+          PRIMARY_REF: ${{ inputs.primary_ref }}
+          SECONDARY_REPOSITORY: ${{ inputs.secondary_repository }}
+          SECONDARY_REF: ${{ inputs.secondary_ref }}
+        run: |
+          set -Eeuo pipefail
+          primary_sha="$(bash action/scripts/github/resolve-ref.sh "$PRIMARY_REPOSITORY" "$PRIMARY_REF")"
+          [ "$primary_sha" = "$PRIMARY_REF" ] || {
+            echo "Primary source SHA changed during API resolution." >&2
+            exit 1
+          }
+          printf 'primary_sha=%s\n' "$primary_sha" >> "$GITHUB_OUTPUT"
+          if [ -n "$SECONDARY_REPOSITORY" ]; then
+            secondary_sha="$(bash action/scripts/github/resolve-ref.sh "$SECONDARY_REPOSITORY" "$SECONDARY_REF")"
+            [ "$secondary_sha" = "$SECONDARY_REF" ] || {
+              echo "Secondary source SHA changed during API resolution." >&2
+              exit 1
+            }
+            printf 'secondary_sha=%s\n' "$secondary_sha" >> "$GITHUB_OUTPUT"
+          fi
+          unset GH_TOKEN
+
+      - name: Checkout primary source at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.primary_repository }}
+          ref: ${{ steps.refs.outputs.primary_sha }}
+          path: sources/primary
+          token: ${{ secrets.source_read_token || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout secondary source at exact commit
+        if: inputs.secondary_repository != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.secondary_repository }}
+          ref: ${{ steps.refs.outputs.secondary_sha }}
+          path: sources/secondary
+          token: ${{ secrets.source_read_token || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source checkout heads
+        shell: bash
+        env:
+          PRIMARY_SHA: ${{ steps.refs.outputs.primary_sha }}
+          SECONDARY_SHA: ${{ steps.refs.outputs.secondary_sha }}
+        run: |
+          set -Eeuo pipefail
+          primary_actual="$(GIT_NO_REPLACE_OBJECTS=1 git -C sources/primary rev-parse --verify HEAD)"
+          [ "$primary_actual" = "$PRIMARY_SHA" ] || {
+            echo "Primary checkout HEAD does not match its verified SHA." >&2
+            exit 1
+          }
+          if [ -n "$SECONDARY_SHA" ]; then
+            secondary_actual="$(GIT_NO_REPLACE_OBJECTS=1 git -C sources/secondary rev-parse --verify HEAD)"
+            [ "$secondary_actual" = "$SECONDARY_SHA" ] || {
+              echo "Secondary checkout HEAD does not match its verified SHA." >&2
+              exit 1
+            }
+          fi
+
+      - name: Record preparation result
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          PRIMARY_LABEL: ${{ inputs.primary_label }}
+          PRIMARY_REPOSITORY: ${{ inputs.primary_repository }}
+          PRIMARY_SHA: ${{ steps.refs.outputs.primary_sha }}
+          SECONDARY_LABEL: ${{ inputs.secondary_label }}
+          SECONDARY_REPOSITORY: ${{ inputs.secondary_repository }}
+          SECONDARY_SHA: ${{ steps.refs.outputs.secondary_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          PUBLISH_AUTHORIZED: ${{ steps.contract.outputs.publish_authorized }}
+        run: |
+          set -Eeuo pipefail
+          {
+            echo "## $WORKFLOW_NAME source preparation"
+            echo
+            echo "- $PRIMARY_LABEL: \`$PRIMARY_REPOSITORY@$PRIMARY_SHA\`"
+            if [ -n "$SECONDARY_REPOSITORY" ]; then
+              echo "- $SECONDARY_LABEL: \`$SECONDARY_REPOSITORY@$SECONDARY_SHA\`"
+            fi
+            if [ -n "$VERSION" ]; then
+              echo "- Requested version: \`$VERSION\`"
+            fi
+            echo "- Environment: \`$DEPLOYMENT_ENVIRONMENT\`"
+            echo "- Result: fixed exact commits resolved, checked out, and HEAD-verified"
+            printf -- '- Publish authorized: `%s`\n' "$PUBLISH_AUTHORIZED"
+            echo "- Deploy/artifact upload: not run"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,92 @@
+name: One Browser Egress
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha:
+        description: Dispatcher-resolved exact central Action commit SHA
+        required: true
+        type: string
+      egress_repository:
+        description: One Browser Egress repository
+        required: true
+        type: string
+      egress_ref:
+        description: Dispatcher-resolved exact Egress commit SHA
+        required: true
+        type: string
+      version:
+        description: Optional requested version
+        required: false
+        type: string
+      environment:
+        description: Build environment metadata; no deployment is implemented
+        required: false
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
+      publish:
+        description: Publish the exact Egress source as one Native and multi-platform container release
+        required: false
+        type: boolean
+        default: false
+      deploy:
+        description: Reserved; true fails closed because deployment is not implemented
+        required: false
+        type: boolean
+        default: false
+      confirmation:
+        description: Dispatcher-owned workflow and Action-SHA-bound publication confirmation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    uses: ./.github/workflows/reusable-prepare.yml
+    with:
+      workflow_name: egress
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      primary_label: egress
+      primary_repository: ${{ inputs.egress_repository }}
+      primary_ref: ${{ inputs.egress_ref }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      publish: ${{ inputs.publish }}
+      publish_supported: true
+      deploy: ${{ inputs.deploy }}
+      confirmation: ${{ inputs.confirmation }}
+
+  publish:
+    if: inputs.publish && needs.prepare.outputs.publish_authorized == 'true'
+    needs:
+      - prepare
+      - build
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/reusable-publish-egress.yml
+    with:
+      action_sha: ${{ github.sha }}
+      source_repository: ${{ inputs.egress_repository }}
+      source_sha: ${{ needs.prepare.outputs.primary_sha }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/reusable-build-rust-docker.yml
+    with:
+      workflow_name: egress
+      local_image_name: local/one-browser-egress:${{ needs.prepare.outputs.primary_sha }}
+      action_sha: ${{ github.sha }}
+      source_repository: ${{ inputs.egress_repository }}
+      source_sha: ${{ needs.prepare.outputs.primary_sha }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      rust_validation: strict

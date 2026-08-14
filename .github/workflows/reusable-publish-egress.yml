@@ -1,0 +1,264 @@
+name: Publish One Browser Egress release
+
+'on':
+  workflow_call:
+    inputs:
+      action_sha:
+        required: true
+        type: string
+      source_repository:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+    outputs:
+      release_tag:
+        description: Immutable GitHub Release tag
+        value: ${{ jobs.publish.outputs.release_tag }}
+      image_index_ref:
+        description: Digest-qualified multi-platform GHCR index
+        value: ${{ jobs.publish.outputs.image_index_ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-inputs:
+    name: Build credential-free release inputs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate fixed publication inputs
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          WORKFLOW_ACTION_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [ "$ACTION_REPOSITORY" = voiceofhu/one-action ] || {
+            echo 'Egress release must run in the fixed Action repository.' >&2
+            exit 1
+          }
+          [ "$SOURCE_REPOSITORY" = voiceofhu/one-browser-egress-next ] || {
+            echo 'Egress source repository is not the fixed trust root.' >&2
+            exit 1
+          }
+          [[ "$ACTION_SHA" =~ ^[0-9a-f]{40}$ && "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Action and Egress revisions must be exact commit SHAs.' >&2
+            exit 1
+          }
+          [ "$ACTION_SHA" = "$WORKFLOW_ACTION_SHA" ] || {
+            echo 'Action revision does not match the reusable workflow revision.' >&2
+            exit 1
+          }
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'Version must be exactly three numeric components.' >&2
+            exit 1
+          }
+          [ "$DEPLOYMENT_ENVIRONMENT" = prod ] || {
+            echo 'Public Egress releases require environment=prod.' >&2
+            exit 1
+          }
+
+      - name: Checkout Action tooling at exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          persist-credentials: false
+
+      - name: Checkout Egress at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_sha }}
+          path: source
+          token: ${{ github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind release version to the Egress package
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          package_version="$(
+            cargo metadata --format-version 1 --no-deps --locked \
+              --manifest-path source/Cargo.toml |
+              jq -er '
+                [.packages[] | select(.name == "one-browser-egress") | .version] |
+                if length == 1 then .[0] else error("expected one Egress package") end
+              '
+          )"
+          [ "$package_version" = "$VERSION" ] || {
+            echo "Requested version does not match one-browser-egress Cargo.toml." >&2
+            exit 1
+          }
+
+      - name: Set up QEMU for the two fixed Linux architectures
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64,arm64
+
+      - name: Set up isolated Buildx builder
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Native binaries without publication credentials
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          test -f source/Dockerfile
+          test ! -e publication/egress
+          mkdir -p publication/egress publication/native-amd64 publication/native-arm64
+          docker buildx build \
+            --platform linux/amd64 \
+            --file source/Dockerfile \
+            --target release \
+            --output type=local,dest=publication/native-amd64 \
+            source
+          docker buildx build \
+            --platform linux/arm64 \
+            --file source/Dockerfile \
+            --target release \
+            --output type=local,dest=publication/native-arm64 \
+            source
+          test -s publication/native-amd64/one-browser-egress
+          test -s publication/native-arm64/one-browser-egress
+          docker buildx build \
+            --platform linux/amd64 \
+            --file source/Dockerfile \
+            --target runtime \
+            --load \
+            --tag "local/egress-release-check-amd64:$SOURCE_SHA" \
+            source
+          docker buildx build \
+            --platform linux/arm64 \
+            --file source/Dockerfile \
+            --target runtime \
+            --load \
+            --tag "local/egress-release-check-arm64:$SOURCE_SHA" \
+            source
+          amd64_version="$(
+            docker run --rm --platform linux/amd64 --network none --read-only \
+              --cap-drop ALL --security-opt no-new-privileges \
+              --volume "$PWD/publication/native-amd64/one-browser-egress:/tmp/release-binary:ro" \
+              --entrypoint /tmp/release-binary \
+              "local/egress-release-check-amd64:$SOURCE_SHA" version
+          )"
+          [ "$amd64_version" = "$VERSION" ] || {
+            echo 'linux/amd64 Native binary version does not match the release version.' >&2
+            exit 1
+          }
+          arm64_version="$(
+            docker run --rm --platform linux/arm64 --network none --read-only \
+              --cap-drop ALL --security-opt no-new-privileges \
+              --volume "$PWD/publication/native-arm64/one-browser-egress:/tmp/release-binary:ro" \
+              --entrypoint /tmp/release-binary \
+              "local/egress-release-check-arm64:$SOURCE_SHA" version
+          )"
+          [ "$arm64_version" = "$VERSION" ] || {
+            echo 'linux/arm64 Native binary version does not match the release version.' >&2
+            exit 1
+          }
+          install -m 0755 publication/native-amd64/one-browser-egress \
+            publication/egress/one-browser-egress-linux-amd64
+          install -m 0755 publication/native-arm64/one-browser-egress \
+            publication/egress/one-browser-egress-linux-arm64
+          install -m 0755 action/browser/egress/install.sh publication/egress/install.sh
+          install -m 0755 action/browser/egress/uninstall.sh publication/egress/uninstall.sh
+
+      - name: Seal exact source and Native inputs for the protected job
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tar \
+            --exclude='./source/.git' \
+            --exclude='./source/target' \
+            -czf egress-publish-input.tar.gz \
+            ./action/scripts/release/publish-egress-release.sh \
+            ./source \
+            ./publication
+          test -s egress-publish-input.tar.gz
+
+      - name: Transfer immutable publication inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: egress-publication-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: egress-publish-input.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    name: Publish Native and container release
+    needs: build-inputs
+    runs-on: ubuntu-latest
+    environment: public-release
+    permissions:
+      contents: write
+      packages: write
+    concurrency:
+      group: egress-release-${{ inputs.version }}
+      cancel-in-progress: false
+    outputs:
+      release_tag: ${{ steps.publish.outputs.release_tag }}
+      image_index_ref: ${{ steps.publish.outputs.image_index_ref }}
+    steps:
+      - name: Restore credential-free publication inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: egress-publication-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: bundle
+
+      - name: Unpack the sealed publication inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f bundle/egress-publish-input.tar.gz
+          test ! -e workspace
+          mkdir workspace
+          tar -xzf bundle/egress-publish-input.tar.gz -C workspace
+
+      - name: Set up QEMU for final multi-platform publication
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64,arm64
+
+      - name: Set up isolated Buildx publisher
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login, publish exact digest image and create exact Release
+        id: publish
+        shell: bash
+        working-directory: workspace
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUBLICATION_DIR: publication/egress
+        run: bash action/scripts/release/publish-egress-release.sh

@@ -1,0 +1,440 @@
+name: Build desktop app locally
+
+'on':
+  workflow_call:
+    inputs:
+      action_sha:
+        required: true
+        type: string
+      app_repository:
+        required: true
+        type: string
+      app_sha:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Verify ${{ matrix.name }} app bundle
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            runner: macos-14
+            bundle: dmg
+            expected_arch: arm64
+          - name: windows-x64
+            runner: windows-2022
+            bundle: nsis
+            expected_arch: x64
+    steps:
+      - name: Verify immutable inputs
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          APP_SHA: ${{ inputs.app_sha }}
+          WORKFLOW_ACTION_SHA: ${{ github.sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          APP_REPOSITORY: ${{ inputs.app_repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          for entry in "action_sha:$ACTION_SHA" "app_sha:$APP_SHA"; do
+            label="${entry%%:*}"
+            sha="${entry#*:}"
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$label must be an exact 40-character commit SHA" >&2
+              exit 1
+            fi
+          done
+          if [ "$ACTION_SHA" != "$WORKFLOW_ACTION_SHA" ]; then
+            echo "Action workflow commit does not match the verified Action SHA." >&2
+            exit 1
+          fi
+          [ "$ACTION_REPOSITORY" = voiceofhu/one-action ] || {
+            echo "Action repository differs from the fixed App build trust root." >&2
+            exit 1
+          }
+          [ "$APP_REPOSITORY" = voiceofhu/one-browser-app-next ] || {
+            echo "App repository differs from the fixed App source trust root." >&2
+            exit 1
+          }
+          if [ -n "$VERSION" ] && {
+            [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+              || ((${#VERSION} > 32));
+          }; then
+            echo "App version must be an unprefixed three-component numeric version." >&2
+            exit 1
+          fi
+
+      - name: Checkout Action tooling at exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          persist-credentials: false
+
+      - name: Checkout App at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.app_repository }}
+          ref: ${{ inputs.app_sha }}
+          path: app
+          token: ${{ github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify checkout heads and immutable source controls
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          APP_SHA: ${{ inputs.app_sha }}
+        run: |
+          set -Eeuo pipefail
+          for entry in "action:$ACTION_SHA" "app:$APP_SHA"; do
+            directory="${entry%%:*}"
+            expected="${entry#*:}"
+            actual="$(GIT_NO_REPLACE_OBJECTS=1 git -C "$directory" rev-parse --verify HEAD)"
+            [ "$actual" = "$expected" ] || {
+              echo "$directory checkout HEAD does not match its exact requested SHA." >&2
+              exit 1
+            }
+          done
+          for path in \
+            app/package.json \
+            app/pnpm-lock.yaml \
+            app/rust-toolchain.toml \
+            app/src-tauri/Cargo.toml \
+            app/src-tauri/Cargo.lock \
+            app/src-tauri/tauri.conf.json; do
+            [ -f "$path" ] && [ ! -L "$path" ] || {
+              echo "A required App build-control file is missing or symlinked." >&2
+              exit 1
+            }
+            size="$(wc -c < "$path" | tr -d '[:space:]')"
+            [[ "$size" =~ ^[0-9]+$ ]] && ((size > 0 && size <= 8388608)) || {
+              echo "A required App build-control file has an invalid size." >&2
+              exit 1
+            }
+          done
+          grep -Eq '^channel = "1\.97\.1"$' app/rust-toolchain.toml || {
+            echo "App Rust toolchain must remain exactly 1.97.1." >&2
+            exit 1
+          }
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.0.0
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify fixed toolchain and source versions
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(node --version)" = v24.0.0 ] || {
+            echo "Node.js differs from the fixed 24.0.0 contract." >&2
+            exit 1
+          }
+          [ "$(pnpm --version)" = 10.32.1 ] || {
+            echo "pnpm differs from the fixed 10.32.1 contract." >&2
+            exit 1
+          }
+          [ "$(rustc --version | awk '{print $2}')" = 1.97.1 ] || {
+            echo "rustc differs from the fixed 1.97.1 contract." >&2
+            exit 1
+          }
+          package_name="$(jq -er '.name' app/package.json)"
+          package_version="$(jq -er '.version' app/package.json)"
+          tauri_version="$(jq -er '.version' app/src-tauri/tauri.conf.json)"
+          cargo_version="$(cargo metadata --manifest-path app/src-tauri/Cargo.toml --no-deps --locked --format-version 1 | jq -er '.packages | map(select(.name == "one-browser-app")) | if length == 1 then .[0].version else empty end')"
+          [ "$package_name" = one-browser-app ] \
+            && [ "$package_version" = "$tauri_version" ] \
+            && [ "$package_version" = "$cargo_version" ] || {
+            echo "App package, Tauri, and Cargo versions must match exactly." >&2
+            exit 1
+          }
+          [[ "$package_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            && ((${#package_version} <= 32)) || {
+            echo "Exact App source version is not canonical." >&2
+            exit 1
+          }
+          if [ -n "$VERSION" ] && [ "$VERSION" != "$package_version" ]; then
+            echo "Requested App version does not match the exact source version." >&2
+            exit 1
+          fi
+          printf 'APP_SOURCE_VERSION=%s\n' "$package_version" >> "$GITHUB_ENV"
+
+      - name: Verify runner architecture
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.expected_arch }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(uname -m)" = "$EXPECTED_ARCH" ] || {
+            echo "macOS runner architecture does not match the matrix contract." >&2
+            exit 1
+          }
+
+      - name: Verify Windows runner architecture
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          EXPECTED_ARCH: ${{ matrix.expected_arch }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          if ($actual -ne $env:EXPECTED_ARCH) {
+            throw 'Windows runner architecture does not match the matrix contract.'
+          }
+
+      - name: Install frozen frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify frontend
+        working-directory: app
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --check "**/*.{ts,tsx}"
+          pnpm lint
+          pnpm typecheck
+          pnpm build
+          test -f dist/index.html
+
+      - name: Verify Rust
+        working-directory: app
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml --locked
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Build Tauri bundle without publication
+        working-directory: app
+        shell: bash
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        run: |
+          set -Eeuo pipefail
+          test -f src-tauri/tauri.conf.json
+          pnpm exec tauri build --bundles "$BUNDLE" --ci --no-sign
+
+      - name: Collect built artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          readonly MAX_BINARY_BYTES=536870912
+          readonly MAX_INSTALLER_BYTES=2147483648
+          validate_artifact() {
+            local path="$1"
+            local maximum="$2"
+            local label="$3"
+            local size
+            [ -f "$path" ] && [ ! -L "$path" ] || {
+              echo "$label is missing, not regular, or symlinked." >&2
+              exit 1
+            }
+            size="$(wc -c < "$path" | tr -d '[:space:]')"
+            [[ "$size" =~ ^[0-9]+$ ]] && ((size > 0 && size <= maximum)) || {
+              echo "$label is empty or exceeds its fixed size limit." >&2
+              exit 1
+            }
+          }
+          validate_name() {
+            local name="$1"
+            ((${#name} > 0 && ${#name} <= 180)) || {
+              echo "Installer name length is outside the fixed bound." >&2
+              exit 1
+            }
+            case "$name" in
+              [!A-Za-z0-9]*|*$'\n'*|*$'\r'*|*$'\t'*|*/*|*\\*)
+                echo "Installer name contains a forbidden path/control character." >&2
+                exit 1
+                ;;
+            esac
+          }
+          case "$RUNNER_OS" in
+            macOS)
+              binary="app/src-tauri/target/release/one-browser-app"
+              bundle_dir="app/src-tauri/target/release/bundle/dmg"
+              pattern='*.dmg'
+              ;;
+            Windows)
+              binary="app/src-tauri/target/release/one-browser-app.exe"
+              bundle_dir="app/src-tauri/target/release/bundle/nsis"
+              pattern='*.exe'
+              ;;
+            *) echo "Unsupported App build runner: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          for directory in \
+            app/src-tauri/target \
+            app/src-tauri/target/release \
+            app/src-tauri/target/release/bundle \
+            "$bundle_dir"; do
+            [ -d "$directory" ] && [ ! -L "$directory" ] || {
+              echo "An App output directory is missing or symlinked." >&2
+              exit 1
+            }
+          done
+          validate_artifact "$binary" "$MAX_BINARY_BYTES" "App binary"
+          mkdir provenance || {
+            echo "Runner-local provenance destination must be create-new." >&2
+            exit 1
+          }
+          mkdir -p provenance/artifacts/binary provenance/artifacts/installer
+          cp "$binary" provenance/artifacts/binary/
+          installer_count=0
+          while IFS= read -r -d '' installer; do
+            installer_count=$((installer_count + 1))
+            ((installer_count <= 1)) || {
+              echo "Expected exactly one Tauri installer." >&2
+              exit 1
+            }
+            validate_name "$(basename "$installer")"
+            validate_artifact "$installer" "$MAX_INSTALLER_BYTES" "Tauri installer"
+            cp "$installer" provenance/artifacts/installer/
+          done < <(find "$bundle_dir" -maxdepth 1 -type f -name "$pattern" -print0)
+          ((installer_count == 1)) || {
+            echo "Expected exactly one Tauri installer." >&2
+            exit 1
+          }
+
+      - name: Verify source identity after build
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          APP_SHA: ${{ inputs.app_sha }}
+        run: |
+          set -Eeuo pipefail
+          for entry in "action:$ACTION_SHA" "app:$APP_SHA"; do
+            directory="${entry%%:*}"
+            expected="${entry#*:}"
+            actual="$(GIT_NO_REPLACE_OBJECTS=1 git -C "$directory" rev-parse --verify HEAD)"
+            [ "$actual" = "$expected" ] || {
+              echo "$directory checkout HEAD drifted during the build." >&2
+              exit 1
+            }
+            GIT_NO_REPLACE_OBJECTS=1 git -C "$directory" diff --quiet --no-ext-diff --ignore-submodules --
+            GIT_NO_REPLACE_OBJECTS=1 git -C "$directory" diff --cached --quiet --no-ext-diff --ignore-submodules --
+          done
+
+      - name: Generate runner-local provenance
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          APP_REPOSITORY: ${{ inputs.app_repository }}
+          APP_SHA: ${{ inputs.app_sha }}
+          PLATFORM: ${{ matrix.name }}
+        run: |
+          set -Eeuo pipefail
+          checksum_file() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" | awk '{print $1}'
+            else
+              shasum -a 256 "$1" | awk '{print $1}'
+            fi
+          }
+          (
+            cd provenance
+            find artifacts -type f -print |
+              LC_ALL=C sort |
+              while IFS= read -r file; do
+                case "$file" in
+                  artifacts/binary/*|artifacts/installer/*) ;;
+                  *) echo "Unexpected provenance artifact path." >&2; exit 1 ;;
+                esac
+                printf '%s  %s\n' "$(checksum_file "$file")" "$file"
+              done
+          ) > provenance/artifacts.sha256
+          jq -Rn \
+            '[inputs | capture("^(?<sha256>[0-9a-f]{64})  (?<path>.*)$")]' \
+            < provenance/artifacts.sha256 > provenance/artifacts.json
+          jq -e '
+            length == 2 and
+            all(.[];
+              (.sha256 | test("^[0-9a-f]{64}$")) and
+              (.path | test("^artifacts/(binary|installer)/[A-Za-z0-9][A-Za-z0-9._+() -]{0,179}$")) and
+              (.path | contains("..") | not)
+            )
+          ' provenance/artifacts.json >/dev/null
+
+          tar -czf provenance/app-artifacts.tar.gz -C provenance artifacts
+          bash action/scripts/release/write-checksums.sh \
+            provenance/SHA256SUMS provenance/app-artifacts.tar.gz
+          jq -n \
+            --arg action_sha "$ACTION_SHA" \
+            --arg app_repository "$APP_REPOSITORY" \
+            --arg app_sha "$APP_SHA" \
+            --arg version "$APP_SOURCE_VERSION" \
+            --arg platform "$PLATFORM" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile artifacts provenance/artifacts.json \
+            '{
+              schema_version: 1,
+              workflow: "app",
+              action_sha: $action_sha,
+              app: { repository: $app_repository, sha: $app_sha },
+              version: $version,
+              platform: $platform,
+              generated_at: $generated_at,
+              artifacts: $artifacts[0],
+              bundle: "app-artifacts.tar.gz",
+              checksums: "SHA256SUMS",
+              uploaded: false,
+              published: false
+            }' > provenance/manifest.json
+          jq -e '
+            .app.repository == "voiceofhu/one-browser-app-next" and
+            (.app.sha | test("^[0-9a-f]{40}$")) and
+            (.version | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
+            .uploaded == false and .published == false
+          ' provenance/manifest.json >/dev/null
+          test -s provenance/SHA256SUMS
+
+      - name: Record non-publishing App build
+        shell: bash
+        env:
+          APP_SHA: ${{ inputs.app_sha }}
+          PLATFORM: ${{ matrix.name }}
+        run: |
+          set -Eeuo pipefail
+          artifact_count="$(find provenance/artifacts -type f | wc -l | tr -d ' ')"
+          {
+            echo "## App $PLATFORM build verification"
+            echo
+            echo "- App SHA: \`$APP_SHA\`"
+            echo "- Frontend: frozen install + format/lint/typecheck/build"
+            echo "- Rust: fmt/check/clippy/test (locked)"
+            echo "- Tauri bundle: built locally"
+            echo "- Artifact count: \`$artifact_count\`"
+            echo "- Provenance and SHA256SUMS: generated in the runner"
+            echo "- Upload/sign/release/deploy: not run"
+          } >> "$GITHUB_STEP_SUMMARY"

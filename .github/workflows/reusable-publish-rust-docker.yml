@@ -1,0 +1,248 @@
+name: Publish Rust backend image
+
+'on':
+  workflow_call:
+    inputs:
+      workflow_name:
+        required: true
+        type: string
+      action_sha:
+        required: true
+        type: string
+      source_repository:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+    secrets:
+      source_read_token:
+        description: Token limited to reading the fixed Browser Backend repository
+        required: true
+    outputs:
+      digest:
+        description: Registry digest of the published image
+        value: ${{ jobs.publish.outputs.digest }}
+      image_ref:
+        description: Digest-qualified image reference
+        value: ${{ jobs.publish.outputs.image_ref }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Rebuild and publish backend image
+    runs-on: ubuntu-latest
+    environment: ghcr-publish
+    concurrency:
+      group: ghcr-one-browser-backend-${{ inputs.source_sha }}-${{ inputs.version }}
+      cancel-in-progress: false
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      image_ref: ${{ steps.push.outputs.image_ref }}
+    steps:
+      - name: Validate immutable publication inputs
+        id: config
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          WORKFLOW_ACTION_SHA: ${{ github.sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+          if [[ ! "$ACTION_SHA" =~ ^[0-9a-f]{40}$ || ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Action and source revisions must be exact commit SHAs." >&2
+            exit 1
+          fi
+          if [ "$ACTION_SHA" != "$WORKFLOW_ACTION_SHA" ]; then
+            echo "Action SHA does not match the reusable workflow revision." >&2
+            exit 1
+          fi
+          if [ "$ACTION_REPOSITORY" != voiceofhu/one-action ] \
+            || [ "$ACTION_SERVER_URL" != https://github.com ]; then
+            echo "publication must run from the fixed central Action repository" >&2
+            exit 1
+          fi
+          if [[ ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$ ]]; then
+            echo "source repository is invalid" >&2
+            exit 1
+          fi
+          if [ "$WORKFLOW_NAME" != one-browser-backend ]; then
+            echo "workflow is not allowed to publish a Rust backend image" >&2
+            exit 1
+          fi
+          if [ "$SOURCE_REPOSITORY" != voiceofhu/one-browser-backend-next ]; then
+            echo "publication source does not match the fixed Browser Backend repository" >&2
+            exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            || ((${#VERSION} > 32)); then
+            echo "version must be at most 32 characters and contain three numeric components without a v prefix" >&2
+            exit 1
+          fi
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            dev|stage|prod) ;;
+            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
+          esac
+          publish_tag="run-a${ACTION_SHA:0:12}-s${SOURCE_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
+          {
+            echo "registry_image=ghcr.io/voiceofhu/one-browser-backend-next"
+            echo "local_image=local/one-browser-backend:$publish_tag"
+            echo "publish_tag=$publish_tag"
+            echo "package_name=one-browser-backend"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Action tooling at exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          persist-credentials: false
+
+      - name: Checkout backend at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_sha }}
+          path: source
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checked-out source identities
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(git -C action rev-parse HEAD)" = "$ACTION_SHA" ] || {
+            echo "Action checkout HEAD does not match action_sha." >&2
+            exit 1
+          }
+          [ "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA" ] || {
+            echo "Backend checkout HEAD does not match source_sha." >&2
+            exit 1
+          }
+
+      - name: Verify locked Rust source without registry credentials
+        shell: bash
+        working-directory: source
+        env:
+          EXPECTED_PACKAGE: ${{ steps.config.outputs.package_name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          test -f Cargo.toml && test ! -L Cargo.toml
+          test -f Cargo.lock && test ! -L Cargo.lock
+          test -f rust-toolchain.toml && test ! -L rust-toolchain.toml
+          package_version="$(
+            cargo metadata --format-version 1 --no-deps --locked |
+              jq -er --arg package "$EXPECTED_PACKAGE" '
+                [.packages[] | select(.name == $package) | .version] |
+                if length == 1 then .[0] else error("expected exactly one fixed backend package") end
+              '
+          )"
+          [ "$package_version" = "$VERSION" ] || {
+            echo "Requested version does not match the backend Cargo package version." >&2
+            exit 1
+          }
+          rustup component add rustfmt clippy
+          cargo fmt --all -- --check
+          cargo check --all-targets --all-features --locked
+          cargo clippy --all-targets --all-features --locked -- -D warnings
+          cargo test --all-features --locked
+          cargo build --release --all-features --locked
+          git diff --exit-code -- .
+
+      - name: Assemble exact source build context
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          mkdir docker-context
+          GIT_NO_REPLACE_OBJECTS=1 git -C source archive --format=tar "$SOURCE_SHA" |
+            tar -xf - -C docker-context
+
+      - name: Build and inspect final image without registry credentials
+        shell: bash
+        env:
+          LOCAL_IMAGE: ${{ steps.config.outputs.local_image }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -Eeuo pipefail
+          test -f docker-context/Dockerfile && test ! -L docker-context/Dockerfile
+          created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          docker build \
+            --file docker-context/Dockerfile \
+            --label "org.opencontainers.image.created=$created_at" \
+            --label "org.opencontainers.image.source=https://github.com/$SOURCE_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "one.action.revision=$ACTION_SHA" \
+            --label "one.action.repository=$ACTION_REPOSITORY" \
+            --label "one.environment=$DEPLOYMENT_ENVIRONMENT" \
+            --tag "$LOCAL_IMAGE" \
+            docker-context
+          image_user="$(docker image inspect --format '{{.Config.User}}' "$LOCAL_IMAGE")"
+          image_principal="${image_user%%:*}"
+          if [ -z "$image_user" ] \
+            || [ "${image_principal,,}" = root ] \
+            || [[ "$image_principal" =~ ^0+$ ]]; then
+            echo "Final image Config.User must be non-empty and non-root." >&2
+            exit 1
+          fi
+
+      - name: Login briefly, push unique tag, and verify registry digest
+        id: push
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          PUBLISH_IMAGE: ${{ steps.config.outputs.registry_image }}
+          LOCAL_IMAGE: ${{ steps.config.outputs.local_image }}
+          PUBLISH_TAG: ${{ steps.config.outputs.publish_tag }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISHED_IMAGE_PATH: publication/published-image.json
+        run: |
+          set -Eeuo pipefail
+          test -f action/scripts/release/publish-ghcr-image.sh
+          test ! -L action/scripts/release/publish-ghcr-image.sh
+          expected_blob="$(
+            GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse \
+              "$ACTION_SHA:scripts/release/publish-ghcr-image.sh"
+          )"
+          actual_blob="$(git hash-object action/scripts/release/publish-ghcr-image.sh)"
+          [ "$actual_blob" = "$expected_blob" ] || {
+            echo "Central publisher script changed after exact Action checkout." >&2
+            exit 1
+          }
+          exec bash action/scripts/release/publish-ghcr-image.sh

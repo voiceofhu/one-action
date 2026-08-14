@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+printf 'systemctl' >>"${EGRESS_FAKE_LOG:?}"
+printf ' %q' "$@" >>"$EGRESS_FAKE_LOG"
+printf '\n' >>"$EGRESS_FAKE_LOG"
+exit 0

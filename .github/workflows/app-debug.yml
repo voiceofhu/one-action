@@ -1,0 +1,98 @@
+name: One Browser App Debug
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha:
+        description: Dispatcher-resolved exact central Action commit SHA
+        required: true
+        type: string
+      app_repository:
+        description: One Browser App repository
+        required: true
+        type: string
+      app_ref:
+        description: Exact 40-character App commit SHA
+        required: true
+        type: string
+      upload_artifact:
+        description: Reserved; true fails closed because upload is not implemented
+        required: false
+        type: boolean
+        default: false
+      confirmation:
+        description: Required only for a future artifact upload request
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Reject mutable or privileged App Debug requests
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Validate fixed non-uploading boundary
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SHA: ${{ github.sha }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          APP_REPOSITORY: ${{ inputs.app_repository }}
+          APP_REF: ${{ inputs.app_ref }}
+          UPLOAD_ARTIFACT: ${{ inputs.upload_artifact }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          [ "$ACTION_REPOSITORY" = voiceofhu/one-action ] || {
+            echo "App Debug builds run only in the fixed central Action repository." >&2
+            exit 1
+          }
+          [ "$APP_REPOSITORY" = voiceofhu/one-browser-app-next ] || {
+            echo "App source must be the fixed One Browser App repository." >&2
+            exit 1
+          }
+          [[ "$ACTION_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Action revision is not an exact commit SHA." >&2
+            exit 1
+          }
+          if [[ ! "$EXPECTED_ACTION_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || [ "$EXPECTED_ACTION_SHA" != "$ACTION_SHA" ]; then
+            echo "Dispatcher-bound Action SHA is missing, invalid, or stale." >&2
+            exit 1
+          fi
+          [[ "$APP_REF" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "App ref must already be an exact 40-character commit SHA." >&2
+            exit 1
+          }
+          [ "$UPLOAD_ARTIFACT" = false ] || {
+            echo "App Debug upload is not implemented; refusing before source resolution." >&2
+            exit 1
+          }
+          [ -z "$CONFIRMATION" ] || {
+            echo "Non-uploading App Debug builds reject mutation confirmation input." >&2
+            exit 1
+          }
+
+  prepare:
+    needs: policy
+    uses: ./.github/workflows/reusable-prepare.yml
+    with:
+      workflow_name: app-debug
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      primary_label: app
+      primary_repository: ${{ inputs.app_repository }}
+      primary_ref: ${{ inputs.app_ref }}
+      publish_supported: false
+      upload_artifact: ${{ inputs.upload_artifact }}
+      confirmation: ${{ inputs.confirmation }}
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/reusable-build-app-debug.yml
+    with:
+      action_sha: ${{ github.sha }}
+      app_repository: ${{ inputs.app_repository }}
+      app_sha: ${{ needs.prepare.outputs.primary_sha }}

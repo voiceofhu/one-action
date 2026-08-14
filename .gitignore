@@ -1,0 +1,9 @@
+.env
+.DS_Store
+
+# Local build and publication output; migration never copies these directories.
+/dist/
+/node/dist/
+/publication/
+**/node_modules/
+**/target/

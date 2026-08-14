@@ -1,0 +1,368 @@
+name: Publish combined Web and backend image
+
+'on':
+  workflow_call:
+    inputs:
+      workflow_name:
+        required: true
+        type: string
+      action_sha:
+        required: true
+        type: string
+      backend_repository:
+        required: true
+        type: string
+      backend_sha:
+        required: true
+        type: string
+      web_repository:
+        required: true
+        type: string
+      web_sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+    secrets:
+      source_read_token:
+        description: Token limited to reading the fixed backend and Web repositories
+        required: true
+    outputs:
+      digest:
+        description: Registry digest of the published image
+        value: ${{ jobs.publish.outputs.digest }}
+      image_ref:
+        description: Digest-qualified image reference
+        value: ${{ jobs.publish.outputs.image_ref }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Rebuild and publish combined image
+    runs-on: ubuntu-latest
+    environment: ghcr-publish
+    concurrency:
+      group: ghcr-${{ inputs.workflow_name }}-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ inputs.version }}
+      cancel-in-progress: false
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      image_ref: ${{ steps.push.outputs.image_ref }}
+    steps:
+      - name: Validate immutable publication inputs
+        id: config
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          WEB_SHA: ${{ inputs.web_sha }}
+          WEB_REPOSITORY: ${{ inputs.web_repository }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          WORKFLOW_ACTION_SHA: ${{ github.sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+          for entry in \
+            "action_sha:$ACTION_SHA" \
+            "backend_sha:$BACKEND_SHA" \
+            "web_sha:$WEB_SHA"; do
+            label="${entry%%:*}"
+            sha="${entry#*:}"
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$label must be an exact commit SHA" >&2
+              exit 1
+            fi
+          done
+          if [ "$ACTION_SHA" != "$WORKFLOW_ACTION_SHA" ]; then
+            echo "Action SHA does not match the reusable workflow revision." >&2
+            exit 1
+          fi
+          if [ "$ACTION_REPOSITORY" != voiceofhu/one-action ] \
+            || [ "$ACTION_SERVER_URL" != https://github.com ]; then
+            echo "publication must run from the fixed central Action repository" >&2
+            exit 1
+          fi
+          for repository in "$BACKEND_REPOSITORY" "$WEB_REPOSITORY"; do
+            if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$ ]]; then
+              echo "source repository is invalid" >&2
+              exit 1
+            fi
+          done
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            || ((${#VERSION} > 32)); then
+            echo "version must be at most 32 characters and contain three numeric components without a v prefix" >&2
+            exit 1
+          fi
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            dev|stage|prod) ;;
+            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
+          esac
+          case "$WORKFLOW_NAME" in
+            one-user)
+              registry_image=ghcr.io/voiceofhu/one-user-backend-next
+              local_service=one-user-backend
+              backend_package=one-user-backend
+              web_package=one-user-web
+              expected_backend_repository=voiceofhu/one-user-backend-next
+              expected_web_repository=voiceofhu/one-user-web-next
+              ;;
+            one-amz)
+              registry_image=ghcr.io/voiceofhu/one-amz-backend-next
+              local_service=one-amz-backend
+              backend_package=one-amz-backend
+              web_package=one-amz-web
+              expected_backend_repository=voiceofhu/one-amz-backend-next
+              expected_web_repository=voiceofhu/one-amz-web-next
+              ;;
+            *)
+              echo "workflow is not allowed to publish a combined image" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$BACKEND_REPOSITORY" != "$expected_backend_repository" ] \
+            || [ "$WEB_REPOSITORY" != "$expected_web_repository" ]; then
+            echo "publication sources do not match the fixed product repositories" >&2
+            exit 1
+          fi
+          publish_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
+          {
+            echo "registry_image=$registry_image"
+            echo "local_image=local/$local_service:$publish_tag"
+            echo "publish_tag=$publish_tag"
+            echo "backend_package=$backend_package"
+            echo "web_package=$web_package"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Action tooling at exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          persist-credentials: false
+
+      - name: Checkout backend at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.backend_repository }}
+          ref: ${{ inputs.backend_sha }}
+          path: backend
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout Web at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.web_repository }}
+          ref: ${{ inputs.web_sha }}
+          path: web
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checked-out source identities
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          WEB_SHA: ${{ inputs.web_sha }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(git -C action rev-parse HEAD)" = "$ACTION_SHA" ] || {
+            echo "Action checkout HEAD does not match action_sha." >&2
+            exit 1
+          }
+          [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
+            echo "Backend checkout HEAD does not match backend_sha." >&2
+            exit 1
+          }
+          [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
+            echo "Web checkout HEAD does not match web_sha." >&2
+            exit 1
+          }
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Verify and build Web without registry credentials
+        shell: bash
+        env:
+          EXPECTED_WEB_PACKAGE: ${{ steps.config.outputs.web_package }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -Eeuo pipefail
+          test -f web/package.json && test ! -L web/package.json
+          test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
+          web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
+          web_version="$(jq -er '.version | select(type == "string")' web/package.json)"
+          [ "$web_package" = "$EXPECTED_WEB_PACKAGE" ] || {
+            echo "Web package name does not match the fixed product package." >&2
+            exit 1
+          }
+          [ "$web_version" = "$VERSION" ] || {
+            echo "Requested version does not match the Web package version." >&2
+            exit 1
+          }
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web format:check
+          pnpm --dir web lint
+          pnpm --dir web typecheck
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            dev)
+              pnpm --dir web exec tsc -b
+              pnpm --dir web exec vite build --mode development
+              ;;
+            stage) pnpm --dir web build:stage ;;
+            prod) pnpm --dir web build ;;
+            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
+          esac
+          test -f web/dist/index.html
+          if find web/dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
+            echo "Web dist may contain only regular files and directories." >&2
+            exit 1
+          fi
+          git -C web diff --exit-code -- .
+
+      - name: Assemble exact backend build context with verified Web
+        shell: bash
+        env:
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+        run: |
+          set -Eeuo pipefail
+          if [ -e backend/web-dist ]; then
+            echo "backend/web-dist must not be committed in source" >&2
+            exit 1
+          fi
+          mkdir -p backend/web-dist
+          cp -R web/dist/. backend/web-dist/
+          test -f backend/web-dist/index.html
+          mkdir docker-context
+          GIT_NO_REPLACE_OBJECTS=1 git -C backend archive --format=tar "$BACKEND_SHA" |
+            tar -xf - -C docker-context
+          mkdir docker-context/web-dist
+          cp -R backend/web-dist/. docker-context/web-dist/
+          test -f docker-context/web-dist/index.html
+
+      - name: Verify locked Rust source without registry credentials
+        shell: bash
+        working-directory: backend
+        env:
+          EXPECTED_BACKEND_PACKAGE: ${{ steps.config.outputs.backend_package }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          test -f Cargo.toml && test ! -L Cargo.toml
+          test -f Cargo.lock && test ! -L Cargo.lock
+          test -f rust-toolchain.toml && test ! -L rust-toolchain.toml
+          package_version="$(
+            cargo metadata --format-version 1 --no-deps --locked |
+              jq -er --arg package "$EXPECTED_BACKEND_PACKAGE" '
+                [.packages[] | select(.name == $package) | .version] |
+                if length == 1 then .[0] else error("expected exactly one fixed backend package") end
+              '
+          )"
+          [ "$package_version" = "$VERSION" ] || {
+            echo "Requested version does not match the backend Cargo package version." >&2
+            exit 1
+          }
+          rustup component add rustfmt clippy
+          cargo fmt --all -- --check
+          cargo check --all-targets --all-features --locked
+          cargo clippy --all-targets --all-features --locked -- -D warnings
+          cargo test --all-features --locked
+          cargo build --release --all-features --locked
+          git diff --exit-code -- .
+
+      - name: Build and inspect final image without registry credentials
+        shell: bash
+        env:
+          LOCAL_IMAGE: ${{ steps.config.outputs.local_image }}
+          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          WEB_SHA: ${{ inputs.web_sha }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -Eeuo pipefail
+          test -f docker-context/Dockerfile && test ! -L docker-context/Dockerfile
+          test -f docker-context/web-dist/index.html
+          created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          docker build \
+            --file docker-context/Dockerfile \
+            --label "org.opencontainers.image.created=$created_at" \
+            --label "org.opencontainers.image.source=https://github.com/$BACKEND_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$BACKEND_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "one.action.revision=$ACTION_SHA" \
+            --label "one.action.repository=$ACTION_REPOSITORY" \
+            --label "one.web.revision=$WEB_SHA" \
+            --label "one.environment=$DEPLOYMENT_ENVIRONMENT" \
+            --tag "$LOCAL_IMAGE" \
+            docker-context
+          image_user="$(docker image inspect --format '{{.Config.User}}' "$LOCAL_IMAGE")"
+          image_principal="${image_user%%:*}"
+          if [ -z "$image_user" ] \
+            || [ "${image_principal,,}" = root ] \
+            || [[ "$image_principal" =~ ^0+$ ]]; then
+            echo "Final image Config.User must be non-empty and non-root." >&2
+            exit 1
+          fi
+
+      - name: Login briefly, push unique tag, and verify registry digest
+        id: push
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          PUBLISH_IMAGE: ${{ steps.config.outputs.registry_image }}
+          LOCAL_IMAGE: ${{ steps.config.outputs.local_image }}
+          PUBLISH_TAG: ${{ steps.config.outputs.publish_tag }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          ACTION_REPOSITORY: ${{ github.repository }}
+          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          WEB_REPOSITORY: ${{ inputs.web_repository }}
+          WEB_SHA: ${{ inputs.web_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISHED_IMAGE_PATH: publication/published-image.json
+        run: |
+          set -Eeuo pipefail
+          test -f action/scripts/release/publish-ghcr-image.sh
+          test ! -L action/scripts/release/publish-ghcr-image.sh
+          expected_blob="$(
+            GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse \
+              "$ACTION_SHA:scripts/release/publish-ghcr-image.sh"
+          )"
+          actual_blob="$(git hash-object action/scripts/release/publish-ghcr-image.sh)"
+          [ "$actual_blob" = "$expected_blob" ] || {
+            echo "Central publisher script changed after exact Action checkout." >&2
+            exit 1
+          }
+          exec bash action/scripts/release/publish-ghcr-image.sh

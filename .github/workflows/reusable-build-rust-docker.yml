@@ -1,0 +1,277 @@
+name: Build Rust service and Docker image
+
+'on':
+  workflow_call:
+    inputs:
+      workflow_name:
+        required: true
+        type: string
+      local_image_name:
+        required: true
+        type: string
+      action_sha:
+        required: true
+        type: string
+      source_repository:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+        default: ''
+      environment:
+        required: true
+        type: string
+      rust_validation:
+        required: false
+        type: string
+        default: strict
+    secrets:
+      source_read_token:
+        description: Optional token limited to reading private source repositories
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Verify Rust service and production image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify immutable build inputs
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          RUST_VALIDATION: ${{ inputs.rust_validation }}
+          LOCAL_IMAGE_NAME: ${{ inputs.local_image_name }}
+          WORKFLOW_ACTION_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          for entry in "action_sha:$ACTION_SHA" "source_sha:$SOURCE_SHA"; do
+            label="${entry%%:*}"
+            sha="${entry#*:}"
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$label must be an exact 40-character commit SHA" >&2
+              exit 1
+            fi
+          done
+          if [ "$ACTION_SHA" != "$WORKFLOW_ACTION_SHA" ]; then
+            echo "Action workflow commit does not match the verified Action SHA." >&2
+            exit 1
+          fi
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            dev|stage|prod) ;;
+            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
+          esac
+          if [ "$RUST_VALIDATION" != strict ]; then
+            echo "rust_validation must be strict" >&2
+            exit 1
+          fi
+          if [[ ! "$LOCAL_IMAGE_NAME" =~ ^local/[a-z0-9][a-z0-9._-]*:([0-9a-f]{40})$ ]]; then
+            echo "local_image_name must be a local service name tagged by an exact commit SHA" >&2
+            exit 1
+          fi
+          if [ "${BASH_REMATCH[1]}" != "$SOURCE_SHA" ]; then
+            echo "local_image_name tag must equal source_sha" >&2
+            exit 1
+          fi
+
+      - name: Checkout Action tooling at exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          persist-credentials: false
+
+      - name: Checkout service at verified commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_sha }}
+          path: source
+          token: ${{ secrets.source_read_token || secrets.GH_TOKEN || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify Rust toolchain and lockfile
+        shell: bash
+        working-directory: source
+        run: |
+          set -Eeuo pipefail
+          command -v cargo >/dev/null
+          command -v rustup >/dev/null
+          test -f Cargo.toml
+          test -f Cargo.lock
+          rustup component add rustfmt clippy
+          cargo --version
+          rustc --version
+
+      - name: Run strict locked Rust verification
+        shell: bash
+        working-directory: source
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all -- --check
+          cargo check --all-targets --all-features --locked
+          cargo clippy --all-targets --all-features --locked -- -D warnings
+          cargo test --all-features --locked
+          cargo build --release --all-features --locked
+
+      - name: Build and inspect production container locally
+        id: image
+        shell: bash
+        env:
+          LOCAL_IMAGE_NAME: ${{ inputs.local_image_name }}
+        run: |
+          set -Eeuo pipefail
+          command -v docker >/dev/null
+          test -f source/Dockerfile
+          docker build --file source/Dockerfile --tag "$LOCAL_IMAGE_NAME" source
+
+          image_user="$(docker image inspect --format '{{.Config.User}}' "$LOCAL_IMAGE_NAME")"
+          image_principal="${image_user%%:*}"
+          if [ -z "$image_user" ] \
+            || [ "${image_principal,,}" = root ] \
+            || [[ "$image_principal" =~ ^0+$ ]]; then
+            echo "Production image Config.User must be a non-root user." >&2
+            exit 1
+          fi
+          image_id="$(docker image inspect --format '{{.Id}}' "$LOCAL_IMAGE_NAME")"
+          if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Local Docker build did not produce a content-addressed image ID." >&2
+            exit 1
+          fi
+          {
+            echo "name=$LOCAL_IMAGE_NAME"
+            echo "id=$image_id"
+            echo "user=$image_user"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect release binaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p provenance/bin
+          mapfile -t binaries < <(
+            cd source
+            cargo metadata --format-version 1 --no-deps --locked |
+              jq -r '.packages[].targets[] | select(.kind | index("bin")) | .name' |
+              LC_ALL=C sort -u
+          )
+          if [ "${#binaries[@]}" -eq 0 ]; then
+            echo "No Rust binary targets were found." >&2
+            exit 1
+          fi
+          for binary in "${binaries[@]}"; do
+            source_path="source/target/release/$binary"
+            test -f "$source_path" || {
+              echo "Release binary was not built: $source_path" >&2
+              exit 1
+            }
+            cp "$source_path" "provenance/bin/$binary"
+          done
+
+      - name: Generate local build provenance
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          LOCAL_IMAGE_NAME: ${{ steps.image.outputs.name }}
+          LOCAL_IMAGE_ID: ${{ steps.image.outputs.id }}
+          LOCAL_IMAGE_USER: ${{ steps.image.outputs.user }}
+        run: |
+          set -Eeuo pipefail
+          (
+            cd provenance
+            find bin -type f -print0 |
+              LC_ALL=C sort -z |
+              while IFS= read -r -d '' file; do sha256sum "$file"; done
+          ) > provenance/binary-files.sha256
+          jq -Rn \
+            '[inputs | capture("^(?<sha256>[0-9a-f]{64})  (?<path>.*)$")]' \
+            < provenance/binary-files.sha256 \
+            > provenance/binary-files.json
+
+          tar -czf provenance/release-binaries.tar.gz -C provenance bin
+          bash action/scripts/release/write-checksums.sh \
+            provenance/SHA256SUMS \
+            provenance/release-binaries.tar.gz
+
+          jq -n \
+            --arg workflow "$WORKFLOW_NAME" \
+            --arg action_sha "$ACTION_SHA" \
+            --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg version "$VERSION" \
+            --arg environment "$DEPLOYMENT_ENVIRONMENT" \
+            --arg local_image_name "$LOCAL_IMAGE_NAME" \
+            --arg local_image_id "$LOCAL_IMAGE_ID" \
+            --arg local_image_user "$LOCAL_IMAGE_USER" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile binary_files provenance/binary-files.json \
+            '{
+              schema_version: 1,
+              workflow: $workflow,
+              action_sha: $action_sha,
+              source: {
+                repository: $source_repository,
+                sha: $source_sha
+              },
+              version: $version,
+              environment: $environment,
+              local_image: {
+                name: $local_image_name,
+                id: $local_image_id,
+                user: $local_image_user,
+                published: false
+              },
+              generated_at: $generated_at,
+              files: {
+                release_binaries: $binary_files[0]
+              },
+              bundles: {
+                release_binaries: "release-binaries.tar.gz",
+                checksums: "SHA256SUMS"
+              }
+            }' > provenance/manifest.json
+
+          jq -e '.action_sha | test("^[0-9a-f]{40}$")' \
+            provenance/manifest.json >/dev/null
+          jq -e '.source.sha | test("^[0-9a-f]{40}$")' \
+            provenance/manifest.json >/dev/null
+          jq -e '.local_image.id | test("^sha256:[0-9a-f]{64}$")' \
+            provenance/manifest.json >/dev/null
+          test -s provenance/SHA256SUMS
+
+      - name: Record non-publishing build result
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          LOCAL_IMAGE_NAME: ${{ steps.image.outputs.name }}
+          LOCAL_IMAGE_ID: ${{ steps.image.outputs.id }}
+          LOCAL_IMAGE_USER: ${{ steps.image.outputs.user }}
+        run: |
+          set -Eeuo pipefail
+          {
+            echo "## $WORKFLOW_NAME Rust/Docker build verification"
+            echo
+            echo "- Source SHA: \`$SOURCE_SHA\`"
+            echo "- Rust verification: fmt/check/clippy/test/build (locked)"
+            echo "- Local image: \`$LOCAL_IMAGE_NAME\`"
+            echo "- Local image ID: \`$LOCAL_IMAGE_ID\`"
+            echo "- Container user: \`$LOCAL_IMAGE_USER\` (non-root)"
+            echo "- Provenance and SHA256SUMS: generated in the runner"
+            echo "- Artifact upload: not run"
+            echo "- Login/push/release/deploy: not run"
+          } >> "$GITHUB_STEP_SUMMARY"

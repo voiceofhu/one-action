@@ -1,0 +1,114 @@
+name: One AMZ
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha:
+        description: Dispatcher-resolved exact central Action commit SHA
+        required: true
+        type: string
+      backend_repository:
+        description: One AMZ backend repository
+        required: true
+        type: string
+      backend_ref:
+        description: Dispatcher-resolved exact backend commit SHA
+        required: true
+        type: string
+      web_repository:
+        description: One AMZ Web repository
+        required: true
+        type: string
+      web_ref:
+        description: Dispatcher-resolved exact Web commit SHA
+        required: true
+        type: string
+      version:
+        description: Optional for validation; required x.y.z OCI label for publication
+        required: false
+        type: string
+      environment:
+        description: Target environment; no deployment runs unless deploy is explicitly enabled
+        required: false
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
+      publish:
+        description: Publish the exact sources to the fixed One AMZ GHCR package
+        required: false
+        type: boolean
+        default: false
+      deploy:
+        description: Reserved until deployment is implemented
+        required: false
+        type: boolean
+        default: false
+      confirmation:
+        description: Dispatcher-owned workflow and Action-SHA-bound publication confirmation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    uses: ./.github/workflows/reusable-prepare.yml
+    with:
+      workflow_name: one-amz
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      primary_label: backend
+      primary_repository: ${{ inputs.backend_repository }}
+      primary_ref: ${{ inputs.backend_ref }}
+      secondary_label: web
+      secondary_repository: ${{ inputs.web_repository }}
+      secondary_ref: ${{ inputs.web_ref }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      publish: ${{ inputs.publish }}
+      publish_supported: true
+      deploy: ${{ inputs.deploy }}
+      confirmation: ${{ inputs.confirmation }}
+    secrets:
+      source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
+
+  publish:
+    if: inputs.publish && needs.prepare.outputs.publish_authorized == 'true'
+    needs:
+      - prepare
+      - build
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-publish-web-backend.yml
+    with:
+      workflow_name: one-amz
+      action_sha: ${{ github.sha }}
+      backend_repository: ${{ inputs.backend_repository }}
+      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
+      web_repository: ${{ inputs.web_repository }}
+      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+    secrets:
+      source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/reusable-build-web-backend.yml
+    with:
+      workflow_name: one-amz
+      local_image_name: local/one-amz-backend:${{ needs.prepare.outputs.primary_sha }}
+      action_sha: ${{ github.sha }}
+      backend_repository: ${{ inputs.backend_repository }}
+      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
+      web_repository: ${{ inputs.web_repository }}
+      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      rust_validation: strict
+    secrets:
+      source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}

@@ -1,0 +1,251 @@
+name: Build One Node at an exact commit
+
+'on':
+  workflow_call:
+    inputs:
+      action_sha:
+        required: true
+        type: string
+      source_repository:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      source_read_token:
+        description: Token limited to reading the fixed private One Node source
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and build immutable One Node inputs
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Validate fixed read-only build inputs
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          WORKFLOW_ACTION_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [ "$ACTION_REPOSITORY" = voiceofhu/one-action ] || {
+            echo 'One Node builds must run in the fixed central Action repository.' >&2
+            exit 1
+          }
+          [ "$SOURCE_REPOSITORY" = voiceofhu/one-node-node ] || {
+            echo 'One Node source repository is not the fixed migration trust root.' >&2
+            exit 1
+          }
+          [[ "$ACTION_SHA" =~ ^[0-9a-f]{40}$ && "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Action and One Node revisions must be exact commit SHAs.' >&2
+            exit 1
+          }
+          [ "$ACTION_SHA" = "$WORKFLOW_ACTION_SHA" ] || {
+            echo 'Action revision does not match the reusable workflow revision.' >&2
+            exit 1
+          }
+          if [ -n "$REQUESTED_VERSION" ]; then
+            [[ "$REQUESTED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+              echo 'Requested One Node version must have three numeric components.' >&2
+              exit 1
+            }
+          fi
+
+      - name: Checkout Action tooling at exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout One Node at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_sha }}
+          path: source
+          token: ${{ secrets.source_read_token || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkouts and source metadata
+        id: metadata
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse --verify HEAD)" = "$ACTION_SHA" ] || {
+            echo 'Action checkout HEAD differs from the requested exact SHA.' >&2
+            exit 1
+          }
+          [ "$(GIT_NO_REPLACE_OBJECTS=1 git -C source rev-parse --verify HEAD)" = "$SOURCE_SHA" ] || {
+            echo 'One Node checkout HEAD differs from the requested exact SHA.' >&2
+            exit 1
+          }
+          for path in \
+            action/scripts/release/write-checksums.sh \
+            source/go.mod source/go.sum source/Makefile source/VERSION \
+            source/one/version/UPSTREAM_VERSION source/one/version/UPSTREAM_COMMIT \
+            source/release/DEFAULT_BUILD_TAGS_OTHERS; do
+            [ -f "$path" ] && [ ! -L "$path" ] || {
+              echo "Required exact-source input is missing or symlinked: $path" >&2
+              exit 1
+            }
+          done
+          source_version="$(tr -d '\r\n' <source/VERSION)"
+          upstream_version="$(tr -d '\r\n' <source/one/version/UPSTREAM_VERSION)"
+          upstream_commit="$(tr -d '\r\n' <source/one/version/UPSTREAM_COMMIT)"
+          [[ "$source_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'Exact One Node source has invalid VERSION metadata.' >&2
+            exit 1
+          }
+          [[ "$upstream_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'Exact One Node source has invalid upstream version metadata.' >&2
+            exit 1
+          }
+          [[ "$upstream_commit" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Exact One Node source has invalid upstream commit metadata.' >&2
+            exit 1
+          }
+          [ -z "$REQUESTED_VERSION" ] || [ "$REQUESTED_VERSION" = "$source_version" ] || {
+            echo 'Requested version does not match exact One Node source VERSION.' >&2
+            exit 1
+          }
+          printf 'source_version=%s\n' "$source_version" >>"$GITHUB_OUTPUT"
+          printf 'upstream_version=%s\n' "$upstream_version" >>"$GITHUB_OUTPUT"
+          printf 'upstream_commit=%s\n' "$upstream_commit" >>"$GITHUB_OUTPUT"
+
+      - name: Set up source-declared Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: source/go.mod
+          cache-dependency-path: source/go.sum
+
+      - name: Verify modules and run product tests
+        working-directory: source
+        env:
+          GOTOOLCHAIN: local
+          GOFLAGS: -mod=readonly
+        run: |
+          set -Eeuo pipefail
+          go mod verify
+          make test
+          go test -race ./one/access ./one/binding ./one/control ./one/runtime ./one/session ./one/state
+          make test-e2e
+
+      - name: Validate namespaced installer lifecycle
+        working-directory: action
+        run: make node-check
+
+      - name: Build both fixed Linux architectures
+        working-directory: source
+        env:
+          GOTOOLCHAIN: local
+          GOFLAGS: -mod=readonly
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_VERSION: ${{ steps.metadata.outputs.source_version }}
+          UPSTREAM_VERSION: ${{ steps.metadata.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ steps.metadata.outputs.upstream_commit }}
+        run: |
+          set -Eeuo pipefail
+          make build-linux-amd64 \
+            ONE_NODE_VERSION="$SOURCE_VERSION" \
+            ONE_NODE_COMMIT="$SOURCE_SHA" \
+            ONE_NODE_UPSTREAM_VERSION="$UPSTREAM_VERSION" \
+            ONE_NODE_UPSTREAM_COMMIT="$UPSTREAM_COMMIT"
+          make build-linux-arm64 \
+            ONE_NODE_VERSION="$SOURCE_VERSION" \
+            ONE_NODE_COMMIT="$SOURCE_SHA" \
+            ONE_NODE_UPSTREAM_VERSION="$UPSTREAM_VERSION" \
+            ONE_NODE_UPSTREAM_COMMIT="$UPSTREAM_COMMIT"
+          for architecture in amd64 arm64; do
+            artifact="dist/one-node-linux-$architecture"
+            [ -f "$artifact" ] && [ ! -L "$artifact" ] && [ -x "$artifact" ] || {
+              echo "Missing regular executable for linux/$architecture." >&2
+              exit 1
+            }
+            size="$(wc -c <"$artifact" | tr -d '[:space:]')"
+            [[ "$size" =~ ^[0-9]+$ ]] && ((size > 0 && size <= 268435456)) || {
+              echo "One Node linux/$architecture binary exceeds its fixed size boundary." >&2
+              exit 1
+            }
+          done
+          [ "$(dist/one-node-linux-amd64 version --product-name)" = "$SOURCE_VERSION" ] || {
+            echo 'linux/amd64 binary does not report the exact One Node source version.' >&2
+            exit 1
+          }
+          [ "$(dist/one-node-linux-amd64 version --name)" = "$UPSTREAM_VERSION" ] || {
+            echo 'linux/amd64 binary does not report the exact upstream version.' >&2
+            exit 1
+          }
+          file dist/one-node-linux-amd64 | grep -F 'x86-64' >/dev/null
+          file dist/one-node-linux-arm64 | grep -F 'ARM aarch64' >/dev/null
+
+      - name: Create and read back runner-local checksums and provenance
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_VERSION: ${{ steps.metadata.outputs.source_version }}
+          UPSTREAM_VERSION: ${{ steps.metadata.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ steps.metadata.outputs.upstream_commit }}
+        run: |
+          set -Eeuo pipefail
+          mkdir provenance
+          bash action/scripts/release/write-checksums.sh \
+            provenance/SHA256SUMS \
+            source/dist/one-node-linux-amd64 \
+            source/dist/one-node-linux-arm64
+          (cd source/dist && sha256sum -c ../../provenance/SHA256SUMS)
+          jq -n \
+            --arg action_repository voiceofhu/one-action \
+            --arg action_commit "$ACTION_SHA" \
+            --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg source_commit "$SOURCE_SHA" \
+            --arg version "$SOURCE_VERSION" \
+            --arg upstream_version "$UPSTREAM_VERSION" \
+            --arg upstream_commit "$UPSTREAM_COMMIT" \
+            '{schema: 1, action_repository: $action_repository,
+              action_commit: $action_commit, source_repository: $source_repository,
+              source_commit: $source_commit, version: $version,
+              upstream_version: $upstream_version,
+              upstream_commit: $upstream_commit,
+              assets: ["one-node-linux-amd64", "one-node-linux-arm64"],
+              published: false, deployed: false}' >provenance/manifest.json
+          jq -e \
+            --arg action "$ACTION_SHA" --arg source "$SOURCE_SHA" \
+            '.action_commit == $action and .source_commit == $source and
+             .published == false and .deployed == false and (.assets | length == 2)' \
+            provenance/manifest.json >/dev/null
+          [ -z "$(git -C source status --porcelain --untracked-files=no)" ] || {
+            echo 'One Node verification modified tracked exact-source files.' >&2
+            exit 1
+          }
+          {
+            echo '## One Node exact-source build'
+            echo
+            echo "- Action: \`voiceofhu/one-action@$ACTION_SHA\`"
+            echo "- Source: \`$SOURCE_REPOSITORY@$SOURCE_SHA\`"
+            echo "- Product/upstream: \`$SOURCE_VERSION\` / \`$UPSTREAM_VERSION@$UPSTREAM_COMMIT\`"
+            echo '- Native assets: linux/amd64 and linux/arm64 checksum-read back locally'
+            echo '- Artifact upload/GHCR/Release/deploy: not run'
+          } >>"$GITHUB_STEP_SUMMARY"

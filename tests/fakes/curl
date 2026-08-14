@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+output_file=
+request=GET
+url=
+data_file=
+raw_arguments="$*"
+config="$(cat)"
+
+expected_auth="${FAKE_EXPECTED_AUTH:-}"
+[[ -n "$expected_auth" ]] || exit 90
+[[ "$config" == "header = \"Authorization: Bearer $expected_auth\"" ]] || exit 91
+[[ "$raw_arguments" != *"$expected_auth"* ]] || exit 92
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --output)
+      output_file="$2"
+      shift 2
+      ;;
+    --request)
+      request="$2"
+      shift 2
+      ;;
+    --url)
+      url="$2"
+      shift 2
+      ;;
+    --data-binary)
+      data_file="${2#@}"
+      shift 2
+      ;;
+    --write-out|--header|--proto|--proto-redir|--max-redirs|--noproxy|--connect-timeout|--max-time|--max-filesize)
+      shift 2
+      ;;
+    --disable|--silent|--show-error)
+      shift
+      ;;
+    --config)
+      [[ "$2" == - ]] || exit 93
+      shift 2
+      ;;
+    *) exit 93 ;;
+  esac
+done
+
+[[ "$url" == https://api.github.com/* ]] || exit 94
+[[ -n "$output_file" ]] || exit 95
+printf '%s %s\n' "$request" "$url" >>"${FAKE_CURL_LOG:?FAKE_CURL_LOG is required}"
+
+if [[ "$request" == POST ]]; then
+  [[ "${FAKE_CURL_ALLOW_POST:-false}" == true ]] || exit 96
+  [[ -f "$data_file" ]] || exit 97
+  jq -e '
+    (.ref | test("^[0-9a-f]{40}$")) and
+    .ref == .inputs.expected_action_sha
+  ' "$data_file" >/dev/null
+  : >"$output_file"
+  printf 204
+  exit 0
+fi
+[[ "$request" == GET ]] || exit 98
+
+if [[ "${FAKE_CURL_OVERSIZE:-false}" == true ]]; then
+  head -c 1048577 /dev/zero | tr '\0' x >"$output_file"
+  printf 200
+  exit 0
+fi
+
+requested_ref="${url##*/}"
+if [[ "$requested_ref" =~ ^[0-9a-f]{40}$ ]]; then
+  sha="$requested_ref"
+else
+  case "$url" in
+    */repos/voiceofhu/one-action/commits/*) sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+    */repos/voiceofhu/one-user-backend-next/commits/*) sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
+    */repos/voiceofhu/one-user-web-next/commits/*) sha=cccccccccccccccccccccccccccccccccccccccc ;;
+    */repos/voiceofhu/one-amz-backend-next/commits/*) sha=dddddddddddddddddddddddddddddddddddddddd ;;
+    */repos/voiceofhu/one-amz-web-next/commits/*) sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ;;
+    */repos/voiceofhu/one-browser-backend-next/commits/*) sha=ffffffffffffffffffffffffffffffffffffffff ;;
+    */repos/voiceofhu/one-browser-app-next/commits/*) sha=1111111111111111111111111111111111111111 ;;
+    */repos/voiceofhu/one-browser-egress-next/commits/*) sha=2222222222222222222222222222222222222222 ;;
+    */repos/voiceofhu/one-node-node/commits/*) sha=3333333333333333333333333333333333333333 ;;
+    *) printf '{"message":"not found"}' >"$output_file"; printf 404; exit 0 ;;
+  esac
+fi
+
+printf '{"sha":"%s"}' "$sha" >"$output_file"
+printf 200

@@ -190,16 +190,23 @@ make dispatch-egress \
 
 ## 6. 部署 One User 前后端
 
-One User Web 会先编译进 Backend Docker 镜像，因此一个精确的 OCI image digest
-同时包含用户中心前端和后端。`make deploy-user` 负责在本地更新并发布源码版本；最后
-push `one-action` 的 `user-v<version>` 控制 tag。该 tag 触发
-`.github/workflows/user.yml`，工作流从 tag 提取版本并使用 Repository Secrets，依次完成：
+One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含 `linux/amd64` 和
+`linux/arm64` 的精确 OCI index digest，每个平台镜像都包含同一份用户中心前端。
+`make deploy-user` 负责在本地更新并发布源码版本；最后 push `one-action` 的
+`user-v<version>` 控制 tag。该 tag 触发 `.github/workflows/user.yml`，工作流从 tag
+提取版本并使用 Repository Secrets，依次完成：
 
 1. 解析 Action、Backend 和 Web 的精确 commit SHA；
-2. 构建前端并装入后端生产镜像；
-3. 上传组合镜像到 `ghcr.io/voiceofhu/one-user-backend-next`；
-4. 回读并锁定镜像 digest；
-5. 通过 SSH 让服务器拉取该 digest、更新 Compose 服务并检查 `/readyz`。
+2. 只构建和验证一次 Web，并将同一份 `web-dist` 交给两个后端构建任务；
+3. 在 `ubuntu-latest` 原生 amd64 runner 构建并上传 `linux/amd64` 镜像；
+4. 在 `ubuntu-24.04-arm` 原生 arm64 runner 构建并上传 `linux/arm64` 镜像；
+5. 合并两个平台镜像为 `ghcr.io/voiceofhu/one-user-backend-next` 的 OCI index，回读并
+   锁定 index digest；
+6. 通过 SSH 让服务器按自身架构拉取该 index digest、更新 Compose 服务并检查
+   `/readyz`。
+
+两个后端镜像都在对应架构的原生 runner 上构建，不安装或使用 QEMU。只有 OCI index
+合并完成并确认同时包含 amd64、arm64 后，部署任务才会获得 digest 并连接服务器。
 
 版本获取方式与旧 `one-browser-action` 保持一致：默认按上海时区生成
 `YY.MDD.HHmm` 三段数字，并去掉每段前导零，例如：

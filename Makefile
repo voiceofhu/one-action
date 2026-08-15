@@ -15,7 +15,7 @@ help:
 		"" \
 		"Safety defaults:" \
 		"  DRY_RUN=true                Resolve and print only for dispatch targets" \
-		"  deploy-user                 Prepare the real User deployment image" \
+		"  deploy-user                 Publish and deploy the real User release" \
 		"  CONFIRM_DISPATCH=...        Action-SHA-bound guard when DRY_RUN=false" \
 		"  CONFIRM_MUTATION=...        Action-SHA-bound publication guard" \
 		"" \
@@ -35,7 +35,7 @@ help:
 		"  make dispatch-browser-runtime  BLOCKED: Runtime trust root unresolved" \
 		"  make dispatch-node             Exact-SHA One Node build/test; publication blocked" \
 		"  make dispatch-one-amz" \
-		"  make deploy-user             Publish combined User image; deploy manually" \
+		"  make deploy-user             Publish combined User image and deploy it" \
 		"" \
 		"Example real dispatch (non-publishing build validation):" \
 		"  First dry-run and copy its exact Action SHA into <action-sha>" \
@@ -52,7 +52,7 @@ help:
 		"    CONFIRM_DISPATCH='dispatch:egress.yml:<action-sha>' \\" \
 		"    CONFIRM_MUTATION='mutate:egress.yml:<action-sha>'" \
 		"" \
-		"Example One User image release (manual deployment):" \
+		"Example One User image release and deployment:" \
 		"  make deploy-user" \
 		"  make deploy-user DRY_RUN=true  # Preview only" \
 		"" \

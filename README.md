@@ -8,8 +8,9 @@
 - 发布后端 GHCR 镜像和 Browser Egress Release；
 - 提供 Browser Egress 与 One Node 的安装、升级和卸载脚本。
 
-所有 GitHub Actions 调度默认都是 `DRY_RUN=true`：只解析分支或标签对应的精确
-commit SHA、打印请求内容，不会发起工作流。真实调度和发布必须显式确认。
+除 `make deploy-user` 外，所有 GitHub Actions 调度默认都是 `DRY_RUN=true`：只解析
+分支或标签对应的精确 commit SHA、打印请求内容，不会发起工作流。`deploy-user` 默认执行
+真实版本发布和服务器部署，需要预览时必须显式传入 `DRY_RUN=true`。
 
 ## 目录结构
 
@@ -18,6 +19,7 @@ commit SHA、打印请求内容，不会发起工作流。真实调度和发布�
 browser/egress/      Browser Egress 安装、卸载和本地测试
 node/                One Node 安装、升级、卸载和本地测试
 scripts/github/      GitHub ref 解析、token 检查和工作流调度
+scripts/deploy/      strict SSH、远端 registry 登录和 One User Compose 部署
 scripts/release/     checksum、GHCR 和 Egress Release 发布脚本
 tests/               跨产品工作流契约测试
 make/                Makefile 子模块
@@ -188,11 +190,11 @@ make dispatch-egress \
 发布器不会创建或覆盖 `latest`。One User 使用与 Server 完全一致的不可覆盖版本 tag；
 其他镜像仍按各自发布契约使用不可变引用。
 
-## 6. 发布 One User 前后端镜像
+## 6. 发布并部署 One User 前后端
 
 One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含 `linux/amd64` 和
 `linux/arm64` 的精确 OCI index digest，每个平台镜像都包含同一份用户中心前端。
-`make deploy-user` 负责在本地更新并发布源码版本，为手工部署准备镜像；最后 push `one-action` 的
+`make deploy-user` 负责在本地更新并发布源码版本；最后 push `one-action` 的
 `user-v<version>` 控制 tag。该 tag 触发 `.github/workflows/user.yml`，工作流从 tag
 提取版本并使用 Repository Secrets，依次完成：
 
@@ -205,12 +207,16 @@ One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含
    镜像，同时 Backend 校验可以继续运行；
 5. 只有 Backend 校验和两个架构构建全部成功，才合并平台镜像为
    `ghcr.io/voiceofhu/one-user` 的 OCI index，以 Server 版本作为 tag，回读并
-   锁定 index digest。
+   锁定 index digest；
+6. `deploy` job 只接收
+   `ghcr.io/voiceofhu/one-user:<version>@sha256:<OCI-index-digest>`，通过 SSH 让生产服务器
+   拉取该精确镜像，等待 Compose 服务健康后再检查 `/readyz` 和实际运行镜像 ID。
 
 两个后端镜像都在对应架构的原生 runner 上构建，不安装或使用 QEMU。只有 OCI index
-合并完成并确认同时包含 amd64、arm64 后，发布任务才算完成。
+合并完成并确认同时包含 amd64、arm64 后，部署任务才会运行。
 两个架构分别使用 GHCR `buildcache-amd64`、`buildcache-arm64` 作为跨 release tag 的
-BuildKit 缓存；缓存 tag 不用于部署，手工部署只使用与 Server 对齐的版本 tag。
+BuildKit 缓存；缓存 tag 和单架构 tag 都不用于部署，生产服务器只使用版本 tag 与
+OCI index digest 组合而成的不可变引用。
 
 版本获取方式与旧 `one-browser-action` 保持一致：默认按上海时区生成
 `YY.MDD.HHmm` 三段数字，并去掉每段前导零，例如：
@@ -219,7 +225,7 @@ BuildKit 缓存；缓存 tag 不用于部署，手工部署只使用与 Server �
 2026-08-15 09:30 Asia/Shanghai -> 26.815.930
 ```
 
-默认直接执行真实发布，不需要手动填写版本：
+默认直接执行真实发布和部署，不需要手动填写版本：
 
 ```bash
 make deploy-user
@@ -233,9 +239,9 @@ make deploy-user DRY_RUN=true
 
 dry-run 会打印生成的版本、两个本地源码仓库和将要创建的三个 tag，不访问 GitHub
 API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源码、创建 tag、push、
-触发 Action。
+触发 Action 或连接服务器。
 
-默认真实执行同样不需要本机 `GH_TOKEN` 或确认字符串，并按以下流程发布：
+默认真实执行同样不需要本机 `GH_TOKEN` 或确认字符串，并按以下流程发布和部署：
 
 1. 要求本地 `one-action` 位于干净的 `main`，且 HEAD 与 `origin/main` 完全一致；
 2. 要求本地 `../one-user/backend` 和 `../one-user/web` 均处于干净分支；
@@ -244,26 +250,64 @@ API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源�
 5. 两个仓库分别创建版本 commit 和同名 `v<version>` tag，并原子 push 分支与 tag；
 6. 在当前 `one-action` commit 创建并 push `user-v<version>` 控制 tag；
 7. `user.yml` 从控制 tag 提取版本，使用 `secrets.GH_TOKEN` 解析两个
-   `v<version>` 源码 tag，然后构建并发布精确版本镜像。
+   `v<version>` 源码 tag，然后构建并发布精确版本镜像；
+8. OCI index 回读验证通过后，`deploy` job 使用受保护的 `one-user-prod` environment
+   串行连接服务器并部署该精确 digest。
 
 本地发布只使用各仓库已有的 Git 凭据进行 push，`deploy-user` 不读取 `.env` 中的
-`GH_TOKEN`。`one-action` 的 GitHub Repository Secret `GH_TOKEN` 只供 runner 读取
-Backend/Web 私有源码并发布 GHCR 镜像。
+`GH_TOKEN`。`one-action` 的 GitHub Repository Secret `GH_TOKEN` 由 runner 用于读取
+Backend/Web 私有源码、发布 GHCR 镜像，并让服务器在部署期间临时登录 GHCR 拉取镜像。
 
 如需固定版本，可在预览和真实执行时都显式传入，例如
 `VERSION=26.815.930`。版本必须是没有 `v` 前缀、没有前导零的三段数字。该目标固定
 使用生产发布策略和 `PUBLISH=true`。
 
-`one-action` 仓库的 Actions Secrets 只需配置：
+GitHub 中需要建立受保护的 `one-user-prod` environment，并在 `one-action` 仓库配置：
 
 | 类型 | 名称 | 说明 |
 |---|---|---|
-| Secret | `GH_TOKEN` | runner 读取 Backend/Web 私有仓库并发布 GHCR 镜像 |
+| Secret | `GH_TOKEN` | 读取 Backend/Web、发布 GHCR，并供服务器临时拉取私有镜像 |
+| Secret | `DEPLOY_HOST` | 服务器域名或 IP，不包含端口，例如 `98.65.67.83` |
+| Secret | `DEPLOY_PORT` | SSH 端口；可选，未设置时使用 `22` |
+| Secret | `DEPLOY_USER` | SSH 用户，例如 `gh-deploy` |
+| Secret | `DEPLOY_SSH_KEY` | 未加密的 OpenSSH 私钥 |
+| Secret | `DEPLOY_KNOWN_HOSTS` | 已核验的 ED25519 `known_hosts` 原始记录 |
+| Variable | `DEPLOY_REMOTE_DIR` | 服务器 Compose 目录，默认 `/opt/one-user` |
+| Variable | `DEPLOY_COMPOSE_PROJECT_NAME` | Compose project 名，默认 `one-user` |
+| Variable | `DEPLOY_COMPOSE_SERVICE_NAME` | Compose 服务名，默认 `user` |
+| Variable | `DEPLOY_READY_URL` | 服务器回环 readiness URL，默认 `http://127.0.0.1:27510/readyz` |
+| Variable | `DEPLOY_USE_SUDO` | Docker 是否使用免密 sudo：`0` 或 `1`，默认 `0` |
+| Variable | `DEPLOY_LOG_TAIL` | 部署失败时输出的 Compose 日志行数，默认 `120` |
+| Variable | `DEPLOY_URL` | protected environment 展示的生产 URL，可选 |
 
-服务器部署完全由运维人员手工完成。Action 不读取或写入服务器环境变量，不连接
-服务器，也不生成或执行 Docker Compose。手工部署使用与 Server 对齐的版本引用，
-例如 `ghcr.io/voiceofhu/one-user:26.815.1234`，并自行完成运行时配置、启动和
-readiness 检查。
+`DEPLOY_KNOWN_HOSTS` 不能填写 `256 SHA256:... (ED25519)` 这种 fingerprint 展示结果；
+必须保存完整的 `known_hosts` 行。默认 22 端口使用主机名或 IP，非默认端口的主机字段应为
+`[host]:port`。工作流始终启用 `StrictHostKeyChecking`，不会在运行时信任未知主机。
+
+服务器必须由运维提前准备以下内容：
+
+```text
+/opt/one-user/
+├── .env
+├── docker-compose.yml
+└── cert/
+    └── one-user-oidc-signing-key.pem
+```
+
+默认 Compose project 为 `one-user`、服务名为 `user`，镜像字段读取 `DOCKER_IMAGE`。
+服务器 Compose 为方便手工操作可以保留 `latest` 默认值，但发布器不会创建 `latest`，生产
+workflow 也始终使用临时传入的精确 tag 与 OCI index digest 覆盖该默认值。
+Action 不上传、创建或修改
+`docker-compose.yml`、`.env` 或 `cert/`，也不会创建 `.image.env`。精确的
+`<version>@sha256:<OCI-index-digest>` 只作为远端 Compose 进程的临时 `DOCKER_IMAGE`
+环境变量；部署结束后不会写回服务器配置文件。
+
+workflow 的固定步骤是 Configure SSH → 登录服务器 GHCR → Deploy image with Docker
+Compose → always logout。远端部署依次执行 Compose 配置校验、`pull user`、
+`up -d --no-deps --wait --wait-timeout 120 user`，然后从服务器回环地址请求
+`http://127.0.0.1:27510/readyz`。最后还会比较已拉取镜像 ID 与容器实际运行镜像 ID；
+只有二者一致且 readiness 成功才算部署完成。数据库、OIDC 私钥、OAuth secret 和其他
+运行时配置始终由服务器拥有，Action 不执行或打印 `.env` 内容。
 
 ## 7. Browser Egress 安装与卸载
 
@@ -378,7 +422,8 @@ sudo ./node/uninstall.sh
 - `dispatch-browser-runtime` 当前会直接失败，因为 Runtime 源仓库信任根尚未确定；
 - `dispatch-node` 只支持精确源码的构建与测试，不支持发布或部署；
 - App 和 App Debug 只做构建验证，不支持签名、发布或 artifact 上传；
-- 所有工作流都不执行 One User 服务器部署；One User 镜像发布后由运维人员手工部署；
+- One User 支持精确 OCI index digest 的 SSH 部署，但仓库静态检查不能证明远端服务器、
+  protected environment、审批人或 Secrets 已正确配置；
 - Egress 以外的公开 App/Runtime Release 尚未实现；
 - 本仓库代码本身不能证明远端 protected environment、审批人、权限或 secret 已正确配置。
 

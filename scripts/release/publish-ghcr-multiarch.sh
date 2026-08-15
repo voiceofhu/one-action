@@ -73,8 +73,6 @@ esac
 registry_path="${PUBLISH_IMAGE#ghcr.io/}"
 [[ "$registry_path" != "$PUBLISH_IMAGE" ]] || die 'PUBLISH_IMAGE must use ghcr.io'
 final_ref="$PUBLISH_IMAGE:$PUBLISH_TAG"
-amd64_ref="$PUBLISH_IMAGE:$PUBLISH_TAG-amd64"
-arm64_ref="$PUBLISH_IMAGE:$PUBLISH_TAG-arm64"
 
 manifest_raw="$(mktemp)"
 manifest_formatted="$(mktemp)"
@@ -146,10 +144,17 @@ docker buildx imagetools create \
   --annotation "index:one.action.revision=$ACTION_SHA" \
   --annotation "index:one.web.revision=$WEB_SHA" \
   --tag "$final_ref" \
-  "$amd64_ref" \
-  "$arm64_ref"
+  "$PUBLISH_IMAGE@$amd64_digest" \
+  "$PUBLISH_IMAGE@$arm64_digest"
 
-docker buildx imagetools inspect "$final_ref" --raw >"$manifest_raw"
+published_status="$(registry_manifest_status "$PUBLISH_TAG")"
+[[ "$published_status" == 200 ]] || die "published multi-platform tag returned HTTP $published_status"
+digest="$(registry_manifest_digest)"
+[[ "$digest" != "$amd64_digest" && "$digest" != "$arm64_digest" ]] ||
+  die 'multi-platform OCI index digest unexpectedly matches a child image digest'
+image_ref="$PUBLISH_IMAGE:$PUBLISH_TAG@$digest"
+
+docker buildx imagetools inspect "$image_ref" --raw >"$manifest_raw"
 manifest_size="$(wc -c <"$manifest_raw")"
 manifest_size="${manifest_size//[[:space:]]/}"
 [[ "$manifest_size" =~ ^[1-9][0-9]*$ ]] || die 'published OCI index readback was empty'
@@ -171,8 +176,14 @@ jq -e \
   ' "$manifest_raw" >/dev/null ||
   die 'published OCI index must contain exactly linux/amd64 and linux/arm64'
 
-docker buildx imagetools inspect "$final_ref" --format '{{json .Manifest}}' >"$manifest_formatted"
-digest="$(jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' "$manifest_formatted")"
+docker buildx imagetools inspect "$image_ref" --format '{{json .Manifest}}' >"$manifest_formatted"
+jq -e \
+  --arg digest "$digest" '
+    .digest == $digest and
+    .mediaType == "application/vnd.oci.image.index.v1+json" and
+    (.size | type == "number" and . > 0)
+  ' "$manifest_formatted" >/dev/null ||
+  die 'published OCI index descriptor does not match the immutable registry digest'
 
 readback_status="$(registry_manifest_status "$PUBLISH_TAG")"
 [[ "$readback_status" == 200 ]] || die "published multi-platform tag returned HTTP $readback_status"
@@ -182,7 +193,6 @@ readback_digest="$(registry_manifest_digest)"
 unset registry_token
 
 mkdir -p -- "$(dirname -- "$PUBLISHED_IMAGE_PATH")"
-image_ref="$PUBLISH_IMAGE:$PUBLISH_TAG"
 jq -n \
   --arg action_sha "$ACTION_SHA" \
   --arg action_repository "$ACTION_REPOSITORY" \
@@ -230,6 +240,7 @@ jq -e '
   .action_repository == "voiceofhu/one-action" and
   (.action_sha | test("^[0-9a-f]{40}$")) and
   (.image.digest | test("^sha256:[0-9a-f]{64}$")) and
+  .image.reference == (.image.name + ":" + .image.tag + "@" + .image.digest) and
   ([.image.platforms[].architecture] | sort) == ["amd64", "arm64"] and
   .deployment.performed == false
 ' "$PUBLISHED_IMAGE_PATH" >/dev/null

@@ -12,6 +12,7 @@ bash -n \
   "$PROJECT_ROOT/browser/egress/tests/egress-installers_test.sh" \
   "$PROJECT_ROOT/browser/egress/tests/fakes/"* \
   "$PROJECT_ROOT"/scripts/github/*.sh \
+  "$PROJECT_ROOT"/scripts/deploy/*.sh \
   "$PROJECT_ROOT"/scripts/release/*.sh \
   "$PROJECT_ROOT"/tests/*.sh \
   "$PROJECT_ROOT"/tests/fakes/* \
@@ -26,6 +27,7 @@ shellcheck --severity=warning \
   "$PROJECT_ROOT/browser/egress/tests/egress-installers_test.sh" \
   "$PROJECT_ROOT/browser/egress/tests/fakes/"* \
   "$PROJECT_ROOT/scripts/github/"*.sh \
+  "$PROJECT_ROOT/scripts/deploy/"*.sh \
   "$PROJECT_ROOT/scripts/release/"*.sh \
   "$PROJECT_ROOT/tests/"*.sh \
   "$PROJECT_ROOT/tests/fakes/"*

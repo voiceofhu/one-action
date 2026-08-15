@@ -291,12 +291,26 @@ require_text "$multiarch_publisher" 'arm64 image tag returned HTTP'
 require_text "$multiarch_publisher" 'docker buildx imagetools create'
 require_text "$multiarch_publisher" '"$PUBLISH_TAG-amd64"'
 require_text "$multiarch_publisher" '"$PUBLISH_TAG-arm64"'
+require_text "$multiarch_publisher" '"$PUBLISH_IMAGE@$amd64_digest"'
+require_text "$multiarch_publisher" '"$PUBLISH_IMAGE@$arm64_digest"'
+require_text "$multiarch_publisher" 'published_status="$(registry_manifest_status "$PUBLISH_TAG")"'
+require_text "$multiarch_publisher" 'digest="$(registry_manifest_digest)"'
+require_text "$multiarch_publisher" 'image_ref="$PUBLISH_IMAGE:$PUBLISH_TAG@$digest"'
+require_text "$multiarch_publisher" 'docker buildx imagetools inspect "$image_ref" --raw'
+require_text "$multiarch_publisher" \
+  'docker buildx imagetools inspect "$image_ref" --format '\''{{json .Manifest}}'\'''
 require_text "$multiarch_publisher" '.mediaType == "application/vnd.oci.image.index.v1+json"'
 require_text "$multiarch_publisher" 'published OCI index must contain exactly linux/amd64 and linux/arm64'
-require_text "$multiarch_publisher" "--format '{{json .Manifest}}'"
+require_text "$multiarch_publisher" 'published OCI index descriptor does not match the immutable registry digest'
 require_text "$multiarch_publisher" 'published multi-platform tag does not resolve to the OCI index digest'
 require_text "$multiarch_publisher" 'image_ref=$image_ref'
+require_text "$multiarch_publisher" '.image.reference == (.image.name + ":" + .image.tag + "@" + .image.digest)'
 require_text "$multiarch_publisher" 'platforms: ['
+
+if grep -Fq 'imagetools inspect "$final_ref"' "$multiarch_publisher"; then
+  printf '%s\n' 'Multi-platform publisher validates the final index through a mutable tag.' >&2
+  exit 1
+fi
 
 require_text "$dispatcher" 'confirmation is dispatcher-owned and must not be supplied by a caller'
 require_text "$dispatcher" 'enable:$workflow_base:$action_sha'

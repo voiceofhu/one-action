@@ -221,3 +221,93 @@ jobs:
       environment: prod
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
+
+  deploy:
+    name: Deploy verified One User image
+    if: needs.normalize.outputs.publish == 'true' && needs.publish.result == 'success'
+    needs:
+      - normalize
+      - publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: one-user-prod
+      url: ${{ vars.DEPLOY_URL }}
+    concurrency:
+      group: one-user-prod-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Validate immutable deployment image
+        id: deploy-image
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo 'Publisher did not return a valid OCI index digest.' >&2
+            exit 1
+          }
+          [[ "$IMAGE_REF" =~ ^ghcr\.io/voiceofhu/one-user:(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)@sha256:[0-9a-f]{64}$ ]] || {
+            echo 'Publisher did not return the fixed version tag pinned to an OCI index digest.' >&2
+            exit 1
+          }
+          [[ "$IMAGE_REF" == *"@$IMAGE_DIGEST" ]] || {
+            echo 'Deployment image reference and verified OCI index digest differ.' >&2
+            exit 1
+          }
+          printf 'image=%s\n' "$IMAGE_REF" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout exact deployment tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.normalize.outputs.expected_action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: exec bash action/scripts/deploy/configure-ssh.sh
+
+      - name: Log server in to GitHub Container Registry
+        id: registry_login
+        shell: bash
+        env:
+          SSH_HOST: one-user-deploy
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          USE_SUDO: ${{ vars.DEPLOY_USE_SUDO || '0' }}
+        run: exec bash action/scripts/deploy/registry-auth.sh
+
+      - name: Deploy image with Docker Compose
+        shell: bash
+        env:
+          SSH_HOST: one-user-deploy
+          REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}
+          DOCKER_IMAGE: ${{ steps.deploy-image.outputs.image }}
+          COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME || 'one-user' }}
+          COMPOSE_SERVICE_NAME: ${{ vars.DEPLOY_COMPOSE_SERVICE_NAME || 'user' }}
+          READY_URL: ${{ vars.DEPLOY_READY_URL || 'http://127.0.0.1:27510/readyz' }}
+          USE_SUDO: ${{ vars.DEPLOY_USE_SUDO || '0' }}
+          LOG_TAIL: ${{ vars.DEPLOY_LOG_TAIL || '120' }}
+        run: exec bash action/scripts/deploy/deploy-user.sh
+
+      - name: Log server out of GitHub Container Registry
+        if: ${{ always() && steps.registry_login.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          SSH_HOST: one-user-deploy
+          REGISTRY_ACTION: logout
+          USE_SUDO: ${{ vars.DEPLOY_USE_SUDO || '0' }}
+        run: exec bash action/scripts/deploy/registry-auth.sh

@@ -17,7 +17,8 @@ require_text() {
   }
 }
 
-require_text "$PROJECT_ROOT/make/workflows.mk" 'deploy-user:'
+require_text "$PROJECT_ROOT/make/workflows.mk" 'deploy-user: DRY_RUN = false'
+require_text "$PROJECT_ROOT/make/workflows.mk" 'DRY_RUN="$(DRY_RUN)" VERSION="$(USER_RELEASE_VERSION)"'
 require_text "$PROJECT_ROOT/make/workflows.mk" 'VERSION="$(USER_RELEASE_VERSION)"'
 require_text "$PROJECT_ROOT/make/config.mk" 'timeZone:'\''Asia/Shanghai'\'''
 require_text "$PROJECT_ROOT/make/config.mk" 'USER_RELEASE_VERSION ='

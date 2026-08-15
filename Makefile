@@ -14,7 +14,8 @@ help:
 		"One Action (greenfield)" \
 		"" \
 		"Safety defaults:" \
-		"  DRY_RUN=true                Resolve and print only; never dispatch" \
+		"  DRY_RUN=true                Resolve and print only for dispatch targets" \
+		"  deploy-user                 Real production release by default" \
 		"  CONFIRM_DISPATCH=...        Action-SHA-bound guard when DRY_RUN=false" \
 		"  CONFIRM_MUTATION=...        Action-SHA-bound publication guard" \
 		"" \
@@ -53,7 +54,7 @@ help:
 		"" \
 		"Example One User production deployment:" \
 		"  make deploy-user" \
-		"  make deploy-user DRY_RUN=false" \
+		"  make deploy-user DRY_RUN=true  # Preview only" \
 		"" \
 		"Example One Node exact-source validation (no publication/deployment):" \
 		"  make dispatch-node" \

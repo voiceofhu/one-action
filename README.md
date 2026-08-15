@@ -208,23 +208,23 @@ push `one-action` 的 `user-v<version>` 控制 tag。该 tag 触发
 2026-08-15 09:30 Asia/Shanghai -> 26.815.930
 ```
 
-先 dry-run，不需要手动填写版本：
+默认直接执行真实发布和部署，不需要手动填写版本：
 
 ```bash
 make deploy-user
 ```
 
-dry-run 会打印生成的版本、两个本地源码仓库和将要创建的三个 tag，不访问 GitHub
-API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源码、创建 tag、push、
-调度或部署。
-
-检查计划后真实执行：
+如需先预览，显式启用 dry-run：
 
 ```bash
-DRY_RUN=false make deploy-user
+make deploy-user DRY_RUN=true
 ```
 
-真实执行同样不需要本机 `GH_TOKEN` 或确认字符串，并按以下流程发布：
+dry-run 会打印生成的版本、两个本地源码仓库和将要创建的三个 tag，不访问 GitHub
+API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源码、创建 tag、push、
+触发 Action 或部署。
+
+默认真实执行同样不需要本机 `GH_TOKEN` 或确认字符串，并按以下流程发布：
 
 1. 要求本地 `one-action` 位于干净的 `main`，且 HEAD 与 `origin/main` 完全一致；
 2. 要求本地 `../one-user/backend` 和 `../one-user/web` 均处于干净分支；
@@ -239,7 +239,7 @@ DRY_RUN=false make deploy-user
 `.env` 中的 `GH_TOKEN`。部署所需的 `GH_TOKEN` 只保存在 `one-action` 的 GitHub
 Repository Secrets 中，供 runner 读取私有源码以及让服务器临时登录 GHCR。
 
-如需固定版本，可在 dry-run 和真实执行时都显式传入，例如
+如需固定版本，可在预览和真实执行时都显式传入，例如
 `VERSION=26.815.930`。版本必须是没有 `v` 前缀、没有前导零的三段数字。该目标固定
 使用 `ENVIRONMENT=prod`、`PUBLISH=true` 和 `DEPLOY=true`，不能部署未发布或非生产镜像。
 

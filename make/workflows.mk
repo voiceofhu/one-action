@@ -14,8 +14,9 @@ dispatch-one-user:
 		version="$${VERSION}" environment="$${ENVIRONMENT}" \
 		publish="$${PUBLISH}" deploy="$${DEPLOY}")
 
+deploy-user: DRY_RUN = false
 deploy-user:
-	@VERSION="$(USER_RELEASE_VERSION)" \
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(USER_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/deploy-user-release.sh
 
 dispatch-one-browser-backend:

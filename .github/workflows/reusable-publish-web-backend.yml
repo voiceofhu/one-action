@@ -33,27 +33,34 @@ name: Publish combined Web and backend image
         required: true
     outputs:
       digest:
-        description: Registry digest of the published image
-        value: ${{ jobs.publish.outputs.digest }}
+        description: Registry digest of the published multi-platform OCI index
+        value: ${{ jobs.manifest.outputs.digest }}
       image_ref:
-        description: Digest-qualified image reference
-        value: ${{ jobs.publish.outputs.image_ref }}
+        description: Digest-qualified multi-platform image reference
+        value: ${{ jobs.manifest.outputs.image_ref }}
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: ghcr-${{ inputs.workflow_name }}-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ inputs.version }}
+  cancel-in-progress: false
+
 jobs:
-  publish:
-    name: Rebuild and publish combined image
+  prepare:
+    name: Build Web once and verify exact sources
     runs-on: ubuntu-latest
-    environment: ghcr-publish
-    concurrency:
-      group: ghcr-${{ inputs.workflow_name }}-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ inputs.version }}
-      cancel-in-progress: false
+    timeout-minutes: 45
+    permissions:
+      contents: read
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
-      image_ref: ${{ steps.push.outputs.image_ref }}
+      registry_image: ${{ steps.config.outputs.registry_image }}
+      publish_tag: ${{ steps.config.outputs.publish_tag }}
+      backend_package: ${{ steps.config.outputs.backend_package }}
+      web_package: ${{ steps.config.outputs.web_package }}
+      artifact_name: ${{ steps.config.outputs.artifact_name }}
+      created_at: ${{ steps.config.outputs.created_at }}
     steps:
       - name: Validate immutable publication inputs
         id: config
@@ -74,32 +81,23 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -Eeuo pipefail
-          for entry in \
-            "action_sha:$ACTION_SHA" \
-            "backend_sha:$BACKEND_SHA" \
-            "web_sha:$WEB_SHA"; do
+          for entry in "action_sha:$ACTION_SHA" "backend_sha:$BACKEND_SHA" "web_sha:$WEB_SHA"; do
             label="${entry%%:*}"
             sha="${entry#*:}"
-            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
               echo "$label must be an exact commit SHA" >&2
               exit 1
-            fi
+            }
           done
-          if [ "$ACTION_SHA" != "$WORKFLOW_ACTION_SHA" ]; then
+          [ "$ACTION_SHA" = "$WORKFLOW_ACTION_SHA" ] || {
             echo "Action SHA does not match the reusable workflow revision." >&2
             exit 1
-          fi
+          }
           if [ "$ACTION_REPOSITORY" != voiceofhu/one-action ] \
             || [ "$ACTION_SERVER_URL" != https://github.com ]; then
             echo "publication must run from the fixed central Action repository" >&2
             exit 1
           fi
-          for repository in "$BACKEND_REPOSITORY" "$WEB_REPOSITORY"; do
-            if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$ ]]; then
-              echo "source repository is invalid" >&2
-              exit 1
-            fi
-          done
           if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
             || ((${#VERSION} > 32)); then
             echo "version must be at most 32 characters and contain three numeric components without a v prefix" >&2
@@ -112,7 +110,6 @@ jobs:
           case "$WORKFLOW_NAME" in
             one-user)
               registry_image=ghcr.io/voiceofhu/one-user-backend-next
-              local_service=one-user-backend
               backend_package=one-user-backend
               web_package=one-user-web
               expected_backend_repository=voiceofhu/one-user-backend
@@ -120,16 +117,12 @@ jobs:
               ;;
             one-amz)
               registry_image=ghcr.io/voiceofhu/one-amz-backend-next
-              local_service=one-amz-backend
               backend_package=one-amz-backend
               web_package=one-amz-web
               expected_backend_repository=voiceofhu/one-amz-backend-next
               expected_web_repository=voiceofhu/one-amz-web-next
               ;;
-            *)
-              echo "workflow is not allowed to publish a combined image" >&2
-              exit 1
-              ;;
+            *) echo "workflow is not allowed to publish a combined image" >&2; exit 1 ;;
           esac
           if [ "$BACKEND_REPOSITORY" != "$expected_backend_repository" ] \
             || [ "$WEB_REPOSITORY" != "$expected_web_repository" ]; then
@@ -139,18 +132,12 @@ jobs:
           publish_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
           {
             echo "registry_image=$registry_image"
-            echo "local_image=local/$local_service:$publish_tag"
             echo "publish_tag=$publish_tag"
             echo "backend_package=$backend_package"
             echo "web_package=$web_package"
+            echo "artifact_name=web-dist-$WORKFLOW_NAME-${WEB_SHA:0:12}"
+            echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Checkout Action tooling at exact commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.action_sha }}
-          path: action
-          persist-credentials: false
 
       - name: Checkout backend at exact commit
         uses: actions/checkout@v4
@@ -175,15 +162,10 @@ jobs:
       - name: Verify exact checked-out source identities
         shell: bash
         env:
-          ACTION_SHA: ${{ inputs.action_sha }}
           BACKEND_SHA: ${{ inputs.backend_sha }}
           WEB_SHA: ${{ inputs.web_sha }}
         run: |
           set -Eeuo pipefail
-          [ "$(git -C action rev-parse HEAD)" = "$ACTION_SHA" ] || {
-            echo "Action checkout HEAD does not match action_sha." >&2
-            exit 1
-          }
           [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
             echo "Backend checkout HEAD does not match backend_sha." >&2
             exit 1
@@ -206,7 +188,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
-      - name: Verify and build Web without registry credentials
+      - name: Verify and build Web once
         shell: bash
         env:
           EXPECTED_WEB_PACKAGE: ${{ steps.config.outputs.web_package }}
@@ -231,13 +213,10 @@ jobs:
           pnpm --dir web lint
           pnpm --dir web typecheck
           case "$DEPLOYMENT_ENVIRONMENT" in
-            dev)
-              pnpm --dir web exec tsc -b
-              pnpm --dir web exec vite build --mode development
-              ;;
+            dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
             stage) pnpm --dir web build:stage ;;
             prod) pnpm --dir web build ;;
-            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
+            *) exit 1 ;;
           esac
           test -f web/dist/index.html
           if find web/dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
@@ -246,27 +225,7 @@ jobs:
           fi
           git -C web diff --exit-code -- .
 
-      - name: Assemble exact backend build context with verified Web
-        shell: bash
-        env:
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-        run: |
-          set -Eeuo pipefail
-          if [ -e backend/web-dist ]; then
-            echo "backend/web-dist must not be committed in source" >&2
-            exit 1
-          fi
-          mkdir -p backend/web-dist
-          cp -R web/dist/. backend/web-dist/
-          test -f backend/web-dist/index.html
-          mkdir docker-context
-          GIT_NO_REPLACE_OBJECTS=1 git -C backend archive --format=tar "$BACKEND_SHA" |
-            tar -xf - -C docker-context
-          mkdir docker-context/web-dist
-          cp -R backend/web-dist/. docker-context/web-dist/
-          test -f docker-context/web-dist/index.html
-
-      - name: Verify locked Rust source without registry credentials
+      - name: Verify locked Rust source
         shell: bash
         working-directory: backend
         env:
@@ -293,54 +252,207 @@ jobs:
           cargo check --all-targets --all-features --locked
           cargo clippy --all-targets --all-features --locked -- -D warnings
           cargo test --all-features --locked
-          cargo build --release --all-features --locked
           git diff --exit-code -- .
 
-      - name: Build and inspect final image without registry credentials
+      - name: Upload verified Web dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.config.outputs.artifact_name }}
+          path: web/dist
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  build:
+    name: Build ${{ matrix.suffix }} image
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    environment: ghcr-publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            architecture: amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            architecture: arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    steps:
+      - name: Checkout backend at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.backend_repository }}
+          ref: ${{ inputs.backend_sha }}
+          path: backend
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download verified Web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.artifact_name }}
+          path: web-dist
+
+      - name: Assemble exact architecture build context
         shell: bash
         env:
-          LOCAL_IMAGE: ${{ steps.config.outputs.local_image }}
-          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
           BACKEND_SHA: ${{ inputs.backend_sha }}
-          WEB_SHA: ${{ inputs.web_sha }}
-          ACTION_SHA: ${{ inputs.action_sha }}
-          ACTION_REPOSITORY: ${{ github.repository }}
-          VERSION: ${{ inputs.version }}
-          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set -Eeuo pipefail
+          [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
+            echo "Backend checkout HEAD does not match backend_sha." >&2
+            exit 1
+          }
+          test -f web-dist/index.html
+          if find web-dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
+            echo "Downloaded Web dist may contain only regular files and directories." >&2
+            exit 1
+          fi
+          [ ! -e backend/web-dist ] || {
+            echo "backend/web-dist must not be committed in source" >&2
+            exit 1
+          }
+          mkdir docker-context
+          GIT_NO_REPLACE_OBJECTS=1 git -C backend archive --format=tar "$BACKEND_SHA" |
+            tar -xf - -C docker-context
+          mkdir docker-context/web-dist
+          cp -R web-dist/. docker-context/web-dist/
           test -f docker-context/Dockerfile && test ! -L docker-context/Dockerfile
           test -f docker-context/web-dist/index.html
-          created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          docker build \
-            --file docker-context/Dockerfile \
-            --label "org.opencontainers.image.created=$created_at" \
-            --label "org.opencontainers.image.source=https://github.com/$BACKEND_REPOSITORY" \
-            --label "org.opencontainers.image.revision=$BACKEND_SHA" \
-            --label "org.opencontainers.image.version=$VERSION" \
-            --label "one.action.revision=$ACTION_SHA" \
-            --label "one.action.repository=$ACTION_REPOSITORY" \
-            --label "one.web.revision=$WEB_SHA" \
-            --label "one.environment=$DEPLOYMENT_ENVIRONMENT" \
-            --tag "$LOCAL_IMAGE" \
-            docker-context
-          image_user="$(docker image inspect --format '{{.Config.User}}' "$LOCAL_IMAGE")"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push architecture image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker-context
+          file: docker-context/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.publish_tag }}-${{ matrix.suffix }}
+          labels: |
+            org.opencontainers.image.created=${{ needs.prepare.outputs.created_at }}
+            org.opencontainers.image.source=https://github.com/${{ inputs.backend_repository }}
+            org.opencontainers.image.revision=${{ inputs.backend_sha }}
+            org.opencontainers.image.version=${{ inputs.version }}
+            one.action.revision=${{ inputs.action_sha }}
+            one.action.repository=${{ github.repository }}
+            one.web.revision=${{ inputs.web_sha }}
+            one.environment=${{ inputs.environment }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }}
+          cache-to: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }},mode=max
+
+      - name: Verify pushed architecture image
+        shell: bash
+        env:
+          IMAGE_REF: ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.publish_tag }}-${{ matrix.suffix }}
+          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          WEB_SHA: ${{ inputs.web_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          image_json="$(docker buildx imagetools inspect "$IMAGE_REF" --format '{{json .Image}}')"
+          jq -e \
+            --arg architecture "$EXPECTED_ARCHITECTURE" \
+            --arg action_sha "$ACTION_SHA" \
+            --arg backend_sha "$BACKEND_SHA" \
+            --arg web_sha "$WEB_SHA" \
+            --arg version "$VERSION" '
+              .os == "linux" and
+              .architecture == $architecture and
+              .config.Labels["one.action.revision"] == $action_sha and
+              .config.Labels["org.opencontainers.image.revision"] == $backend_sha and
+              .config.Labels["one.web.revision"] == $web_sha and
+              .config.Labels["org.opencontainers.image.version"] == $version
+            ' <<<"$image_json" >/dev/null || {
+              echo "Architecture image platform or provenance labels are invalid." >&2
+              exit 1
+            }
+          image_user="$(jq -er '.config.User | select(type == "string")' <<<"$image_json")"
           image_principal="${image_user%%:*}"
-          if [ -z "$image_user" ] \
-            || [ "${image_principal,,}" = root ] \
+          if [ -z "$image_user" ] || [ "${image_principal,,}" = root ] \
             || [[ "$image_principal" =~ ^0+$ ]]; then
             echo "Final image Config.User must be non-empty and non-root." >&2
             exit 1
           fi
 
-      - name: Login briefly, push unique tag, and verify registry digest
-        id: push
+  manifest:
+    name: Publish and verify multi-platform OCI index
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    environment: ghcr-publish
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      image_ref: ${{ steps.publish.outputs.image_ref }}
+    steps:
+      - name: Checkout exact publication tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact multi-platform publisher
+        shell: bash
+        env:
+          ACTION_SHA: ${{ inputs.action_sha }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(git -C action rev-parse HEAD)" = "$ACTION_SHA" ] || {
+            echo "Action checkout HEAD does not match action_sha." >&2
+            exit 1
+          }
+          expected_blob="$(GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse "$ACTION_SHA:scripts/release/publish-ghcr-multiarch.sh")"
+          actual_blob="$(git hash-object action/scripts/release/publish-ghcr-multiarch.sh)"
+          [ "$actual_blob" = "$expected_blob" ] || {
+            echo "Central multi-platform publisher changed after exact Action checkout." >&2
+            exit 1
+          }
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Create, verify, and record OCI index
+        id: publish
         shell: bash
         env:
           WORKFLOW_NAME: ${{ inputs.workflow_name }}
-          PUBLISH_IMAGE: ${{ steps.config.outputs.registry_image }}
-          LOCAL_IMAGE: ${{ steps.config.outputs.local_image }}
-          PUBLISH_TAG: ${{ steps.config.outputs.publish_tag }}
+          PUBLISH_IMAGE: ${{ needs.prepare.outputs.registry_image }}
+          PUBLISH_TAG: ${{ needs.prepare.outputs.publish_tag }}
           ACTION_SHA: ${{ inputs.action_sha }}
           ACTION_REPOSITORY: ${{ github.repository }}
           BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
@@ -352,17 +464,4 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GITHUB_TOKEN: ${{ github.token }}
           PUBLISHED_IMAGE_PATH: publication/published-image.json
-        run: |
-          set -Eeuo pipefail
-          test -f action/scripts/release/publish-ghcr-image.sh
-          test ! -L action/scripts/release/publish-ghcr-image.sh
-          expected_blob="$(
-            GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse \
-              "$ACTION_SHA:scripts/release/publish-ghcr-image.sh"
-          )"
-          actual_blob="$(git hash-object action/scripts/release/publish-ghcr-image.sh)"
-          [ "$actual_blob" = "$expected_blob" ] || {
-            echo "Central publisher script changed after exact Action checkout." >&2
-            exit 1
-          }
-          exec bash action/scripts/release/publish-ghcr-image.sh
+        run: exec bash action/scripts/release/publish-ghcr-multiarch.sh

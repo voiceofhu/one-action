@@ -6,6 +6,7 @@ prepare="$PROJECT_ROOT/.github/workflows/reusable-prepare.yml"
 combined="$PROJECT_ROOT/.github/workflows/reusable-publish-web-backend.yml"
 rust="$PROJECT_ROOT/.github/workflows/reusable-publish-rust-docker.yml"
 publisher="$PROJECT_ROOT/scripts/release/publish-ghcr-image.sh"
+multiarch_publisher="$PROJECT_ROOT/scripts/release/publish-ghcr-multiarch.sh"
 dispatcher="$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
 
 require_text() {
@@ -77,10 +78,16 @@ require_text "$combined" 'pnpm --dir web install --frozen-lockfile'
 require_text "$combined" 'pnpm --dir web format:check'
 require_text "$combined" 'pnpm --dir web lint'
 require_text "$combined" 'pnpm --dir web typecheck'
-require_text "$combined" 'cp -R web/dist/. backend/web-dist/'
+require_text "$combined" 'name: Build Web once and verify exact sources'
+require_text "$combined" 'name: Upload verified Web dist'
+require_text "$combined" 'actions/upload-artifact@v4'
+require_text "$combined" 'retention-days: 1'
+require_text "$combined" 'name: Download verified Web dist'
+require_text "$combined" 'actions/download-artifact@v4'
+require_text "$combined" 'cp -R web-dist/. docker-context/web-dist/'
 require_text "$combined" 'cargo clippy --all-targets --all-features --locked -- -D warnings'
-require_text "$combined" '--label "org.opencontainers.image.version=$VERSION"'
-require_text "$combined" '--label "one.action.repository=$ACTION_REPOSITORY"'
+require_text "$combined" 'org.opencontainers.image.version=${{ inputs.version }}'
+require_text "$combined" 'one.action.repository=${{ github.repository }}'
 require_text "$combined" 'ghcr.io/voiceofhu/one-user-backend-next'
 require_text "$combined" 'ghcr.io/voiceofhu/one-amz-backend-next'
 require_text "$combined" 'expected_backend_repository=voiceofhu/one-user-backend'
@@ -104,7 +111,32 @@ require_text "$combined" 'pnpm --dir web build:stage'
 require_text "$combined" 'Web dist may contain only regular files and directories.'
 require_text "$combined" 'GIT_NO_REPLACE_OBJECTS=1 git -C backend archive --format=tar "$BACKEND_SHA"'
 require_text "$combined" 'test -f docker-context/Dockerfile && test ! -L docker-context/Dockerfile'
-require_text "$combined" 'Central publisher script changed after exact Action checkout.'
+require_text "$combined" 'platform: linux/amd64'
+require_text "$combined" 'runner: ubuntu-latest'
+require_text "$combined" 'suffix: amd64'
+require_text "$combined" 'platform: linux/arm64'
+require_text "$combined" 'runner: ubuntu-24.04-arm'
+require_text "$combined" 'suffix: arm64'
+require_text "$combined" 'docker/build-push-action@v6'
+require_text "$combined" 'platforms: ${{ matrix.platform }}'
+require_text "$combined" 'tags: ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.publish_tag }}-${{ matrix.suffix }}'
+require_text "$combined" 'cache-from: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }}'
+require_text "$combined" 'cache-to: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }},mode=max'
+require_text "$combined" 'provenance: false'
+require_text "$combined" 'sbom: false'
+require_text "$combined" "docker buildx imagetools inspect \"\$IMAGE_REF\" --format '{{json .Image}}'"
+require_text "$combined" 'Final image Config.User must be non-empty and non-root.'
+require_text "$combined" 'name: Publish and verify multi-platform OCI index'
+require_text "$combined" 'Central multi-platform publisher changed after exact Action checkout.'
+require_text "$combined" 'exec bash action/scripts/release/publish-ghcr-multiarch.sh'
+require_text "$combined" 'value: ${{ jobs.manifest.outputs.digest }}'
+require_text "$combined" 'value: ${{ jobs.manifest.outputs.image_ref }}'
+
+if [ "$(grep -Fc 'name: Verify and build Web once' "$combined")" -ne 1 ] \
+  || [ "$(grep -Fc 'name: Upload verified Web dist' "$combined")" -ne 1 ]; then
+  printf '%s\n' 'Combined publisher must build and upload Web exactly once.' >&2
+  exit 1
+fi
 
 require_text "$rust" 'ref: ${{ inputs.source_sha }}'
 require_text "$rust" 'persist-credentials: false'
@@ -130,21 +162,33 @@ for reusable in "$combined" "$rust"; do
   require_text "$reusable" 'packages: write'
   require_text "$reusable" 'environment: ghcr-publish'
   require_text "$reusable" 'Final image Config.User must be non-empty and non-root.'
-  require_text "$reusable" 'GITHUB_TOKEN: ${{ github.token }}'
-  require_text "$reusable" 'PUBLISHED_IMAGE_PATH: publication/published-image.json'
-  require_text "$reusable" 'exec bash action/scripts/release/publish-ghcr-image.sh'
-  if grep -Eq "upload-artifact|actions/upload-artifact|ghcr\\.io/[^[:space:]\"']+:(latest|dev|stage|prod)([[:space:]\"']|$)|:[[:space:]]+(latest|dev|stage|prod)([[:space:]]|$)" \
+  if grep -Eq "ghcr\\.io/[^[:space:]\"']+:(latest|dev|stage|prod)([[:space:]\"']|$)|:[[:space:]]+(latest|dev|stage|prod)([[:space:]]|$)" \
     "$reusable"; then
-    printf 'Publisher contains an upload or mutable tag: %s\n' "$reusable" >&2
-    exit 1
-  fi
-  token_line="$(grep -nF 'GITHUB_TOKEN: ${{ github.token }}' "$reusable" | cut -d: -f1)"
-  push_line="$(grep -nF 'Login briefly, push unique tag' "$reusable" | cut -d: -f1)"
-  if ! ((push_line < token_line)); then
-    printf 'Registry token is not scoped to the final push step: %s\n' "$reusable" >&2
+    printf 'Publisher contains a mutable tag: %s\n' "$reusable" >&2
     exit 1
   fi
 done
+
+require_text "$combined" 'GITHUB_TOKEN: ${{ github.token }}'
+require_text "$combined" 'PUBLISHED_IMAGE_PATH: publication/published-image.json'
+if [ "$(grep -Fc 'GITHUB_TOKEN: ${{ github.token }}' "$combined")" -ne 1 ]; then
+  printf '%s\n' 'Combined publisher token must be exposed only to the final manifest step.' >&2
+  exit 1
+fi
+
+require_text "$rust" 'GITHUB_TOKEN: ${{ github.token }}'
+require_text "$rust" 'PUBLISHED_IMAGE_PATH: publication/published-image.json'
+require_text "$rust" 'exec bash action/scripts/release/publish-ghcr-image.sh'
+if grep -Eq 'upload-artifact|actions/upload-artifact' "$rust"; then
+  printf '%s\n' 'Single-platform Rust publisher unexpectedly uploads an artifact.' >&2
+  exit 1
+fi
+token_line="$(grep -nF 'GITHUB_TOKEN: ${{ github.token }}' "$rust" | cut -d: -f1)"
+push_line="$(grep -nF 'Login briefly, push unique tag' "$rust" | cut -d: -f1)"
+if ! ((push_line < token_line)); then
+  printf '%s\n' 'Registry token is not scoped to the final push step in the Rust publisher.' >&2
+  exit 1
+fi
 
 require_text "$publisher" 'ghcr.io/voiceofhu/one-user-backend-next'
 require_text "$publisher" 'ghcr.io/voiceofhu/one-amz-backend-next'
@@ -172,6 +216,23 @@ require_text "$publisher" 'Deploy: not run'
 require_text "$publisher" 'final image Config.User must be non-empty and non-root'
 require_text "$publisher" 'VERSION must not exceed 32 characters'
 
+require_text "$multiarch_publisher" 'GHCR multi-platform publication blocked:'
+require_text "$multiarch_publisher" 'one-user:ghcr.io/voiceofhu/one-user-backend-next'
+require_text "$multiarch_publisher" 'one-amz:ghcr.io/voiceofhu/one-amz-backend-next'
+require_text "$multiarch_publisher" 'PUBLISH_TAG is not the unique run tag'
+require_text "$multiarch_publisher" 'unique multi-platform run tag already exists and will not be overwritten'
+require_text "$multiarch_publisher" 'amd64 image tag returned HTTP'
+require_text "$multiarch_publisher" 'arm64 image tag returned HTTP'
+require_text "$multiarch_publisher" 'docker buildx imagetools create'
+require_text "$multiarch_publisher" '"$PUBLISH_TAG-amd64"'
+require_text "$multiarch_publisher" '"$PUBLISH_TAG-arm64"'
+require_text "$multiarch_publisher" '.mediaType == "application/vnd.oci.image.index.v1+json"'
+require_text "$multiarch_publisher" 'published OCI index must contain exactly linux/amd64 and linux/arm64'
+require_text "$multiarch_publisher" "--format '{{json .Manifest}}'"
+require_text "$multiarch_publisher" 'published multi-platform run tag does not resolve to the OCI index digest'
+require_text "$multiarch_publisher" 'image_ref=$PUBLISH_IMAGE@$digest'
+require_text "$multiarch_publisher" 'platforms: ['
+
 require_text "$dispatcher" 'confirmation is dispatcher-owned and must not be supplied by a caller'
 require_text "$dispatcher" 'enable:$workflow_base:$action_sha'
 require_text "$dispatcher" 'mutation_confirmation="mutate:$workflow:$action_sha"'
@@ -186,13 +247,14 @@ for caller in \
   fi
   if [ "$(basename "$caller")" = user.yml ]; then
     source_secret='source_read_token: ${{ secrets.GH_TOKEN }}'
+    expected_source_secret_count=2
   else
     source_secret='source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
+    expected_source_secret_count=3
   fi
   source_secret_count="$(grep -Fc "$source_secret" "$caller" || true)"
-  if [ "$source_secret_count" -ne 3 ]; then
-    printf 'Prepare/build/publish must each receive only the explicit source credential: %s\n' \
-      "$caller" >&2
+  if [ "$source_secret_count" -ne "$expected_source_secret_count" ]; then
+    printf 'Caller does not pass the explicit source credential to its exact jobs: %s\n' "$caller" >&2
     exit 1
   fi
 done

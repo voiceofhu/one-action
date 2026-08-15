@@ -50,6 +50,7 @@ require_text "$workflow" 'bash action/scripts/github/resolve-ref.sh'
 require_text "$workflow" "environment='prod'"
 require_text "$workflow" "publish='true'"
 require_text "$workflow" "deploy='true'"
+require_text "$workflow" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
 require_text "$workflow" "needs.publish.outputs.image_ref"
 require_text "$workflow" 'environment:'
 require_text "$workflow" 'name: one-user-prod'
@@ -63,6 +64,34 @@ require_text "$workflow" 'GH_TOKEN: ${{ secrets.GH_TOKEN }}'
 require_text "$workflow" 'gh api user --jq .login'
 require_text "$workflow" 'bash action/scripts/deploy/deploy-user.sh'
 require_text "$workflow" "if: always() && steps.registry-login.outcome == 'success'"
+
+if grep -Fq 'uses: ./.github/workflows/reusable-build-web-backend.yml' "$workflow"; then
+  printf '%s\n' 'One User must not run a separate single-architecture validation build.' >&2
+  exit 1
+fi
+
+prepare_line="$(grep -n '^  prepare:$' "$workflow" | cut -d: -f1)"
+publish_line="$(grep -n '^  publish:$' "$workflow" | cut -d: -f1)"
+deploy_line="$(grep -n '^  deploy:$' "$workflow" | cut -d: -f1)"
+if ! ((prepare_line < publish_line && publish_line < deploy_line)); then
+  printf '%s\n' 'One User jobs must flow from prepare to publish to deploy.' >&2
+  exit 1
+fi
+
+publish_block="$(sed -n '/^  publish:$/,/^  deploy:$/p' "$workflow")"
+grep -Fq -- '- prepare' <<<"$publish_block" || {
+  printf '%s\n' 'One User publication must depend on exact-source preparation.' >&2
+  exit 1
+}
+if grep -Fq -- '- build' <<<"$publish_block"; then
+  printf '%s\n' 'One User publication must own its multi-architecture builds.' >&2
+  exit 1
+fi
+deploy_block="$(sed -n '/^  deploy:$/,$p' "$workflow")"
+grep -Fq -- '- publish' <<<"$deploy_block" || {
+  printf '%s\n' 'One User deployment must wait for the published OCI index.' >&2
+  exit 1
+}
 
 if [ -e "$PROJECT_ROOT/.github/workflows/user-release.yml" ]; then
   printf '%s\n' 'One User control tags must trigger user.yml directly.' >&2

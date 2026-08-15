@@ -25,22 +25,24 @@ require_text "$prepare" 'Publication lacks the dispatcher-owned Action-bound con
 require_text "$prepare" 'Dispatcher-bound Action SHA is missing, invalid, or stale.'
 require_text "$prepare" 'Browser Runtime source trust root is unresolved; prepare is blocked.'
 
-for caller in user.yml one-amz.yml; do
-  workflow="$PROJECT_ROOT/.github/workflows/$caller"
-  require_text "$workflow" 'uses: ./.github/workflows/reusable-build-web-backend.yml'
-  require_text "$workflow" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
-  require_text "$workflow" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
-  require_text "$workflow" 'rust_validation: strict'
-  require_text "$workflow" 'publish_supported: true'
-done
-require_text "$PROJECT_ROOT/.github/workflows/user.yml" '- normalize'
-require_text "$PROJECT_ROOT/.github/workflows/user.yml" '- prepare'
-require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'needs: prepare'
+user="$PROJECT_ROOT/.github/workflows/user.yml"
+one_amz="$PROJECT_ROOT/.github/workflows/one-amz.yml"
 
-require_text "$PROJECT_ROOT/.github/workflows/user.yml" 'local_image_name: local/one-user-backend:${{ needs.prepare.outputs.primary_sha }}'
-require_text "$PROJECT_ROOT/.github/workflows/user.yml" 'source_read_token: ${{ secrets.GH_TOKEN }}'
-require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
-require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'local_image_name: local/one-amz-backend:${{ needs.prepare.outputs.primary_sha }}'
+require_text "$user" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+require_text "$user" 'source_read_token: ${{ secrets.GH_TOKEN }}'
+if grep -Fq 'uses: ./.github/workflows/reusable-build-web-backend.yml' "$user"; then
+  printf '%s\n' 'One User must build only inside its multi-architecture publisher.' >&2
+  exit 1
+fi
+
+require_text "$one_amz" 'needs: prepare'
+require_text "$one_amz" 'uses: ./.github/workflows/reusable-build-web-backend.yml'
+require_text "$one_amz" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
+require_text "$one_amz" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
+require_text "$one_amz" 'rust_validation: strict'
+require_text "$one_amz" 'publish_supported: true'
+require_text "$one_amz" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
+require_text "$one_amz" 'local_image_name: local/one-amz-backend:${{ needs.prepare.outputs.primary_sha }}'
 
 require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'name: One AMZ'
 require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'workflow_name: one-amz'

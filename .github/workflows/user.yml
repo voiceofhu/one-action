@@ -204,7 +204,6 @@ jobs:
     needs:
       - normalize
       - prepare
-      - build
     permissions:
       contents: read
       packages: write
@@ -218,25 +217,6 @@ jobs:
       web_sha: ${{ needs.prepare.outputs.secondary_sha }}
       version: ${{ needs.normalize.outputs.version }}
       environment: ${{ needs.normalize.outputs.environment }}
-    secrets:
-      source_read_token: ${{ secrets.GH_TOKEN }}
-
-  build:
-    needs:
-      - normalize
-      - prepare
-    uses: ./.github/workflows/reusable-build-web-backend.yml
-    with:
-      workflow_name: one-user
-      local_image_name: local/one-user-backend:${{ needs.prepare.outputs.primary_sha }}
-      action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
-      backend_repository: ${{ needs.normalize.outputs.backend_repository }}
-      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
-      web_repository: ${{ needs.normalize.outputs.web_repository }}
-      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
-      version: ${{ needs.normalize.outputs.version }}
-      environment: ${{ needs.normalize.outputs.environment }}
-      rust_validation: strict
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
 

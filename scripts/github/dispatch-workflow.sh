@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  one-user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml) ;;
+  user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -92,7 +92,7 @@ done
 
 publish_supported=false
 case "$workflow" in
-  one-user.yml)
+  user.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
     require_repository backend_repository voiceofhu/one-user-backend-next
@@ -150,7 +150,14 @@ upload_artifact="$(input_value upload_artifact || printf false)"
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-[[ "$deploy" == false ]] || die 'deployment is not implemented; refusing before API access'
+if [[ "$deploy" == true ]]; then
+  [[ "$workflow" == user.yml ]] ||
+    die 'deployment is supported only for One User'
+  [[ "$publish" == true ]] ||
+    die 'One User deployment requires publication of the exact image'
+  [[ "$environment" == prod ]] ||
+    die 'One User deployment requires environment=prod'
+fi
 [[ "$upload_artifact" == false ]] || die 'artifact upload is not implemented; refusing before API access'
 if [[ "$publish" == true ]]; then
   [[ "$publish_supported" == true ]] || die 'workflow publication is not implemented'
@@ -210,7 +217,11 @@ for index in "${!input_keys[@]}"; do
   fi
 done
 if [[ "$publish" == true ]]; then
-  workflow_base="${workflow%.yml}"
+  if [[ "$workflow" == user.yml ]]; then
+    workflow_base=one-user
+  else
+    workflow_base="${workflow%.yml}"
+  fi
   payload="$(jq -c \
     --arg confirmation "enable:$workflow_base:$action_sha" \
     '.inputs.confirmation = $confirmation' <<<"$payload")"

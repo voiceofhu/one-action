@@ -1,0 +1,210 @@
+name: One User
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha:
+        description: Dispatcher-resolved exact central Action commit SHA
+        required: true
+        type: string
+      backend_repository:
+        description: One User backend repository
+        required: true
+        type: string
+      backend_ref:
+        description: Dispatcher-resolved exact backend commit SHA
+        required: true
+        type: string
+      web_repository:
+        description: One User Web repository
+        required: true
+        type: string
+      web_ref:
+        description: Dispatcher-resolved exact Web commit SHA
+        required: true
+        type: string
+      version:
+        description: Optional for validation; required x.y.z OCI label for publication
+        required: false
+        type: string
+      environment:
+        description: Target environment; no deployment runs unless deploy is explicitly enabled
+        required: false
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
+      publish:
+        description: Publish the exact sources to the fixed One User GHCR package
+        required: false
+        type: boolean
+        default: false
+      deploy:
+        description: Deploy the published exact image digest to One User production
+        required: false
+        type: boolean
+        default: false
+      confirmation:
+        description: Dispatcher-owned workflow and Action-SHA-bound publication confirmation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    uses: ./.github/workflows/reusable-prepare.yml
+    with:
+      workflow_name: one-user
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      primary_label: backend
+      primary_repository: ${{ inputs.backend_repository }}
+      primary_ref: ${{ inputs.backend_ref }}
+      secondary_label: web
+      secondary_repository: ${{ inputs.web_repository }}
+      secondary_ref: ${{ inputs.web_ref }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      publish: ${{ inputs.publish }}
+      publish_supported: true
+      deploy: ${{ inputs.deploy }}
+      confirmation: ${{ inputs.confirmation }}
+    secrets:
+      source_read_token: ${{ secrets.GH_TOKEN }}
+
+  publish:
+    if: inputs.publish && needs.prepare.outputs.publish_authorized == 'true'
+    needs:
+      - prepare
+      - build
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-publish-web-backend.yml
+    with:
+      workflow_name: one-user
+      action_sha: ${{ github.sha }}
+      backend_repository: ${{ inputs.backend_repository }}
+      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
+      web_repository: ${{ inputs.web_repository }}
+      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+    secrets:
+      source_read_token: ${{ secrets.GH_TOKEN }}
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/reusable-build-web-backend.yml
+    with:
+      workflow_name: one-user
+      local_image_name: local/one-user-backend:${{ needs.prepare.outputs.primary_sha }}
+      action_sha: ${{ github.sha }}
+      backend_repository: ${{ inputs.backend_repository }}
+      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
+      web_repository: ${{ inputs.web_repository }}
+      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      rust_validation: strict
+    secrets:
+      source_read_token: ${{ secrets.GH_TOKEN }}
+
+  deploy:
+    name: Deploy combined User image
+    if: inputs.deploy && needs.prepare.outputs.publish_authorized == 'true'
+    needs:
+      - prepare
+      - publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: one-user-prod
+      url: ${{ vars.DEPLOY_URL }}
+    concurrency:
+      group: one-user-prod-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Validate digest-qualified deployment image
+        shell: bash
+        env:
+          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$IMAGE_REF" =~ ^ghcr\.io/voiceofhu/one-user-backend-next@sha256:[0-9a-f]{64}$ ]] || {
+            echo "Publisher did not return the fixed digest-qualified One User image." >&2
+            exit 1
+          }
+
+      - name: Checkout exact deployment tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Configure strict SSH host
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash action/scripts/deploy/configure-ssh.sh
+
+      - name: Log deployment host in to GHCR
+        id: registry-login
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          USE_SUDO: ${{ vars.DEPLOY_USE_SUDO || '0' }}
+        run: |
+          set -Eeuo pipefail
+          [ -n "$GH_TOKEN" ] || {
+            echo "GH_TOKEN is required for remote GHCR pull" >&2
+            exit 1
+          }
+          ghcr_username="$(gh api user --jq .login)"
+          [[ "$ghcr_username" =~ ^[A-Za-z0-9-]{1,39}$ ]] || {
+            echo "GH_TOKEN returned an invalid GitHub login" >&2
+            exit 1
+          }
+          case "$USE_SUDO" in
+            0) remote_docker='docker' ;;
+            1) remote_docker='sudo -n docker' ;;
+            *) echo "DEPLOY_USE_SUDO must be 0 or 1" >&2; exit 1 ;;
+          esac
+          printf '%s' "$GH_TOKEN" | ssh one-user-deploy \
+            "$remote_docker login ghcr.io --username '$ghcr_username' --password-stdin"
+
+      - name: Deploy exact image and verify readiness
+        shell: bash
+        env:
+          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
+          REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}
+          COMPOSE_SERVICE: ${{ vars.DEPLOY_COMPOSE_SERVICE || 'user' }}
+          READY_URL: ${{ vars.DEPLOY_READY_URL || 'http://127.0.0.1:27510/readyz' }}
+          USE_SUDO: ${{ vars.DEPLOY_USE_SUDO || '0' }}
+        run: bash action/scripts/deploy/deploy-user.sh
+
+      - name: Log deployment host out of GHCR
+        if: always() && steps.registry-login.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          USE_SUDO: ${{ vars.DEPLOY_USE_SUDO || '0' }}
+        run: |
+          set -Eeuo pipefail
+          case "$USE_SUDO" in
+            0) ssh one-user-deploy 'docker logout ghcr.io' ;;
+            1) ssh one-user-deploy 'sudo -n docker logout ghcr.io' ;;
+            *) exit 1 ;;
+          esac

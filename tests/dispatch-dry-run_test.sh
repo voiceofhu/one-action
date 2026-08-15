@@ -42,7 +42,7 @@ expect_failure_before_api() {
 }
 
 reset_api_log
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-user.yml \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
   backend_repository=voiceofhu/one-user-backend-next \
   backend_ref=main \
   web_repository=voiceofhu/one-user-web-next \
@@ -53,19 +53,31 @@ grep -q "\"ref\": \"$action_sha\"" "$output_file"
 grep -q "\"expected_action_sha\": \"$action_sha\"" "$output_file"
 grep -q '"backend_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$output_file"
 grep -q '"web_ref": "cccccccccccccccccccccccccccccccccccccccc"' "$output_file"
-grep -q "Real dispatch confirmation: dispatch:one-user.yml:$action_sha" "$output_file"
+grep -q "Real dispatch confirmation: dispatch:user.yml:$action_sha" "$output_file"
 grep -q 'DRY_RUN=true: no workflow was dispatched.' "$output_file"
 assert_no_post
 
 reset_api_log
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-user.yml \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
+  backend_repository=voiceofhu/one-user-backend-next \
+  backend_ref=main \
+  web_repository=voiceofhu/one-user-web-next \
+  web_ref=main \
+  version=1.2.3 environment=prod publish=true deploy=true >"$output_file"
+grep -q '"publish": true' "$output_file"
+grep -q '"deploy": true' "$output_file"
+grep -q "Publication confirmation: mutate:user.yml:$action_sha" "$output_file"
+assert_no_post
+
+reset_api_log
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
   backend_repository=voiceofhu/one-user-backend-next \
   backend_ref=main \
   web_repository=voiceofhu/one-user-web-next \
   web_ref=main \
   version=1.2.3 environment=prod publish=true deploy=false >"$output_file"
 grep -q "\"confirmation\": \"enable:one-user:$action_sha\"" "$output_file"
-grep -q "Publication confirmation: mutate:one-user.yml:$action_sha" "$output_file"
+grep -q "Publication confirmation: mutate:user.yml:$action_sha" "$output_file"
 grep -q 'DRY_RUN=true: no workflow was dispatched.' "$output_file"
 assert_no_post
 
@@ -85,20 +97,25 @@ expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" app.yml \
     app_repository=voiceofhu/one-browser-app-next app_ref=main version= publish=false extra=value
 expect_failure_before_api \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-user.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
     web_repository=voiceofhu/one-user-web-next web_ref=main \
     version=v1.2.3 environment=dev publish=false deploy=false
 expect_failure_before_api \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-user.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
     web_repository=voiceofhu/one-user-web-next web_ref=main \
     version=1.2.3 environment=qa publish=false deploy=false
 expect_failure_before_api \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-user.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
     web_repository=voiceofhu/one-user-web-next web_ref=main \
     version=1.2.3 environment=prod publish=false deploy=true
+expect_failure_before_api \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-amz.yml \
+    backend_repository=voiceofhu/one-amz-backend-next backend_ref=main \
+    web_repository=voiceofhu/one-amz-web-next web_ref=main \
+    version=1.2.3 environment=prod publish=true deploy=true
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" app-debug.yml \
     app_repository=voiceofhu/one-browser-app-next app_ref=main upload_artifact=true
@@ -135,7 +152,7 @@ expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" app.yml \
     app_repository=voiceofhu/one-browser-app-next app_ref=main version= publish=false
 expect_failure_before_api \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-user.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
     web_repository=voiceofhu/one-user-web-next web_ref=main \
     version=1.2.3 environment=prod publish=true deploy=false \
@@ -158,6 +175,15 @@ make --no-print-directory -s -C "$PROJECT_ROOT" dispatch-one-amz \
 grep -q 'File: one-amz.yml' "$output_file"
 grep -q '"backend_ref": "dddddddddddddddddddddddddddddddddddddddd"' "$output_file"
 grep -q '"web_ref": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' "$output_file"
+assert_no_post
+
+reset_api_log
+make --no-print-directory -s -C "$PROJECT_ROOT" deploy-user \
+  VERSION=1.2.3 DRY_RUN=true >"$output_file"
+grep -q 'File: user.yml' "$output_file"
+grep -q '"environment": "prod"' "$output_file"
+grep -q '"publish": true' "$output_file"
+grep -q '"deploy": true' "$output_file"
 assert_no_post
 
 export DRY_RUN=false

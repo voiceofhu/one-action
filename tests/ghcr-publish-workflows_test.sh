@@ -19,7 +19,7 @@ require_text() {
 
 require_text "$prepare" 'publish_supported:'
 require_text "$prepare" 'publish_authorized:'
-require_text "$prepare" '[ "$DEPLOY" = false ]'
+require_text "$prepare" 'Deployment requires One User production publication.'
 require_text "$prepare" '[ "$UPLOAD_ARTIFACT" = false ]'
 require_text "$prepare" 'version must be an unprefixed three-component numeric version'
 require_text "$prepare" 'expected="enable:$WORKFLOW_NAME:$EXPECTED_ACTION_SHA"'
@@ -41,15 +41,20 @@ if [ "$prepare_source_secret_count" -ne 3 ]; then
 fi
 
 for workflow_name in one-user one-amz; do
-  caller="$PROJECT_ROOT/.github/workflows/$workflow_name.yml"
+  if [ "$workflow_name" = one-user ]; then
+    caller="$PROJECT_ROOT/.github/workflows/user.yml"
+  else
+    caller="$PROJECT_ROOT/.github/workflows/$workflow_name.yml"
+  fi
   require_text "$caller" 'publish_supported: true'
   require_text "$caller" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
   require_text "$caller" "workflow_name: $workflow_name"
   require_text "$caller" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
   require_text "$caller" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
   require_text "$caller" 'packages: write'
-  require_text "$caller" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
 done
+require_text "$PROJECT_ROOT/.github/workflows/user.yml" 'source_read_token: ${{ secrets.GH_TOKEN }}'
+require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
 
 browser="$PROJECT_ROOT/.github/workflows/one-browser-backend.yml"
 require_text "$browser" 'publish_supported: true'
@@ -172,16 +177,19 @@ require_text "$dispatcher" 'enable:$workflow_base:$action_sha'
 require_text "$dispatcher" 'mutation_confirmation="mutate:$workflow:$action_sha"'
 
 for caller in \
-  "$PROJECT_ROOT/.github/workflows/one-user.yml" \
+  "$PROJECT_ROOT/.github/workflows/user.yml" \
   "$PROJECT_ROOT/.github/workflows/one-amz.yml" \
   "$PROJECT_ROOT/.github/workflows/one-browser-backend.yml"; do
   if grep -Fq 'secrets: inherit' "$caller"; then
     printf 'Publication caller inherits unrelated repository secrets: %s\n' "$caller" >&2
     exit 1
   fi
-  source_secret_count="$(
-    grep -Fc 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}' "$caller" || true
-  )"
+  if [ "$(basename "$caller")" = user.yml ]; then
+    source_secret='source_read_token: ${{ secrets.GH_TOKEN }}'
+  else
+    source_secret='source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
+  fi
+  source_secret_count="$(grep -Fc "$source_secret" "$caller" || true)"
   if [ "$source_secret_count" -ne 3 ]; then
     printf 'Prepare/build/publish must each receive only the explicit source credential: %s\n' \
       "$caller" >&2

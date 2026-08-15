@@ -226,10 +226,14 @@ jobs:
             echo "Unexpected secondary source SHA was supplied." >&2
             exit 1
           fi
-          [ "$DEPLOY" = false ] || {
-            echo "Deployment is not implemented; refusing mutation." >&2
-            exit 1
-          }
+          if [ "$DEPLOY" = true ]; then
+            [ "$WORKFLOW_NAME" = one-user ] \
+              && [ "$PUBLISH" = true ] \
+              && [ "$DEPLOYMENT_ENVIRONMENT" = prod ] || {
+              echo "Deployment requires One User production publication." >&2
+              exit 1
+            }
+          fi
           [ "$UPLOAD_ARTIFACT" = false ] || {
             echo "Artifact upload is not implemented; refusing mutation." >&2
             exit 1

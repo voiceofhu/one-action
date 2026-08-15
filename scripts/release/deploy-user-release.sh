@@ -96,7 +96,6 @@ if [[ "$dry_run" == true ]]; then
   printf '%s\n' \
     'DRY_RUN=true: source versions, commits, tags, pushes, dispatch, and deployment are not changed.' \
     'The real run will update both source versions before dispatching their new exact commits.'
-  dispatch "${ACTION_REF:-main}" "$backend_head" "$web_head" true
   exit 0
 fi
 

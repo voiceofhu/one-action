@@ -213,8 +213,11 @@ One User Web 会先编译进 Backend Docker 镜像，因此一个精确的 OCI i
 make deploy-user
 ```
 
-dry-run 会打印生成的版本、两个本地源码仓库、Action SHA、payload 和确认字符串，
-但不会修改源码、创建 tag、push、调度或部署。检查后真实执行：
+dry-run 会打印生成的版本和两个本地源码仓库，不访问 GitHub API，也不要求本机提供
+`GH_TOKEN`；它不会修改源码、创建 tag、push、调度或部署。
+
+真实执行需要本机通过环境变量或 `one-action/.env` 提供原始 `GH_TOKEN`，因为本机
+无法读取 GitHub Actions Secrets。检查计划后真实执行：
 
 ```bash
 make deploy-user \

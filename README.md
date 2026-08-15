@@ -196,17 +196,23 @@ One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含
 `user-v<version>` 控制 tag。该 tag 触发 `.github/workflows/user.yml`，工作流从 tag
 提取版本并使用 Repository Secrets，依次完成：
 
-1. 解析 Action、Backend 和 Web 的精确 commit SHA；
-2. 只构建和验证一次 Web，并将同一份 `web-dist` 交给两个后端构建任务；
-3. 在 `ubuntu-latest` 原生 amd64 runner 构建并上传 `linux/amd64` 镜像；
-4. 在 `ubuntu-24.04-arm` 原生 arm64 runner 构建并上传 `linux/arm64` 镜像；
-5. 合并两个平台镜像为 `ghcr.io/voiceofhu/one-user-backend-next` 的 OCI index，回读并
+1. 一次完成发布策略校验，并解析 Action、Backend 和 Web 的精确 commit SHA；
+2. Web 构建与 Backend 的 fmt、clippy、test 并行执行；Web 只构建一次，同一份
+   `web-dist` 交给两个架构任务；
+3. Web 完成后，在 `ubuntu-latest` 原生 amd64 runner 构建并上传 `linux/amd64`
+   镜像，同时 Backend 校验可以继续运行；
+4. Web 完成后，在 `ubuntu-24.04-arm` 原生 arm64 runner 构建并上传 `linux/arm64`
+   镜像，同时 Backend 校验可以继续运行；
+5. 只有 Backend 校验和两个架构构建全部成功，才合并平台镜像为
+   `ghcr.io/voiceofhu/one-user-backend-next` 的 OCI index，回读并
    锁定 index digest；
 6. 通过 SSH 让服务器按自身架构拉取该 index digest、更新 Compose 服务并检查
    `/readyz`。
 
 两个后端镜像都在对应架构的原生 runner 上构建，不安装或使用 QEMU。只有 OCI index
 合并完成并确认同时包含 amd64、arm64 后，部署任务才会获得 digest 并连接服务器。
+两个架构分别使用 GHCR `buildcache-amd64`、`buildcache-arm64` 作为跨 release tag 的
+BuildKit 缓存；缓存 tag 不用于部署，生产部署始终只消费回读后的 OCI index digest。
 
 版本获取方式与旧 `one-browser-action` 保持一致：默认按上海时区生成
 `YY.MDD.HHmm` 三段数字，并去掉每段前导零，例如：

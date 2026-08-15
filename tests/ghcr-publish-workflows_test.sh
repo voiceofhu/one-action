@@ -18,6 +18,16 @@ require_text() {
   }
 }
 
+job_block() {
+  local file="$1"
+  local job="$2"
+  awk -v header="  $job:" '
+    $0 == header { inside=1 }
+    inside && $0 ~ /^  [A-Za-z0-9_-]+:$/ && $0 != header { exit }
+    inside { print }
+  ' "$file"
+}
+
 require_text "$prepare" 'publish_supported:'
 require_text "$prepare" 'publish_authorized:'
 require_text "$prepare" 'Deployment requires One User production publication.'
@@ -41,21 +51,26 @@ if [ "$prepare_source_secret_count" -ne 3 ]; then
   exit 1
 fi
 
-for workflow_name in one-user one-amz; do
-  if [ "$workflow_name" = one-user ]; then
-    caller="$PROJECT_ROOT/.github/workflows/user.yml"
-  else
-    caller="$PROJECT_ROOT/.github/workflows/$workflow_name.yml"
-  fi
-  require_text "$caller" 'publish_supported: true'
-  require_text "$caller" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
-  require_text "$caller" "workflow_name: $workflow_name"
-  require_text "$caller" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
-  require_text "$caller" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
-  require_text "$caller" 'packages: write'
-done
-require_text "$PROJECT_ROOT/.github/workflows/user.yml" 'source_read_token: ${{ secrets.GH_TOKEN }}'
-require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
+user="$PROJECT_ROOT/.github/workflows/user.yml"
+one_amz="$PROJECT_ROOT/.github/workflows/one-amz.yml"
+
+require_text "$user" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+require_text "$user" 'workflow_name: one-user'
+require_text "$user" 'backend_sha: ${{ needs.normalize.outputs.backend_ref }}'
+require_text "$user" 'web_sha: ${{ needs.normalize.outputs.web_ref }}'
+require_text "$user" 'packages: write'
+require_text "$user" 'source_read_token: ${{ secrets.GH_TOKEN }}'
+require_text "$user" 'One User publication accepts only the fixed source repositories.'
+require_text "$user" 'One User source refs must be exact commit SHAs.'
+require_text "$user" 'Publication lacks the Action-bound confirmation.'
+
+require_text "$one_amz" 'publish_supported: true'
+require_text "$one_amz" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+require_text "$one_amz" 'workflow_name: one-amz'
+require_text "$one_amz" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
+require_text "$one_amz" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
+require_text "$one_amz" 'packages: write'
+require_text "$one_amz" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
 
 browser="$PROJECT_ROOT/.github/workflows/one-browser-backend.yml"
 require_text "$browser" 'publish_supported: true'
@@ -77,15 +92,17 @@ require_text "$combined" 'persist-credentials: false'
 require_text "$combined" 'pnpm --dir web install --frozen-lockfile'
 require_text "$combined" 'pnpm --dir web format:check'
 require_text "$combined" 'pnpm --dir web lint'
-require_text "$combined" 'pnpm --dir web typecheck'
-require_text "$combined" 'name: Build Web once and verify exact sources'
+require_text "$combined" 'name: Build and verify Web once'
 require_text "$combined" 'name: Upload verified Web dist'
 require_text "$combined" 'actions/upload-artifact@v4'
+require_text "$combined" 'compression-level: 0'
 require_text "$combined" 'retention-days: 1'
 require_text "$combined" 'name: Download verified Web dist'
 require_text "$combined" 'actions/download-artifact@v4'
-require_text "$combined" 'cp -R web-dist/. docker-context/web-dist/'
+require_text "$combined" 'cp -R web-dist/. backend/web-dist/'
+require_text "$combined" 'cargo fmt --all -- --check'
 require_text "$combined" 'cargo clippy --all-targets --all-features --locked -- -D warnings'
+require_text "$combined" 'cargo test --all-features --locked'
 require_text "$combined" 'org.opencontainers.image.version=${{ inputs.version }}'
 require_text "$combined" 'one.action.repository=${{ github.repository }}'
 require_text "$combined" 'ghcr.io/voiceofhu/one-user-backend-next'
@@ -96,7 +113,7 @@ require_text "$combined" 'expected_backend_repository=voiceofhu/one-amz-backend-
 require_text "$combined" 'expected_web_repository=voiceofhu/one-amz-web-next'
 require_text "$combined" 'publication sources do not match the fixed product repositories'
 require_text "$combined" 'ACTION_REPOSITORY" != voiceofhu/one-action'
-require_text "$combined" 'group: ghcr-${{ inputs.workflow_name }}-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ inputs.version }}'
+require_text "$combined" 'group: ghcr-${{ inputs.workflow_name }}-publish'
 require_text "$combined" 'source_read_token:'
 require_text "$combined" 'token: ${{ secrets.source_read_token }}'
 require_text "$combined" 'Backend checkout HEAD does not match backend_sha.'
@@ -109,8 +126,7 @@ require_text "$combined" 'Requested version does not match the backend Cargo pac
 require_text "$combined" 'pnpm --dir web exec vite build --mode development'
 require_text "$combined" 'pnpm --dir web build:stage'
 require_text "$combined" 'Web dist may contain only regular files and directories.'
-require_text "$combined" 'GIT_NO_REPLACE_OBJECTS=1 git -C backend archive --format=tar "$BACKEND_SHA"'
-require_text "$combined" 'test -f docker-context/Dockerfile && test ! -L docker-context/Dockerfile'
+require_text "$combined" 'test -f backend/Dockerfile && test ! -L backend/Dockerfile'
 require_text "$combined" 'platform: linux/amd64'
 require_text "$combined" 'runner: ubuntu-latest'
 require_text "$combined" 'suffix: amd64'
@@ -119,13 +135,17 @@ require_text "$combined" 'runner: ubuntu-24.04-arm'
 require_text "$combined" 'suffix: arm64'
 require_text "$combined" 'docker/build-push-action@v6'
 require_text "$combined" 'platforms: ${{ matrix.platform }}'
-require_text "$combined" 'tags: ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.publish_tag }}-${{ matrix.suffix }}'
-require_text "$combined" 'cache-from: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }}'
-require_text "$combined" 'cache-to: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }},mode=max'
+require_text "$combined" 'context: backend'
+require_text "$combined" 'file: backend/Dockerfile'
+require_text "$combined" 'tags: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}'
+require_text "$combined" 'cache-from: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }}'
+require_text "$combined" 'cache-to: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }},mode=max,image-manifest=true,oci-mediatypes=true'
 require_text "$combined" 'provenance: false'
 require_text "$combined" 'sbom: false'
 require_text "$combined" "docker buildx imagetools inspect \"\$IMAGE_REF\" --format '{{json .Image}}'"
 require_text "$combined" 'Final image Config.User must be non-empty and non-root.'
+require_text "$combined" 'name: Plan immutable publication'
+require_text "$combined" 'name: Verify backend source'
 require_text "$combined" 'name: Publish and verify multi-platform OCI index'
 require_text "$combined" 'Central multi-platform publisher changed after exact Action checkout.'
 require_text "$combined" 'exec bash action/scripts/release/publish-ghcr-multiarch.sh'
@@ -137,6 +157,45 @@ if [ "$(grep -Fc 'name: Verify and build Web once' "$combined")" -ne 1 ] \
   printf '%s\n' 'Combined publisher must build and upload Web exactly once.' >&2
   exit 1
 fi
+
+if grep -Fq 'pnpm --dir web typecheck' "$combined"; then
+  printf '%s\n' 'Combined publisher duplicates type checking outside the environment build.' >&2
+  exit 1
+fi
+if grep -Fq 'cargo check --all-targets --all-features --locked' "$combined"; then
+  printf '%s\n' 'Combined publisher duplicates cargo check before clippy.' >&2
+  exit 1
+fi
+
+web_block="$(job_block "$combined" web)"
+verify_backend_block="$(job_block "$combined" verify_backend)"
+build_block="$(job_block "$combined" build)"
+manifest_block="$(job_block "$combined" manifest)"
+
+grep -Fq 'needs: plan' <<<"$web_block" || {
+  printf '%s\n' 'Web build must depend on the immutable publication plan.' >&2
+  exit 1
+}
+grep -Fq 'needs: plan' <<<"$verify_backend_block" || {
+  printf '%s\n' 'Backend verification must depend on the immutable publication plan.' >&2
+  exit 1
+}
+for dependency in plan web; do
+  grep -Fq -- "- $dependency" <<<"$build_block" || {
+    printf 'Architecture builds must depend on %s.\n' "$dependency" >&2
+    exit 1
+  }
+done
+if grep -Fq -- '- verify_backend' <<<"$build_block"; then
+  printf '%s\n' 'Architecture builds must run in parallel with backend verification.' >&2
+  exit 1
+fi
+for dependency in plan verify_backend build; do
+  grep -Fq -- "- $dependency" <<<"$manifest_block" || {
+    printf 'OCI manifest quality gate must depend on %s.\n' "$dependency" >&2
+    exit 1
+  }
+done
 
 require_text "$rust" 'ref: ${{ inputs.source_sha }}'
 require_text "$rust" 'persist-credentials: false'
@@ -247,7 +306,7 @@ for caller in \
   fi
   if [ "$(basename "$caller")" = user.yml ]; then
     source_secret='source_read_token: ${{ secrets.GH_TOKEN }}'
-    expected_source_secret_count=2
+    expected_source_secret_count=1
   else
     source_secret='source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
     expected_source_secret_count=3

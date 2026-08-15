@@ -71,7 +71,6 @@ jobs:
       environment: ${{ steps.normalize.outputs.environment }}
       publish: ${{ steps.normalize.outputs.publish }}
       deploy: ${{ steps.normalize.outputs.deploy }}
-      confirmation: ${{ steps.normalize.outputs.confirmation }}
     steps:
       - name: Checkout exact workflow tooling
         uses: actions/checkout@v4
@@ -86,6 +85,7 @@ jobs:
         shell: bash
         env:
           ACTION_SHA: ${{ github.sha }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           INPUT_BACKEND_REF: ${{ inputs.backend_ref }}
@@ -112,7 +112,8 @@ jobs:
             printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
           }
 
-          [ "$GITHUB_REPOSITORY" = 'voiceofhu/one-action' ] || {
+          [ "$GITHUB_REPOSITORY" = 'voiceofhu/one-action' ] \
+            && [ "$ACTION_SERVER_URL" = 'https://github.com' ] || {
             echo 'One User releases are accepted only from voiceofhu/one-action.' >&2
             exit 1
           }
@@ -167,6 +168,64 @@ jobs:
               ;;
           esac
 
+          [ "$expected_action_sha" = "$ACTION_SHA" ] || {
+            echo 'Expected Action SHA is missing, invalid, or stale.' >&2
+            exit 1
+          }
+          [ "$backend_repository" = 'voiceofhu/one-user-backend' ] \
+            && [ "$web_repository" = 'voiceofhu/one-user-web' ] || {
+            echo 'One User publication accepts only the fixed source repositories.' >&2
+            exit 1
+          }
+          [[ "$backend_ref" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$web_ref" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'One User source refs must be exact commit SHAs.' >&2
+            exit 1
+          }
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            [ -n "$GH_TOKEN" ] || {
+              echo 'Repository Secret GH_TOKEN is required.' >&2
+              exit 1
+            }
+            [ "$(bash action/scripts/github/resolve-ref.sh "$backend_repository" "$backend_ref")" = "$backend_ref" ] \
+              && [ "$(bash action/scripts/github/resolve-ref.sh "$web_repository" "$web_ref")" = "$web_ref" ] || {
+              echo 'One User source commits could not be verified.' >&2
+              exit 1
+            }
+          fi
+          if [ -n "$version" ]; then
+            [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+              && ((${#version} <= 32)) || {
+              echo 'Version must be an unprefixed three-component numeric version.' >&2
+              exit 1
+            }
+          fi
+          case "$environment" in
+            dev|stage|prod) ;;
+            *) echo 'Environment must be dev, stage, or prod.' >&2; exit 1 ;;
+          esac
+          case "$publish:$deploy" in
+            true:true|true:false|false:false) ;;
+            *) echo 'Deployment requires publication in the same run.' >&2; exit 1 ;;
+          esac
+          if [ "$publish" = true ]; then
+            [ -n "$version" ] || {
+              echo 'Publication requires a canonical version.' >&2
+              exit 1
+            }
+            [ "$confirmation" = "enable:one-user:$ACTION_SHA" ] || {
+              echo 'Publication lacks the Action-bound confirmation.' >&2
+              exit 1
+            }
+          elif [ -n "$confirmation" ]; then
+            echo 'A non-publishing run must not include confirmation.' >&2
+            exit 1
+          fi
+          if [ "$deploy" = true ] && [ "$environment" != prod ]; then
+            echo 'One User deployment requires environment=prod.' >&2
+            exit 1
+          fi
+
           emit_output expected_action_sha "$expected_action_sha"
           emit_output backend_repository "$backend_repository"
           emit_output backend_ref "$backend_ref"
@@ -176,34 +235,10 @@ jobs:
           emit_output environment "$environment"
           emit_output publish "$publish"
           emit_output deploy "$deploy"
-          emit_output confirmation "$confirmation"
-
-  prepare:
-    needs: normalize
-    uses: ./.github/workflows/reusable-prepare.yml
-    with:
-      workflow_name: one-user
-      expected_action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
-      primary_label: backend
-      primary_repository: ${{ needs.normalize.outputs.backend_repository }}
-      primary_ref: ${{ needs.normalize.outputs.backend_ref }}
-      secondary_label: web
-      secondary_repository: ${{ needs.normalize.outputs.web_repository }}
-      secondary_ref: ${{ needs.normalize.outputs.web_ref }}
-      version: ${{ needs.normalize.outputs.version }}
-      environment: ${{ needs.normalize.outputs.environment }}
-      publish: ${{ needs.normalize.outputs.publish == 'true' }}
-      publish_supported: true
-      deploy: ${{ needs.normalize.outputs.deploy == 'true' }}
-      confirmation: ${{ needs.normalize.outputs.confirmation }}
-    secrets:
-      source_read_token: ${{ secrets.GH_TOKEN }}
 
   publish:
-    if: needs.normalize.outputs.publish == 'true' && needs.prepare.outputs.publish_authorized == 'true'
-    needs:
-      - normalize
-      - prepare
+    if: needs.normalize.outputs.publish == 'true'
+    needs: normalize
     permissions:
       contents: read
       packages: write
@@ -212,9 +247,9 @@ jobs:
       workflow_name: one-user
       action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
       backend_repository: ${{ needs.normalize.outputs.backend_repository }}
-      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
+      backend_sha: ${{ needs.normalize.outputs.backend_ref }}
       web_repository: ${{ needs.normalize.outputs.web_repository }}
-      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
+      web_sha: ${{ needs.normalize.outputs.web_ref }}
       version: ${{ needs.normalize.outputs.version }}
       environment: ${{ needs.normalize.outputs.environment }}
     secrets:
@@ -222,10 +257,9 @@ jobs:
 
   deploy:
     name: Deploy combined User image
-    if: needs.normalize.outputs.deploy == 'true' && needs.prepare.outputs.publish_authorized == 'true'
+    if: needs.normalize.outputs.deploy == 'true'
     needs:
       - normalize
-      - prepare
       - publish
     runs-on: ubuntu-24.04
     timeout-minutes: 15

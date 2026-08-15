@@ -50,7 +50,19 @@ require_text "$workflow" 'bash action/scripts/github/resolve-ref.sh'
 require_text "$workflow" "environment='prod'"
 require_text "$workflow" "publish='true'"
 require_text "$workflow" "deploy='true'"
+require_text "$workflow" 'Expected Action SHA is missing, invalid, or stale.'
+require_text "$workflow" 'One User publication accepts only the fixed source repositories.'
+require_text "$workflow" 'One User source refs must be exact commit SHAs.'
+require_text "$workflow" 'Version must be an unprefixed three-component numeric version.'
+require_text "$workflow" 'Environment must be dev, stage, or prod.'
+require_text "$workflow" 'Deployment requires publication in the same run.'
+require_text "$workflow" 'Publication requires a canonical version.'
+require_text "$workflow" 'Publication lacks the Action-bound confirmation.'
+require_text "$workflow" 'A non-publishing run must not include confirmation.'
+require_text "$workflow" 'One User deployment requires environment=prod.'
 require_text "$workflow" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+require_text "$workflow" 'backend_sha: ${{ needs.normalize.outputs.backend_ref }}'
+require_text "$workflow" 'web_sha: ${{ needs.normalize.outputs.web_ref }}'
 require_text "$workflow" "needs.publish.outputs.image_ref"
 require_text "$workflow" 'environment:'
 require_text "$workflow" 'name: one-user-prod'
@@ -70,28 +82,33 @@ if grep -Fq 'uses: ./.github/workflows/reusable-build-web-backend.yml' "$workflo
   exit 1
 fi
 
-prepare_line="$(grep -n '^  prepare:$' "$workflow" | cut -d: -f1)"
-publish_line="$(grep -n '^  publish:$' "$workflow" | cut -d: -f1)"
-deploy_line="$(grep -n '^  deploy:$' "$workflow" | cut -d: -f1)"
-if ! ((prepare_line < publish_line && publish_line < deploy_line)); then
-  printf '%s\n' 'One User jobs must flow from prepare to publish to deploy.' >&2
+if grep -Eq '^  prepare:$' "$workflow"; then
+  printf '%s\n' 'One User must enforce release policy in normalize without a generic prepare job.' >&2
   exit 1
 fi
 
 publish_block="$(sed -n '/^  publish:$/,/^  deploy:$/p' "$workflow")"
-grep -Fq -- '- prepare' <<<"$publish_block" || {
-  printf '%s\n' 'One User publication must depend on exact-source preparation.' >&2
+grep -Fq -- 'needs: normalize' <<<"$publish_block" || {
+  printf '%s\n' 'One User publication must depend directly on normalized exact inputs.' >&2
   exit 1
 }
-if grep -Fq -- '- build' <<<"$publish_block"; then
-  printf '%s\n' 'One User publication must own its multi-architecture builds.' >&2
+if grep -Fq -- 'needs.prepare' <<<"$publish_block"; then
+  printf '%s\n' 'One User publication still consumes the removed generic prepare job.' >&2
   exit 1
 fi
 deploy_block="$(sed -n '/^  deploy:$/,$p' "$workflow")"
+grep -Fq -- '- normalize' <<<"$deploy_block" || {
+  printf '%s\n' 'One User deployment must retain normalized policy outputs.' >&2
+  exit 1
+}
 grep -Fq -- '- publish' <<<"$deploy_block" || {
   printf '%s\n' 'One User deployment must wait for the published OCI index.' >&2
   exit 1
 }
+if grep -Fq -- '- prepare' <<<"$deploy_block"; then
+  printf '%s\n' 'One User deployment still depends on the removed generic prepare job.' >&2
+  exit 1
+fi
 
 if [ -e "$PROJECT_ROOT/.github/workflows/user-release.yml" ]; then
   printf '%s\n' 'One User control tags must trigger user.yml directly.' >&2

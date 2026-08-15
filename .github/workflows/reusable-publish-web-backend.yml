@@ -44,14 +44,14 @@ permissions:
   packages: write
 
 concurrency:
-  group: ghcr-${{ inputs.workflow_name }}-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ inputs.version }}
+  group: ghcr-${{ inputs.workflow_name }}-publish
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    name: Build Web once and verify exact sources
+  plan:
+    name: Plan immutable publication
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -139,16 +139,14 @@ jobs:
             echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout backend at exact commit
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.backend_repository }}
-          ref: ${{ inputs.backend_sha }}
-          path: backend
-          token: ${{ secrets.source_read_token }}
-          fetch-depth: 1
-          persist-credentials: false
-
+  web:
+    name: Build and verify Web once
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
       - name: Checkout Web at exact commit
         uses: actions/checkout@v4
         with:
@@ -158,22 +156,6 @@ jobs:
           token: ${{ secrets.source_read_token }}
           fetch-depth: 1
           persist-credentials: false
-
-      - name: Verify exact checked-out source identities
-        shell: bash
-        env:
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-          WEB_SHA: ${{ inputs.web_sha }}
-        run: |
-          set -Eeuo pipefail
-          [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
-            echo "Backend checkout HEAD does not match backend_sha." >&2
-            exit 1
-          }
-          [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
-            echo "Web checkout HEAD does not match web_sha." >&2
-            exit 1
-          }
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -185,17 +167,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Verify and build Web once
         shell: bash
         env:
-          EXPECTED_WEB_PACKAGE: ${{ steps.config.outputs.web_package }}
+          EXPECTED_WEB_PACKAGE: ${{ needs.plan.outputs.web_package }}
+          WEB_SHA: ${{ inputs.web_sha }}
           VERSION: ${{ inputs.version }}
           DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set -Eeuo pipefail
+          [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
+            echo "Web checkout HEAD does not match web_sha." >&2
+            exit 1
+          }
           test -f web/package.json && test ! -L web/package.json
           test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
           web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
@@ -211,7 +196,6 @@ jobs:
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web format:check
           pnpm --dir web lint
-          pnpm --dir web typecheck
           case "$DEPLOYMENT_ENVIRONMENT" in
             dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
             stage) pnpm --dir web build:stage ;;
@@ -225,14 +209,47 @@ jobs:
           fi
           git -C web diff --exit-code -- .
 
+      - name: Upload verified Web dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.plan.outputs.artifact_name }}
+          path: web/dist
+          if-no-files-found: error
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 1
+
+  verify_backend:
+    name: Verify backend source
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout backend at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.backend_repository }}
+          ref: ${{ inputs.backend_sha }}
+          path: backend
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Verify locked Rust source
         shell: bash
         working-directory: backend
         env:
-          EXPECTED_BACKEND_PACKAGE: ${{ steps.config.outputs.backend_package }}
+          EXPECTED_BACKEND_PACKAGE: ${{ needs.plan.outputs.backend_package }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
           VERSION: ${{ inputs.version }}
         run: |
           set -Eeuo pipefail
+          [ "$(git rev-parse HEAD)" = "$BACKEND_SHA" ] || {
+            echo "Backend checkout HEAD does not match backend_sha." >&2
+            exit 1
+          }
           test -f Cargo.toml && test ! -L Cargo.toml
           test -f Cargo.lock && test ! -L Cargo.lock
           test -f rust-toolchain.toml && test ! -L rust-toolchain.toml
@@ -247,25 +264,16 @@ jobs:
             echo "Requested version does not match the backend Cargo package version." >&2
             exit 1
           }
-          rustup component add rustfmt clippy
           cargo fmt --all -- --check
-          cargo check --all-targets --all-features --locked
           cargo clippy --all-targets --all-features --locked -- -D warnings
           cargo test --all-features --locked
           git diff --exit-code -- .
 
-      - name: Upload verified Web dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.config.outputs.artifact_name }}
-          path: web/dist
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 1
-
   build:
     name: Build ${{ matrix.suffix }} image
-    needs: prepare
+    needs:
+      - plan
+      - web
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -298,7 +306,7 @@ jobs:
       - name: Download verified Web dist
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.prepare.outputs.artifact_name }}
+          name: ${{ needs.plan.outputs.artifact_name }}
           path: web-dist
 
       - name: Assemble exact architecture build context
@@ -320,13 +328,10 @@ jobs:
             echo "backend/web-dist must not be committed in source" >&2
             exit 1
           }
-          mkdir docker-context
-          GIT_NO_REPLACE_OBJECTS=1 git -C backend archive --format=tar "$BACKEND_SHA" |
-            tar -xf - -C docker-context
-          mkdir docker-context/web-dist
-          cp -R web-dist/. docker-context/web-dist/
-          test -f docker-context/Dockerfile && test ! -L docker-context/Dockerfile
-          test -f docker-context/web-dist/index.html
+          mkdir backend/web-dist
+          cp -R web-dist/. backend/web-dist/
+          test -f backend/Dockerfile && test ! -L backend/Dockerfile
+          test -f backend/web-dist/index.html
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -341,13 +346,13 @@ jobs:
       - name: Build and push architecture image
         uses: docker/build-push-action@v6
         with:
-          context: docker-context
-          file: docker-context/Dockerfile
+          context: backend
+          file: backend/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.publish_tag }}-${{ matrix.suffix }}
+          tags: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}
           labels: |
-            org.opencontainers.image.created=${{ needs.prepare.outputs.created_at }}
+            org.opencontainers.image.created=${{ needs.plan.outputs.created_at }}
             org.opencontainers.image.source=https://github.com/${{ inputs.backend_repository }}
             org.opencontainers.image.revision=${{ inputs.backend_sha }}
             org.opencontainers.image.version=${{ inputs.version }}
@@ -357,13 +362,13 @@ jobs:
             one.environment=${{ inputs.environment }}
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }}
-          cache-to: type=gha,scope=${{ inputs.workflow_name }}-web-backend-${{ matrix.suffix }},mode=max
+          cache-from: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
 
       - name: Verify pushed architecture image
         shell: bash
         env:
-          IMAGE_REF: ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.publish_tag }}-${{ matrix.suffix }}
+          IMAGE_REF: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}
           EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
           ACTION_SHA: ${{ inputs.action_sha }}
           BACKEND_SHA: ${{ inputs.backend_sha }}
@@ -399,7 +404,8 @@ jobs:
   manifest:
     name: Publish and verify multi-platform OCI index
     needs:
-      - prepare
+      - plan
+      - verify_backend
       - build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -451,8 +457,8 @@ jobs:
         shell: bash
         env:
           WORKFLOW_NAME: ${{ inputs.workflow_name }}
-          PUBLISH_IMAGE: ${{ needs.prepare.outputs.registry_image }}
-          PUBLISH_TAG: ${{ needs.prepare.outputs.publish_tag }}
+          PUBLISH_IMAGE: ${{ needs.plan.outputs.registry_image }}
+          PUBLISH_TAG: ${{ needs.plan.outputs.publish_tag }}
           ACTION_SHA: ${{ inputs.action_sha }}
           ACTION_REPOSITORY: ${{ github.repository }}
           BACKEND_REPOSITORY: ${{ inputs.backend_repository }}

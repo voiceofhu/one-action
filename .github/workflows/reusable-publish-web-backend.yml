@@ -58,6 +58,7 @@ jobs:
       registry_image: ${{ steps.config.outputs.registry_image }}
       publish_tag: ${{ steps.config.outputs.publish_tag }}
       backend_package: ${{ steps.config.outputs.backend_package }}
+      backend_dockerfile: ${{ steps.config.outputs.backend_dockerfile }}
       web_package: ${{ steps.config.outputs.web_package }}
       artifact_name: ${{ steps.config.outputs.artifact_name }}
       created_at: ${{ steps.config.outputs.created_at }}
@@ -109,18 +110,22 @@ jobs:
           esac
           case "$WORKFLOW_NAME" in
             one-user)
-              registry_image=ghcr.io/voiceofhu/one-user-backend-next
+              registry_image=ghcr.io/voiceofhu/one-user
               backend_package=one-user-backend
+              backend_dockerfile=deploy/docker/Dockerfile
               web_package=one-user-web
               expected_backend_repository=voiceofhu/one-user-backend
               expected_web_repository=voiceofhu/one-user-web
+              publish_tag="$VERSION"
               ;;
             one-amz)
               registry_image=ghcr.io/voiceofhu/one-amz-backend-next
               backend_package=one-amz-backend
+              backend_dockerfile=Dockerfile
               web_package=one-amz-web
               expected_backend_repository=voiceofhu/one-amz-backend-next
               expected_web_repository=voiceofhu/one-amz-web-next
+              publish_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
               ;;
             *) echo "workflow is not allowed to publish a combined image" >&2; exit 1 ;;
           esac
@@ -129,11 +134,11 @@ jobs:
             echo "publication sources do not match the fixed product repositories" >&2
             exit 1
           fi
-          publish_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
           {
             echo "registry_image=$registry_image"
             echo "publish_tag=$publish_tag"
             echo "backend_package=$backend_package"
+            echo "backend_dockerfile=$backend_dockerfile"
             echo "web_package=$web_package"
             echo "artifact_name=web-dist-$WORKFLOW_NAME-${WEB_SHA:0:12}"
             echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -313,6 +318,7 @@ jobs:
         shell: bash
         env:
           BACKEND_SHA: ${{ inputs.backend_sha }}
+          BACKEND_DOCKERFILE: ${{ needs.plan.outputs.backend_dockerfile }}
         run: |
           set -Eeuo pipefail
           [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
@@ -330,7 +336,7 @@ jobs:
           }
           mkdir backend/web-dist
           cp -R web-dist/. backend/web-dist/
-          test -f backend/Dockerfile && test ! -L backend/Dockerfile
+          test -f "backend/$BACKEND_DOCKERFILE" && test ! -L "backend/$BACKEND_DOCKERFILE"
           test -f backend/web-dist/index.html
 
       - name: Set up Docker Buildx
@@ -347,7 +353,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          file: backend/Dockerfile
+          file: backend/${{ needs.plan.outputs.backend_dockerfile }}
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}

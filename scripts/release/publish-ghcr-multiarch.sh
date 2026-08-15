@@ -50,13 +50,15 @@ case "$DEPLOYMENT_ENVIRONMENT" in
 esac
 
 case "$WORKFLOW_NAME:$PUBLISH_IMAGE" in
-  one-user:ghcr.io/voiceofhu/one-user-backend-next)
+  one-user:ghcr.io/voiceofhu/one-user)
     expected_backend_repository=voiceofhu/one-user-backend
     expected_web_repository=voiceofhu/one-user-web
+    expected_tag="$VERSION"
     ;;
   one-amz:ghcr.io/voiceofhu/one-amz-backend-next)
     expected_backend_repository=voiceofhu/one-amz-backend-next
     expected_web_repository=voiceofhu/one-amz-web-next
+    expected_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
     ;;
   *) die 'workflow/image pair is not a fixed combined publication trust anchor' ;;
 esac
@@ -64,8 +66,7 @@ esac
   "$WEB_REPOSITORY" == "$expected_web_repository" ]] ||
   die 'combined sources do not match the fixed product repositories'
 
-expected_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
-[[ "$PUBLISH_TAG" == "$expected_tag" ]] || die 'PUBLISH_TAG is not the unique run tag'
+[[ "$PUBLISH_TAG" == "$expected_tag" ]] || die 'PUBLISH_TAG does not match the publication version policy'
 [[ "$PUBLISH_TAG" != latest && "$PUBLISH_TAG" != dev && "$PUBLISH_TAG" != stage && "$PUBLISH_TAG" != prod ]] ||
   die 'mutable image aliases are forbidden'
 
@@ -126,8 +127,8 @@ registry_manifest_digest() {
 preflight_status="$(registry_manifest_status "$PUBLISH_TAG")"
 case "$preflight_status" in
   404) ;;
-  200) die 'unique multi-platform run tag already exists and will not be overwritten' ;;
-  *) die "could not prove the unique multi-platform run tag is absent; registry returned HTTP $preflight_status" ;;
+  200) die 'multi-platform publication tag already exists and will not be overwritten' ;;
+  *) die "could not prove the multi-platform publication tag is absent; registry returned HTTP $preflight_status" ;;
 esac
 
 amd64_status="$(registry_manifest_status "$PUBLISH_TAG-amd64")"
@@ -174,13 +175,14 @@ docker buildx imagetools inspect "$final_ref" --format '{{json .Manifest}}' >"$m
 digest="$(jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' "$manifest_formatted")"
 
 readback_status="$(registry_manifest_status "$PUBLISH_TAG")"
-[[ "$readback_status" == 200 ]] || die "published multi-platform run tag returned HTTP $readback_status"
+[[ "$readback_status" == 200 ]] || die "published multi-platform tag returned HTTP $readback_status"
 readback_digest="$(registry_manifest_digest)"
 [[ "$readback_digest" == "$digest" ]] ||
-  die 'published multi-platform run tag does not resolve to the OCI index digest'
+  die 'published multi-platform tag does not resolve to the OCI index digest'
 unset registry_token
 
 mkdir -p -- "$(dirname -- "$PUBLISHED_IMAGE_PATH")"
+image_ref="$PUBLISH_IMAGE:$PUBLISH_TAG"
 jq -n \
   --arg action_sha "$ACTION_SHA" \
   --arg action_repository "$ACTION_REPOSITORY" \
@@ -191,6 +193,7 @@ jq -n \
   --arg version "$VERSION" \
   --arg environment "$DEPLOYMENT_ENVIRONMENT" \
   --arg image "$PUBLISH_IMAGE" \
+  --arg image_ref "$image_ref" \
   --arg tag "$PUBLISH_TAG" \
   --arg digest "$digest" \
   --arg amd64_digest "$amd64_digest" \
@@ -212,7 +215,7 @@ jq -n \
         name: $image,
         tag: $tag,
         digest: $digest,
-        reference: ($image + "@" + $digest),
+        reference: $image_ref,
         platforms: [
           {os: "linux", architecture: "amd64", digest: $amd64_digest},
           {os: "linux", architecture: "arm64", digest: $arm64_digest}
@@ -236,10 +239,10 @@ jq -e '
   echo
   echo "- Image: \`$PUBLISH_IMAGE\`"
   echo "- Action: \`$ACTION_REPOSITORY@$ACTION_SHA\`"
-  echo "- Unique run tag: \`$PUBLISH_TAG\`"
+  echo "- Version tag: \`$PUBLISH_TAG\`"
   echo "- linux/amd64: \`$amd64_digest\`"
   echo "- linux/arm64: \`$arm64_digest\`"
-  echo "- Immutable OCI index: \`$PUBLISH_IMAGE@$digest\`"
+  echo "- Server-aligned reference: \`$image_ref\`"
   echo "- Version label: \`$VERSION\`"
   echo "- Deploy: not run"
 } >>"$GITHUB_STEP_SUMMARY"
@@ -247,6 +250,6 @@ jq -e '
 {
   echo "digest=$digest"
   echo "image=$PUBLISH_IMAGE"
-  echo "image_ref=$PUBLISH_IMAGE@$digest"
+  echo "image_ref=$image_ref"
   echo "tag=$PUBLISH_TAG"
 } >>"$GITHUB_OUTPUT"

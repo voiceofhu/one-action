@@ -94,7 +94,7 @@ publish_supported=false
 case "$workflow" in
   user.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
-      version environment publish deploy
+      version publish
     require_repository backend_repository voiceofhu/one-user-backend
     require_repository web_repository voiceofhu/one-user-web
     publish_supported=true
@@ -150,14 +150,7 @@ upload_artifact="$(input_value upload_artifact || printf false)"
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true ]]; then
-  [[ "$workflow" == user.yml ]] ||
-    die 'deployment is supported only for One User'
-  [[ "$publish" == true ]] ||
-    die 'One User deployment requires publication of the exact image'
-  [[ "$environment" == prod ]] ||
-    die 'One User deployment requires environment=prod'
-fi
+[[ "$deploy" == false ]] || die 'deployment is manual; Action deployment is disabled'
 [[ "$upload_artifact" == false ]] || die 'artifact upload is not implemented; refusing before API access'
 if [[ "$publish" == true ]]; then
   [[ "$publish_supported" == true ]] || die 'workflow publication is not implemented'

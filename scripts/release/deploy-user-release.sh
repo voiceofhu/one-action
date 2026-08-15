@@ -309,5 +309,5 @@ if ! git -C "$PROJECT_ROOT" push origin \
     "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
   exit 1
 fi
-printf 'Triggered One User deployment with Action control tag: %s@%s\n' \
+printf 'Triggered One User image publication with Action control tag: %s@%s\n' \
   "$control_tag" "$action_head"

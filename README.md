@@ -185,14 +185,14 @@ make dispatch-egress \
 版本必须是没有 `v` 前缀的三段数字，例如 `1.2.3`。发布确认只用于防止操作失误，
 不能替代 GitHub environment 审批、仓库权限和最小化 secret 配置。
 
-发布器不会创建或覆盖 `latest`。后端消费者应使用工作流回读得到的
-`ghcr.io/...@sha256:<digest>`，不要依赖可变 tag。
+发布器不会创建或覆盖 `latest`。One User 使用与 Server 完全一致的不可覆盖版本 tag；
+其他镜像仍按各自发布契约使用不可变引用。
 
-## 6. 部署 One User 前后端
+## 6. 发布 One User 前后端镜像
 
 One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含 `linux/amd64` 和
 `linux/arm64` 的精确 OCI index digest，每个平台镜像都包含同一份用户中心前端。
-`make deploy-user` 负责在本地更新并发布源码版本；最后 push `one-action` 的
+`make release-user` 负责在本地更新并发布源码版本；最后 push `one-action` 的
 `user-v<version>` 控制 tag。该 tag 触发 `.github/workflows/user.yml`，工作流从 tag
 提取版本并使用 Repository Secrets，依次完成：
 
@@ -204,15 +204,13 @@ One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含
 4. Web 完成后，在 `ubuntu-24.04-arm` 原生 arm64 runner 构建并上传 `linux/arm64`
    镜像，同时 Backend 校验可以继续运行；
 5. 只有 Backend 校验和两个架构构建全部成功，才合并平台镜像为
-   `ghcr.io/voiceofhu/one-user-backend-next` 的 OCI index，回读并
-   锁定 index digest；
-6. 通过 SSH 让服务器按自身架构拉取该 index digest、更新 Compose 服务并检查
-   `/readyz`。
+   `ghcr.io/voiceofhu/one-user` 的 OCI index，以 Server 版本作为 tag，回读并
+   锁定 index digest。
 
 两个后端镜像都在对应架构的原生 runner 上构建，不安装或使用 QEMU。只有 OCI index
-合并完成并确认同时包含 amd64、arm64 后，部署任务才会获得 digest 并连接服务器。
+合并完成并确认同时包含 amd64、arm64 后，发布任务才算完成。
 两个架构分别使用 GHCR `buildcache-amd64`、`buildcache-arm64` 作为跨 release tag 的
-BuildKit 缓存；缓存 tag 不用于部署，生产部署始终只消费回读后的 OCI index digest。
+BuildKit 缓存；缓存 tag 不用于部署，手工部署只使用与 Server 对齐的版本 tag。
 
 版本获取方式与旧 `one-browser-action` 保持一致：默认按上海时区生成
 `YY.MDD.HHmm` 三段数字，并去掉每段前导零，例如：
@@ -221,21 +219,21 @@ BuildKit 缓存；缓存 tag 不用于部署，生产部署始终只消费回读
 2026-08-15 09:30 Asia/Shanghai -> 26.815.930
 ```
 
-默认直接执行真实发布和部署，不需要手动填写版本：
+默认直接执行真实发布，不需要手动填写版本：
 
 ```bash
-make deploy-user
+make release-user
 ```
 
 如需先预览，显式启用 dry-run：
 
 ```bash
-make deploy-user DRY_RUN=true
+make release-user DRY_RUN=true
 ```
 
 dry-run 会打印生成的版本、两个本地源码仓库和将要创建的三个 tag，不访问 GitHub
 API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源码、创建 tag、push、
-触发 Action 或部署。
+触发 Action。
 
 默认真实执行同样不需要本机 `GH_TOKEN` 或确认字符串，并按以下流程发布：
 
@@ -246,48 +244,26 @@ API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源�
 5. 两个仓库分别创建版本 commit 和同名 `v<version>` tag，并原子 push 分支与 tag；
 6. 在当前 `one-action` commit 创建并 push `user-v<version>` 控制 tag；
 7. `user.yml` 从控制 tag 提取版本，使用 `secrets.GH_TOKEN` 解析两个
-   `v<version>` 源码 tag，然后构建并部署精确版本。
+   `v<version>` 源码 tag，然后构建并发布精确版本镜像。
 
-本地发布只使用各仓库已有的 Git 凭据进行 push，`deploy-user` 不读取环境变量或
-`.env` 中的 `GH_TOKEN`。部署所需的 `GH_TOKEN` 只保存在 `one-action` 的 GitHub
-Repository Secrets 中，供 runner 读取私有源码以及让服务器临时登录 GHCR。
+本地发布只使用各仓库已有的 Git 凭据进行 push，`release-user` 不读取 `.env` 中的
+`GH_TOKEN`。`one-action` 的 GitHub Repository Secret `GH_TOKEN` 只供 runner 读取
+Backend/Web 私有源码并发布 GHCR 镜像。
 
 如需固定版本，可在预览和真实执行时都显式传入，例如
 `VERSION=26.815.930`。版本必须是没有 `v` 前缀、没有前导零的三段数字。该目标固定
-使用 `ENVIRONMENT=prod`、`PUBLISH=true` 和 `DEPLOY=true`，不能部署未发布或非生产镜像。
+使用生产发布策略和 `PUBLISH=true`。
 
-GitHub 中需要建立受保护的 `one-user-prod` environment，并在 `one-action` 仓库的
-Actions Secrets and variables 中配置：
+`one-action` 仓库的 Actions Secrets 只需配置：
 
 | 类型 | 名称 | 说明 |
 |---|---|---|
-| Secret | `GH_TOKEN` | runner 读取 Backend/Web 私有仓库，并让服务器临时读取 GHCR |
-| Secret | `DEPLOY_USER` | SSH 用户，例如 `gh-deploy` |
-| Secret | `DEPLOY_SSH_KEY` | SSH 私钥 |
-| Secret | `DEPLOY_KNOWN_HOSTS` | 已核验的服务器 host key，禁止运行时信任未知主机 |
-| Secret | `DEPLOY_HOST` | 服务器域名或 IP，例如 `98.65.67.83`，不要包含端口 |
-| Secret | `DEPLOY_PORT` | SSH 端口，可选；未设置时使用 `22` |
-| Variable | `DEPLOY_REMOTE_DIR` | 部署目录，默认 `/opt/one-user` |
-| Variable | `DEPLOY_COMPOSE_SERVICE` | Compose 服务名，默认 `user` |
-| Variable | `DEPLOY_READY_URL` | 服务器本机 readiness URL，默认 `http://127.0.0.1:27510/readyz` |
-| Variable | `DEPLOY_USE_SUDO` | Docker 是否使用免密 sudo：`0` 或 `1`，默认 `0` |
-| Variable | `DEPLOY_URL` | environment 页面展示的生产 URL，可选 |
+| Secret | `GH_TOKEN` | runner 读取 Backend/Web 私有仓库并发布 GHCR 镜像 |
 
-服务器需要预先准备 `/opt/one-user/.env` 和
-`/opt/one-user/docker-compose.yml`。Compose 中的目标服务必须使用：
-
-```yaml
-services:
-  user:
-    image: ${ONE_USER_IMAGE:?ONE_USER_IMAGE is required}
-    env_file:
-      - .env
-```
-
-数据库、OIDC 私钥、OAuth secret 和其他运行时配置由服务器拥有。工作流不会上传、
-覆盖、回传或打印 `.env`；它只原子更新权限为 `0600` 的 `.one-user-image.env`，其中
-记录已发布的精确 image digest。生产数据库必须在部署前已满足当前只读 Schema
-Contract，服务启动不会自动迁移数据库。
+服务器部署完全由运维人员手工完成。Action 不读取或写入服务器环境变量，不连接
+服务器，也不生成或执行 Docker Compose。手工部署使用与 Server 对齐的版本引用，
+例如 `ghcr.io/voiceofhu/one-user:26.815.1234`，并自行完成运行时配置、启动和
+readiness 检查。
 
 ## 7. Browser Egress 安装与卸载
 
@@ -402,7 +378,7 @@ sudo ./node/uninstall.sh
 - `dispatch-browser-runtime` 当前会直接失败，因为 Runtime 源仓库信任根尚未确定；
 - `dispatch-node` 只支持精确源码的构建与测试，不支持发布或部署；
 - App 和 App Debug 只做构建验证，不支持签名、发布或 artifact 上传；
-- 只有 `deploy-user` 支持服务器部署，其他工作流仍拒绝 `DEPLOY=true`；
+- 所有工作流都不执行 One User 服务器部署；One User 镜像发布后由运维人员手工部署；
 - Egress 以外的公开 App/Runtime Release 尚未实现；
 - 本仓库代码本身不能证明远端 protected environment、审批人、权限或 secret 已正确配置。
 

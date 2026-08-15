@@ -47,7 +47,7 @@ bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
   backend_ref=main \
   web_repository=voiceofhu/one-user-web \
   web_ref=v1.0.0 \
-  version= environment=dev publish=false deploy=false >"$output_file"
+  version= publish=false >"$output_file"
 
 grep -q "\"ref\": \"$action_sha\"" "$output_file"
 grep -q "\"expected_action_sha\": \"$action_sha\"" "$output_file"
@@ -63,19 +63,7 @@ bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
   backend_ref=main \
   web_repository=voiceofhu/one-user-web \
   web_ref=main \
-  version=1.2.3 environment=prod publish=true deploy=true >"$output_file"
-grep -q '"publish": true' "$output_file"
-grep -q '"deploy": true' "$output_file"
-grep -q "Publication confirmation: mutate:user.yml:$action_sha" "$output_file"
-assert_no_post
-
-reset_api_log
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-  backend_repository=voiceofhu/one-user-backend \
-  backend_ref=main \
-  web_repository=voiceofhu/one-user-web \
-  web_ref=main \
-  version=1.2.3 environment=prod publish=true deploy=false >"$output_file"
+  version=1.2.3 publish=true >"$output_file"
 grep -q "\"confirmation\": \"enable:one-user:$action_sha\"" "$output_file"
 grep -q "Publication confirmation: mutate:user.yml:$action_sha" "$output_file"
 grep -q 'DRY_RUN=true: no workflow was dispatched.' "$output_file"
@@ -100,7 +88,7 @@ expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend backend_ref=main \
     web_repository=voiceofhu/one-user-web web_ref=main \
-    version=v1.2.3 environment=dev publish=false deploy=false
+    version=v1.2.3 publish=false
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend backend_ref=main \
@@ -155,7 +143,7 @@ expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
     backend_repository=voiceofhu/one-user-backend backend_ref=main \
     web_repository=voiceofhu/one-user-web web_ref=main \
-    version=1.2.3 environment=prod publish=true deploy=false \
+    version=1.2.3 publish=true \
     confirmation=enable:one-user
 
 reset_api_log
@@ -202,7 +190,7 @@ git -C "$web_fixture" remote add origin \
 
 reset_api_log
 env -u GH_TOKEN -u CONFIRM_DISPATCH -u CONFIRM_MUTATION \
-  make --no-print-directory -s -C "$PROJECT_ROOT" deploy-user \
+  make --no-print-directory -s -C "$PROJECT_ROOT" release-user \
   GENERATED_VERSION=26.815.1234 \
   ONE_USER_BACKEND_DIR="$backend_fixture" \
   ONE_USER_WEB_DIR="$web_fixture" \

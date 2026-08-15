@@ -1,4 +1,4 @@
-.PHONY: dispatch-one-user deploy-user dispatch-one-browser-backend dispatch-app \
+.PHONY: dispatch-one-user release-user dispatch-one-browser-backend dispatch-app \
 	dispatch-app-debug dispatch-egress dispatch-browser-runtime dispatch-one-amz
 
 define dispatch_workflow
@@ -11,11 +11,10 @@ dispatch-one-user:
 		backend_ref="$${ONE_USER_BACKEND_REF}" \
 		web_repository="$${ONE_USER_WEB_REPOSITORY}" \
 		web_ref="$${ONE_USER_WEB_REF}" \
-		version="$${VERSION}" environment="$${ENVIRONMENT}" \
-		publish="$${PUBLISH}" deploy="$${DEPLOY}")
+		version="$${VERSION}" publish="$${PUBLISH}")
 
-deploy-user: DRY_RUN = false
-deploy-user:
+release-user: DRY_RUN = false
+release-user:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(USER_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/deploy-user-release.sh
 

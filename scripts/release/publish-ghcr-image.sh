@@ -44,7 +44,7 @@ esac
 
 source_kind=''
 case "$WORKFLOW_NAME:$PUBLISH_IMAGE" in
-  one-user:ghcr.io/voiceofhu/one-user-backend-next)
+  one-user:ghcr.io/voiceofhu/one-user)
     source_kind=combined
     expected_backend_repository=voiceofhu/one-user-backend
     expected_web_repository=voiceofhu/one-user-web
@@ -74,7 +74,11 @@ if [[ "$source_kind" == combined ]]; then
     die 'combined sources do not match the fixed product repositories'
   valid_sha "$BACKEND_SHA" && valid_sha "$WEB_SHA" ||
     die 'combined source SHA is invalid'
-  expected_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+  if [[ "$WORKFLOW_NAME" == one-user ]]; then
+    expected_tag="$VERSION"
+  else
+    expected_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+  fi
 else
   for name in SOURCE_REPOSITORY SOURCE_SHA; do
     require_value "$name"
@@ -86,7 +90,7 @@ else
   expected_tag="run-a${ACTION_SHA:0:12}-s${SOURCE_SHA:0:12}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
 fi
 
-[[ "${PUBLISH_TAG:-}" == "$expected_tag" ]] || die 'PUBLISH_TAG is not the unique run tag'
+[[ "${PUBLISH_TAG:-}" == "$expected_tag" ]] || die 'PUBLISH_TAG does not match the publication version policy'
 [[ "$PUBLISH_TAG" != latest && "$PUBLISH_TAG" != dev && "$PUBLISH_TAG" != stage && "$PUBLISH_TAG" != prod ]] ||
   die 'mutable image aliases are forbidden'
 [[ "$LOCAL_IMAGE" =~ ^local/[a-z0-9][a-z0-9._-]{0,127}:[A-Za-z0-9._-]{1,128}$ ]] ||
@@ -214,6 +218,10 @@ fi
 unset registry_token
 
 mkdir -p -- "$(dirname -- "$PUBLISHED_IMAGE_PATH")"
+image_ref="$PUBLISH_IMAGE@$digest"
+if [[ "$WORKFLOW_NAME" == one-user ]]; then
+  image_ref="$PUBLISH_IMAGE:$PUBLISH_TAG"
+fi
 if [[ "$source_kind" == combined ]]; then
   jq -n \
     --arg action_sha "$ACTION_SHA" \
@@ -225,6 +233,7 @@ if [[ "$source_kind" == combined ]]; then
     --arg version "$VERSION" \
     --arg environment "$DEPLOYMENT_ENVIRONMENT" \
     --arg image "$PUBLISH_IMAGE" \
+    --arg image_ref "$image_ref" \
     --arg tag "$PUBLISH_TAG" \
     --arg digest "$digest" \
     --arg run_url "$RUN_URL" \
@@ -244,7 +253,7 @@ if [[ "$source_kind" == combined ]]; then
         name: $image,
         tag: $tag,
         digest: $digest,
-        reference: ($image + "@" + $digest)
+        reference: $image_ref
       },
       deployment: {performed: false}
     }' >"$PUBLISHED_IMAGE_PATH"
@@ -257,6 +266,7 @@ else
     --arg version "$VERSION" \
     --arg environment "$DEPLOYMENT_ENVIRONMENT" \
     --arg image "$PUBLISH_IMAGE" \
+    --arg image_ref "$image_ref" \
     --arg tag "$PUBLISH_TAG" \
     --arg digest "$digest" \
     --arg run_url "$RUN_URL" \
@@ -273,7 +283,7 @@ else
         name: $image,
         tag: $tag,
         digest: $digest,
-        reference: ($image + "@" + $digest)
+        reference: $image_ref
       },
       deployment: {performed: false}
     }' >"$PUBLISHED_IMAGE_PATH"
@@ -292,8 +302,8 @@ jq -e \
   echo
   echo "- Image: \`$PUBLISH_IMAGE\`"
   echo "- Action: \`$ACTION_REPOSITORY@$ACTION_SHA\`"
-  echo "- Unique run tag: \`$PUBLISH_TAG\`"
-  echo "- Immutable reference: \`$PUBLISH_IMAGE@$digest\`"
+  echo "- Published tag: \`$PUBLISH_TAG\`"
+  echo "- Published reference: \`$image_ref\`"
   echo "- Version label: \`$VERSION\`"
   echo "- Final Config.User: \`$image_user\`"
   echo "- Published: \`true\`"
@@ -310,6 +320,6 @@ jq -e \
 {
   echo "digest=$digest"
   echo "image=$PUBLISH_IMAGE"
-  echo "image_ref=$PUBLISH_IMAGE@$digest"
+  echo "image_ref=$image_ref"
   echo "tag=$PUBLISH_TAG"
 } >>"$GITHUB_OUTPUT"

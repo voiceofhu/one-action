@@ -2,8 +2,7 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-DISPATCHER="$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-RESOLVER="$PROJECT_ROOT/scripts/github/resolve-ref.sh"
+ACTION_REPOSITORY='voiceofhu/one-action'
 
 : "${VERSION:?VERSION is required}"
 : "${ONE_USER_BACKEND_DIR:?ONE_USER_BACKEND_DIR is required}"
@@ -59,6 +58,39 @@ validate_source_repository() {
   printf '%s|%s\n' "$branch" "$(git -C "$directory" rev-parse HEAD)"
 }
 
+validate_action_repository() {
+  local remote branch status
+
+  [[ -d "$PROJECT_ROOT/.git" ]] || {
+    printf 'Action repository is missing: %s\n' "$PROJECT_ROOT" >&2
+    exit 1
+  }
+  remote="$(git -C "$PROJECT_ROOT" config --get remote.origin.url)"
+  case "$remote" in
+    "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
+    "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;
+    *)
+      printf 'Action origin must be the fixed repository %s, got %s\n' \
+        "$ACTION_REPOSITORY" "$remote" >&2
+      exit 1
+      ;;
+  esac
+  branch="$(git -C "$PROJECT_ROOT" symbolic-ref --quiet --short HEAD)" || {
+    printf '%s\n' 'Action repository must be on the main branch' >&2
+    exit 1
+  }
+  [[ "$branch" == main ]] || {
+    printf 'Action repository must be on the main branch, got %s\n' "$branch" >&2
+    exit 1
+  }
+  status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
+  [[ -z "$status" ]] || {
+    printf 'Action repository must be clean:\n%s\n' "$status" >&2
+    exit 1
+  }
+  git -C "$PROJECT_ROOT" rev-parse --verify HEAD
+}
+
 backend_state="$(validate_source_repository \
   Backend "$ONE_USER_BACKEND_DIR" "$ONE_USER_BACKEND_REPOSITORY" Cargo.toml)"
 web_state="$(validate_source_repository \
@@ -68,6 +100,8 @@ backend_head=${backend_state#*|}
 web_branch=${web_state%%|*}
 web_head=${web_state#*|}
 release_tag="v$VERSION"
+control_tag="user-v$VERSION"
+action_head="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
 
 printf '%s\n' \
   'One User release plan:' \
@@ -76,40 +110,59 @@ printf '%s\n' \
   "  backend:          $ONE_USER_BACKEND_REPOSITORY@$backend_head" \
   "  web:              $ONE_USER_WEB_REPOSITORY@$web_head" \
   "  backend branch:   $backend_branch" \
-  "  web branch:       $web_branch"
-
-dispatch() {
-  local action_ref=$1
-  local backend_ref=$2
-  local web_ref=$3
-  local dispatch_dry_run=$4
-  ACTION_REF="$action_ref" DRY_RUN="$dispatch_dry_run" \
-    bash "$DISPATCHER" user.yml \
-      backend_repository="$ONE_USER_BACKEND_REPOSITORY" \
-      backend_ref="$backend_ref" \
-      web_repository="$ONE_USER_WEB_REPOSITORY" \
-      web_ref="$web_ref" \
-      version="$VERSION" environment=prod publish=true deploy=true
-}
+  "  web branch:       $web_branch" \
+  "  action:           $ACTION_REPOSITORY@$action_head" \
+  "  control tag:      $control_tag"
 
 if [[ "$dry_run" == true ]]; then
   printf '%s\n' \
-    'DRY_RUN=true: source versions, commits, tags, pushes, dispatch, and deployment are not changed.' \
-    'The real run will update both source versions before dispatching their new exact commits.'
+    'DRY_RUN=true: source versions, commits, tags, pushes, and deployment are not changed.' \
+    'The real run will preflight Action main, update and push both source versions, then push the control tag.'
   exit 0
 fi
 
-: "${GH_TOKEN:?GH_TOKEN is required}"
-action_sha="$(GH_TOKEN="$GH_TOKEN" bash "$RESOLVER" \
-  "${ACTION_REPOSITORY:-voiceofhu/one-action}" "${ACTION_REF:-main}")"
-expected_dispatch="dispatch:user.yml:$action_sha"
-expected_mutation="mutate:user.yml:$action_sha"
-[[ "${CONFIRM_DISPATCH:-}" == "$expected_dispatch" ]] || {
-  printf 'Real release requires CONFIRM_DISPATCH=%s\n' "$expected_dispatch" >&2
+validated_action_head="$(validate_action_repository)"
+[[ "$action_head" == "$validated_action_head" ]] || {
+  printf '%s\n' 'Action HEAD changed while preparing the release; no source repositories were changed.' >&2
   exit 1
 }
-[[ "${CONFIRM_MUTATION:-}" == "$expected_mutation" ]] || {
-  printf 'Real release requires CONFIRM_MUTATION=%s\n' "$expected_mutation" >&2
+
+! git -C "$PROJECT_ROOT" rev-parse -q --verify \
+  "refs/tags/$control_tag" >/dev/null || {
+  printf 'Action control tag already exists locally: %s\n' "$control_tag" >&2
+  exit 1
+}
+
+remote_control_tag_status=0
+git -C "$PROJECT_ROOT" ls-remote --exit-code --tags origin \
+  "refs/tags/$control_tag" "refs/tags/$control_tag^{}" >/dev/null || \
+  remote_control_tag_status=$?
+case "$remote_control_tag_status" in
+  0)
+    printf 'Action control tag already exists remotely: %s\n' "$control_tag" >&2
+    exit 1
+    ;;
+  2) ;;
+  *)
+    printf 'Could not check remote Action control tag %s; no repositories were changed.\n' \
+      "$control_tag" >&2
+    exit 1
+    ;;
+esac
+
+if ! git -C "$PROJECT_ROOT" fetch --no-tags origin \
+  '+refs/heads/main:refs/remotes/origin/main'; then
+  printf '%s\n' \
+    'Could not refresh Action origin/main; no source repositories were changed.' >&2
+  exit 1
+fi
+action_remote_head="$(git -C "$PROJECT_ROOT" rev-parse --verify refs/remotes/origin/main)"
+[[ "$action_head" == "$action_remote_head" ]] || {
+  printf '%s\n' \
+    "Action HEAD must exactly match published origin/main before release." \
+    "  local:  $action_head" \
+    "  remote: $action_remote_head" \
+    'Push or synchronize the Action main branch, then retry; no source repositories were changed.' >&2
   exit 1
 }
 
@@ -223,10 +276,19 @@ git -C "$ONE_USER_WEB_DIR" commit -m \
   "chore: bump one-user-web version to $release_tag"
 git -C "$ONE_USER_WEB_DIR" tag "$release_tag"
 
-git -C "$ONE_USER_BACKEND_DIR" push --atomic origin \
-  "HEAD:refs/heads/$backend_branch" "refs/tags/$release_tag:refs/tags/$release_tag"
-git -C "$ONE_USER_WEB_DIR" push --atomic origin \
-  "HEAD:refs/heads/$web_branch" "refs/tags/$release_tag:refs/tags/$release_tag"
+if ! git -C "$ONE_USER_BACKEND_DIR" push --atomic origin \
+  "HEAD:refs/heads/$backend_branch" "refs/tags/$release_tag:refs/tags/$release_tag"; then
+  printf 'Backend push failed; its local release commit and tag %s were kept for recovery.\n' \
+    "$release_tag" >&2
+  exit 1
+fi
+if ! git -C "$ONE_USER_WEB_DIR" push --atomic origin \
+  "HEAD:refs/heads/$web_branch" "refs/tags/$release_tag:refs/tags/$release_tag"; then
+  printf '%s\n' \
+    "Web push failed; its local release commit and tag $release_tag were kept for recovery." \
+    'Backend may already be published; the Action control tag was not created.' >&2
+  exit 1
+fi
 
 backend_release_sha="$(git -C "$ONE_USER_BACKEND_DIR" rev-parse "$release_tag^{commit}")"
 web_release_sha="$(git -C "$ONE_USER_WEB_DIR" rev-parse "$release_tag^{commit}")"
@@ -234,4 +296,18 @@ printf '%s\n' \
   "Published Backend source: $ONE_USER_BACKEND_REPOSITORY@$backend_release_sha" \
   "Published Web source: $ONE_USER_WEB_REPOSITORY@$web_release_sha"
 
-dispatch "$action_sha" "$backend_release_sha" "$web_release_sha" false
+if ! git -C "$PROJECT_ROOT" tag "$control_tag" "$action_head"; then
+  printf '%s\n' \
+    "Both source releases were published, but Action control tag $control_tag could not be created." \
+    "Recover with: git -C $PROJECT_ROOT tag $control_tag $action_head" >&2
+  exit 1
+fi
+if ! git -C "$PROJECT_ROOT" push origin \
+  "refs/tags/$control_tag:refs/tags/$control_tag"; then
+  printf '%s\n' \
+    "Both source releases were published and local control tag $control_tag was kept." \
+    "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
+  exit 1
+fi
+printf 'Triggered One User deployment with Action control tag: %s@%s\n' \
+  "$control_tag" "$action_head"

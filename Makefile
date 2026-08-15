@@ -53,9 +53,7 @@ help:
 		"" \
 		"Example One User production deployment:" \
 		"  make deploy-user" \
-		"  make deploy-user DRY_RUN=false \\" \
-		"    CONFIRM_DISPATCH='dispatch:user.yml:<action-sha>' \\" \
-		"    CONFIRM_MUTATION='mutate:user.yml:<action-sha>'" \
+		"  make deploy-user DRY_RUN=false" \
 		"" \
 		"Example One Node exact-source validation (no publication/deployment):" \
 		"  make dispatch-node" \

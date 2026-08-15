@@ -191,8 +191,9 @@ make dispatch-egress \
 ## 6. 部署 One User 前后端
 
 One User Web 会先编译进 Backend Docker 镜像，因此一个精确的 OCI image digest
-同时包含用户中心前端和后端。`make deploy-user` 会触发
-`.github/workflows/user.yml`，依次完成：
+同时包含用户中心前端和后端。`make deploy-user` 负责在本地更新并发布源码版本；最后
+push `one-action` 的 `user-v<version>` 控制 tag。该 tag 触发
+`.github/workflows/user.yml`，工作流从 tag 提取版本并使用 Repository Secrets，依次完成：
 
 1. 解析 Action、Backend 和 Web 的精确 commit SHA；
 2. 构建前端并装入后端生产镜像；
@@ -213,41 +214,46 @@ One User Web 会先编译进 Backend Docker 镜像，因此一个精确的 OCI i
 make deploy-user
 ```
 
-dry-run 会打印生成的版本和两个本地源码仓库，不访问 GitHub API，也不要求本机提供
-`GH_TOKEN`；它不会修改源码、创建 tag、push、调度或部署。
+dry-run 会打印生成的版本、两个本地源码仓库和将要创建的三个 tag，不访问 GitHub
+API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源码、创建 tag、push、
+调度或部署。
 
-真实执行需要本机通过环境变量或 `one-action/.env` 提供原始 `GH_TOKEN`，因为本机
-无法读取 GitHub Actions Secrets。检查计划后真实执行：
+检查计划后真实执行：
 
 ```bash
-make deploy-user \
-  DRY_RUN=false \
-  CONFIRM_DISPATCH='dispatch:user.yml:<action-sha>' \
-  CONFIRM_MUTATION='mutate:user.yml:<action-sha>'
+DRY_RUN=false make deploy-user
 ```
 
-真实执行会按旧发布流程：
+真实执行同样不需要本机 `GH_TOKEN` 或确认字符串，并按以下流程发布：
 
-1. 要求本地 `../one-user/backend` 和 `../one-user/web` 均处于干净分支；
-2. 确认 origin 分别是 `voiceofhu/one-user-backend` 和 `voiceofhu/one-user-web`；
-3. 将 Backend `Cargo.toml`、`Cargo.lock` 与 Web `package.json` 更新为同一版本；
-4. 两个仓库分别创建版本 commit 和同名 `v<version>` tag，并原子 push 分支与 tag；
-5. 使用两个新 commit 的精确 SHA 触发 `user.yml`。
+1. 要求本地 `one-action` 位于干净的 `main`，且 HEAD 与 `origin/main` 完全一致；
+2. 要求本地 `../one-user/backend` 和 `../one-user/web` 均处于干净分支；
+3. 确认 origin 分别是 `voiceofhu/one-user-backend` 和 `voiceofhu/one-user-web`；
+4. 将 Backend `Cargo.toml`、`Cargo.lock` 与 Web `package.json` 更新为同一版本；
+5. 两个仓库分别创建版本 commit 和同名 `v<version>` tag，并原子 push 分支与 tag；
+6. 在当前 `one-action` commit 创建并 push `user-v<version>` 控制 tag；
+7. `user.yml` 从控制 tag 提取版本，使用 `secrets.GH_TOKEN` 解析两个
+   `v<version>` 源码 tag，然后构建并部署精确版本。
+
+本地发布只使用各仓库已有的 Git 凭据进行 push，`deploy-user` 不读取环境变量或
+`.env` 中的 `GH_TOKEN`。部署所需的 `GH_TOKEN` 只保存在 `one-action` 的 GitHub
+Repository Secrets 中，供 runner 读取私有源码以及让服务器临时登录 GHCR。
 
 如需固定版本，可在 dry-run 和真实执行时都显式传入，例如
 `VERSION=26.815.930`。版本必须是没有 `v` 前缀、没有前导零的三段数字。该目标固定
 使用 `ENVIRONMENT=prod`、`PUBLISH=true` 和 `DEPLOY=true`，不能部署未发布或非生产镜像。
 
-GitHub 中需要建立受保护的 `one-user-prod` environment，并配置：
+GitHub 中需要建立受保护的 `one-user-prod` environment，并在 `one-action` 仓库的
+Actions Secrets and variables 中配置：
 
 | 类型 | 名称 | 说明 |
 |---|---|---|
-| Secret | `GH_TOKEN` | 读取 Backend/Web 私有仓库，并让服务器临时读取 GHCR |
+| Secret | `GH_TOKEN` | runner 读取 Backend/Web 私有仓库，并让服务器临时读取 GHCR |
 | Secret | `DEPLOY_USER` | SSH 用户，例如 `gh-deploy` |
 | Secret | `DEPLOY_SSH_KEY` | SSH 私钥 |
 | Secret | `DEPLOY_KNOWN_HOSTS` | 已核验的服务器 host key，禁止运行时信任未知主机 |
-| Variable | `DEPLOY_HOST` | 服务器域名或 IP，例如 `98.65.67.83`，不要包含端口 |
-| Variable | `DEPLOY_PORT` | SSH 端口，可选；未设置时使用 `22` |
+| Secret | `DEPLOY_HOST` | 服务器域名或 IP，例如 `98.65.67.83`，不要包含端口 |
+| Secret | `DEPLOY_PORT` | SSH 端口，可选；未设置时使用 `22` |
 | Variable | `DEPLOY_REMOTE_DIR` | 部署目录，默认 `/opt/one-user` |
 | Variable | `DEPLOY_COMPOSE_SERVICE` | Compose 服务名，默认 `user` |
 | Variable | `DEPLOY_READY_URL` | 服务器本机 readiness URL，默认 `http://127.0.0.1:27510/readyz` |

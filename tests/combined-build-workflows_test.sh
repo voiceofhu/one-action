@@ -27,13 +27,15 @@ require_text "$prepare" 'Browser Runtime source trust root is unresolved; prepar
 
 for caller in user.yml one-amz.yml; do
   workflow="$PROJECT_ROOT/.github/workflows/$caller"
-  require_text "$workflow" 'needs: prepare'
   require_text "$workflow" 'uses: ./.github/workflows/reusable-build-web-backend.yml'
   require_text "$workflow" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
   require_text "$workflow" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
   require_text "$workflow" 'rust_validation: strict'
   require_text "$workflow" 'publish_supported: true'
 done
+require_text "$PROJECT_ROOT/.github/workflows/user.yml" '- normalize'
+require_text "$PROJECT_ROOT/.github/workflows/user.yml" '- prepare'
+require_text "$PROJECT_ROOT/.github/workflows/one-amz.yml" 'needs: prepare'
 
 require_text "$PROJECT_ROOT/.github/workflows/user.yml" 'local_image_name: local/one-user-backend:${{ needs.prepare.outputs.primary_sha }}'
 require_text "$PROJECT_ROOT/.github/workflows/user.yml" 'source_read_token: ${{ secrets.GH_TOKEN }}'

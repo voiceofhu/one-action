@@ -201,17 +201,22 @@ git -C "$web_fixture" remote add origin \
   https://github.com/voiceofhu/one-user-web.git
 
 reset_api_log
-make --no-print-directory -s -C "$PROJECT_ROOT" deploy-user \
+env -u GH_TOKEN -u CONFIRM_DISPATCH -u CONFIRM_MUTATION \
+  make --no-print-directory -s -C "$PROJECT_ROOT" deploy-user \
   GENERATED_VERSION=26.815.1234 \
   ONE_USER_BACKEND_DIR="$backend_fixture" \
   ONE_USER_WEB_DIR="$web_fixture" \
+  ENV_FILE="$test_dir/no-env" \
   DRY_RUN=true >"$output_file"
-grep -q 'File: user.yml' "$output_file"
-grep -q '"version": "26.815.1234"' "$output_file"
-grep -q '"environment": "prod"' "$output_file"
-grep -q '"publish": true' "$output_file"
-grep -q '"deploy": true' "$output_file"
+grep -q 'One User release plan:' "$output_file"
+grep -q 'version:.*26.815.1234' "$output_file"
+grep -q 'tag:.*v26.815.1234' "$output_file"
+grep -q 'control tag:.*user-v26.815.1234' "$output_file"
 assert_no_post
+if [ -s "$FAKE_CURL_LOG" ]; then
+  printf '%s\n' 'One User dry-run unexpectedly accessed the GitHub API.' >&2
+  exit 1
+fi
 
 export DRY_RUN=false
 reset_api_log

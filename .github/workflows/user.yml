@@ -1,6 +1,9 @@
 name: One User
 
 'on':
+  push:
+    tags:
+      - 'user-v*'
   workflow_dispatch:
     inputs:
       expected_action_sha:
@@ -55,29 +58,151 @@ permissions:
   contents: read
 
 jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      expected_action_sha: ${{ steps.normalize.outputs.expected_action_sha }}
+      backend_repository: ${{ steps.normalize.outputs.backend_repository }}
+      backend_ref: ${{ steps.normalize.outputs.backend_ref }}
+      web_repository: ${{ steps.normalize.outputs.web_repository }}
+      web_ref: ${{ steps.normalize.outputs.web_ref }}
+      version: ${{ steps.normalize.outputs.version }}
+      environment: ${{ steps.normalize.outputs.environment }}
+      publish: ${{ steps.normalize.outputs.publish }}
+      deploy: ${{ steps.normalize.outputs.deploy }}
+      confirmation: ${{ steps.normalize.outputs.confirmation }}
+    steps:
+      - name: Checkout exact workflow tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Normalize release inputs
+        id: normalize
+        shell: bash
+        env:
+          ACTION_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          INPUT_BACKEND_REF: ${{ inputs.backend_ref }}
+          INPUT_BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          INPUT_DEPLOY: ${{ inputs.deploy }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_WEB_REF: ${{ inputs.web_ref }}
+          INPUT_WEB_REPOSITORY: ${{ inputs.web_repository }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+
+          emit_output() {
+            local name="$1"
+            local value="$2"
+            [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || {
+              echo "Workflow input contains a line break: $name" >&2
+              exit 1
+            }
+            printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
+          }
+
+          [ "$GITHUB_REPOSITORY" = 'voiceofhu/one-action' ] || {
+            echo 'One User releases are accepted only from voiceofhu/one-action.' >&2
+            exit 1
+          }
+          [[ "$ACTION_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Workflow did not resolve to an exact Action commit SHA.' >&2
+            exit 1
+          }
+          [ "$(git -C action rev-parse HEAD)" = "$ACTION_SHA" ] || {
+            echo 'Checked-out workflow tooling does not match the Action commit.' >&2
+            exit 1
+          }
+
+          case "$EVENT_NAME" in
+            push)
+              [[ "$TAG_NAME" =~ ^user-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+                echo 'Control tag must use user-v<major>.<minor>.<patch>.' >&2
+                exit 1
+              }
+              [ -n "$GH_TOKEN" ] || {
+                echo 'Repository Secret GH_TOKEN is required.' >&2
+                exit 1
+              }
+              version="${TAG_NAME#user-v}"
+              source_tag="v$version"
+              expected_action_sha="$ACTION_SHA"
+              backend_repository='voiceofhu/one-user-backend'
+              backend_ref="$(bash action/scripts/github/resolve-ref.sh \
+                "$backend_repository" "$source_tag")"
+              web_repository='voiceofhu/one-user-web'
+              web_ref="$(bash action/scripts/github/resolve-ref.sh \
+                "$web_repository" "$source_tag")"
+              environment='prod'
+              publish='true'
+              deploy='true'
+              confirmation="enable:one-user:$ACTION_SHA"
+              ;;
+            workflow_dispatch)
+              expected_action_sha="$INPUT_EXPECTED_ACTION_SHA"
+              backend_repository="$INPUT_BACKEND_REPOSITORY"
+              backend_ref="$INPUT_BACKEND_REF"
+              web_repository="$INPUT_WEB_REPOSITORY"
+              web_ref="$INPUT_WEB_REF"
+              version="$INPUT_VERSION"
+              environment="$INPUT_ENVIRONMENT"
+              publish="$INPUT_PUBLISH"
+              deploy="$INPUT_DEPLOY"
+              confirmation="$INPUT_CONFIRMATION"
+              ;;
+            *)
+              echo "Unsupported workflow event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          emit_output expected_action_sha "$expected_action_sha"
+          emit_output backend_repository "$backend_repository"
+          emit_output backend_ref "$backend_ref"
+          emit_output web_repository "$web_repository"
+          emit_output web_ref "$web_ref"
+          emit_output version "$version"
+          emit_output environment "$environment"
+          emit_output publish "$publish"
+          emit_output deploy "$deploy"
+          emit_output confirmation "$confirmation"
+
   prepare:
+    needs: normalize
     uses: ./.github/workflows/reusable-prepare.yml
     with:
       workflow_name: one-user
-      expected_action_sha: ${{ inputs.expected_action_sha }}
+      expected_action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
       primary_label: backend
-      primary_repository: ${{ inputs.backend_repository }}
-      primary_ref: ${{ inputs.backend_ref }}
+      primary_repository: ${{ needs.normalize.outputs.backend_repository }}
+      primary_ref: ${{ needs.normalize.outputs.backend_ref }}
       secondary_label: web
-      secondary_repository: ${{ inputs.web_repository }}
-      secondary_ref: ${{ inputs.web_ref }}
-      version: ${{ inputs.version }}
-      environment: ${{ inputs.environment }}
-      publish: ${{ inputs.publish }}
+      secondary_repository: ${{ needs.normalize.outputs.web_repository }}
+      secondary_ref: ${{ needs.normalize.outputs.web_ref }}
+      version: ${{ needs.normalize.outputs.version }}
+      environment: ${{ needs.normalize.outputs.environment }}
+      publish: ${{ needs.normalize.outputs.publish == 'true' }}
       publish_supported: true
-      deploy: ${{ inputs.deploy }}
-      confirmation: ${{ inputs.confirmation }}
+      deploy: ${{ needs.normalize.outputs.deploy == 'true' }}
+      confirmation: ${{ needs.normalize.outputs.confirmation }}
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
 
   publish:
-    if: inputs.publish && needs.prepare.outputs.publish_authorized == 'true'
+    if: needs.normalize.outputs.publish == 'true' && needs.prepare.outputs.publish_authorized == 'true'
     needs:
+      - normalize
       - prepare
       - build
     permissions:
@@ -86,37 +211,40 @@ jobs:
     uses: ./.github/workflows/reusable-publish-web-backend.yml
     with:
       workflow_name: one-user
-      action_sha: ${{ github.sha }}
-      backend_repository: ${{ inputs.backend_repository }}
+      action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
+      backend_repository: ${{ needs.normalize.outputs.backend_repository }}
       backend_sha: ${{ needs.prepare.outputs.primary_sha }}
-      web_repository: ${{ inputs.web_repository }}
+      web_repository: ${{ needs.normalize.outputs.web_repository }}
       web_sha: ${{ needs.prepare.outputs.secondary_sha }}
-      version: ${{ inputs.version }}
-      environment: ${{ inputs.environment }}
+      version: ${{ needs.normalize.outputs.version }}
+      environment: ${{ needs.normalize.outputs.environment }}
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
 
   build:
-    needs: prepare
+    needs:
+      - normalize
+      - prepare
     uses: ./.github/workflows/reusable-build-web-backend.yml
     with:
       workflow_name: one-user
       local_image_name: local/one-user-backend:${{ needs.prepare.outputs.primary_sha }}
-      action_sha: ${{ github.sha }}
-      backend_repository: ${{ inputs.backend_repository }}
+      action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
+      backend_repository: ${{ needs.normalize.outputs.backend_repository }}
       backend_sha: ${{ needs.prepare.outputs.primary_sha }}
-      web_repository: ${{ inputs.web_repository }}
+      web_repository: ${{ needs.normalize.outputs.web_repository }}
       web_sha: ${{ needs.prepare.outputs.secondary_sha }}
-      version: ${{ inputs.version }}
-      environment: ${{ inputs.environment }}
+      version: ${{ needs.normalize.outputs.version }}
+      environment: ${{ needs.normalize.outputs.environment }}
       rust_validation: strict
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
 
   deploy:
     name: Deploy combined User image
-    if: inputs.deploy && needs.prepare.outputs.publish_authorized == 'true'
+    if: needs.normalize.outputs.deploy == 'true' && needs.prepare.outputs.publish_authorized == 'true'
     needs:
+      - normalize
       - prepare
       - publish
     runs-on: ubuntu-24.04
@@ -145,7 +273,7 @@ jobs:
       - name: Checkout exact deployment tooling
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.expected_action_sha }}
+          ref: ${{ needs.normalize.outputs.expected_action_sha }}
           path: action
           fetch-depth: 1
           persist-credentials: false
@@ -153,8 +281,8 @@ jobs:
       - name: Configure strict SSH host
         shell: bash
         env:
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

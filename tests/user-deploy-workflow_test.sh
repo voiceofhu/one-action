@@ -21,21 +21,39 @@ require_text "$PROJECT_ROOT/make/workflows.mk" 'deploy-user:'
 require_text "$PROJECT_ROOT/make/workflows.mk" 'VERSION="$(USER_RELEASE_VERSION)"'
 require_text "$PROJECT_ROOT/make/config.mk" 'timeZone:'\''Asia/Shanghai'\'''
 require_text "$PROJECT_ROOT/make/config.mk" 'USER_RELEASE_VERSION ='
-require_text "$release" 'bash "$DISPATCHER" user.yml'
-require_text "$release" 'version="$VERSION" environment=prod publish=true deploy=true'
+require_text "$release" "ACTION_REPOSITORY='voiceofhu/one-action'"
+require_text "$release" 'control_tag="user-v$VERSION"'
 require_text "$release" 'chore: bump one-user-backend version to $release_tag'
 require_text "$release" 'chore: bump one-user-web version to $release_tag'
 require_text "$release" 'push --atomic origin'
+require_text "$release" '"refs/tags/$control_tag:refs/tags/$control_tag"'
+if grep -Eq 'GH_TOKEN|CONFIRM_DISPATCH|CONFIRM_MUTATION|DISPATCHER|RESOLVER|dispatch-workflow|gh[[:space:]]+api|curl[[:space:]]' "$release"; then
+  printf '%s\n' 'Local One User release must use Git tags, not GitHub API credentials.' >&2
+  exit 1
+fi
+
 require_text "$dispatcher" "deployment is supported only for One User"
 require_text "$dispatcher" "One User deployment requires publication of the exact image"
 require_text "$dispatcher" "One User deployment requires environment=prod"
 
 require_text "$workflow" 'name: Deploy combined User image'
+require_text "$workflow" "- 'user-v*'"
+require_text "$workflow" 'name: Normalize release inputs'
+require_text "$workflow" 'EVENT_NAME: ${{ github.event_name }}'
+require_text "$workflow" 'TAG_NAME: ${{ github.ref_name }}'
+require_text "$workflow" 'version="${TAG_NAME#user-v}"'
+require_text "$workflow" 'source_tag="v$version"'
+require_text "$workflow" "backend_repository='voiceofhu/one-user-backend'"
+require_text "$workflow" "web_repository='voiceofhu/one-user-web'"
+require_text "$workflow" 'bash action/scripts/github/resolve-ref.sh'
+require_text "$workflow" "environment='prod'"
+require_text "$workflow" "publish='true'"
+require_text "$workflow" "deploy='true'"
 require_text "$workflow" "needs.publish.outputs.image_ref"
 require_text "$workflow" 'environment:'
 require_text "$workflow" 'name: one-user-prod'
-require_text "$workflow" 'DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}'
-require_text "$workflow" "DEPLOY_PORT: \${{ vars.DEPLOY_PORT || '22' }}"
+require_text "$workflow" 'DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}'
+require_text "$workflow" "DEPLOY_PORT: \${{ secrets.DEPLOY_PORT || '22' }}"
 require_text "$workflow" 'packages: read'
 require_text "$workflow" 'source_read_token: ${{ secrets.GH_TOKEN }}'
 require_text "$workflow" 'DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}'
@@ -45,8 +63,21 @@ require_text "$workflow" 'gh api user --jq .login'
 require_text "$workflow" 'bash action/scripts/deploy/deploy-user.sh'
 require_text "$workflow" "if: always() && steps.registry-login.outcome == 'success'"
 
+if [ -e "$PROJECT_ROOT/.github/workflows/user-release.yml" ]; then
+  printf '%s\n' 'One User control tags must trigger user.yml directly.' >&2
+  exit 1
+fi
+if grep -Fq 'actions/workflows/user.yml/dispatches' "$workflow"; then
+  printf '%s\n' 'One User tag workflow must not redispatch itself through the API.' >&2
+  exit 1
+fi
+
 if grep -Fq '98.65.67.83' "$workflow"; then
-  printf '%s\n' 'User workflow must read DEPLOY_HOST from GitHub Variables.' >&2
+  printf '%s\n' 'User workflow must not hardcode DEPLOY_HOST.' >&2
+  exit 1
+fi
+if grep -Eq 'DEPLOY_(HOST|PORT):.*vars\.DEPLOY_' "$workflow"; then
+  printf '%s\n' 'User workflow must read DEPLOY_HOST and DEPLOY_PORT from Secrets.' >&2
   exit 1
 fi
 if grep -Fq 'secrets.SOURCE_READ_TOKEN' "$workflow"; then

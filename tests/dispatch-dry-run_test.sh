@@ -190,7 +190,7 @@ git -C "$web_fixture" remote add origin \
 
 reset_api_log
 env -u GH_TOKEN -u CONFIRM_DISPATCH -u CONFIRM_MUTATION \
-  make --no-print-directory -s -C "$PROJECT_ROOT" release-user \
+  make --no-print-directory -s -C "$PROJECT_ROOT" deploy-user \
   GENERATED_VERSION=26.815.1234 \
   ONE_USER_BACKEND_DIR="$backend_fixture" \
   ONE_USER_WEB_DIR="$web_fixture" \

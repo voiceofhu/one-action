@@ -192,7 +192,7 @@ make dispatch-egress \
 
 One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含 `linux/amd64` 和
 `linux/arm64` 的精确 OCI index digest，每个平台镜像都包含同一份用户中心前端。
-`make release-user` 负责在本地更新并发布源码版本；最后 push `one-action` 的
+`make deploy-user` 负责在本地更新并发布源码版本，为手工部署准备镜像；最后 push `one-action` 的
 `user-v<version>` 控制 tag。该 tag 触发 `.github/workflows/user.yml`，工作流从 tag
 提取版本并使用 Repository Secrets，依次完成：
 
@@ -222,13 +222,13 @@ BuildKit 缓存；缓存 tag 不用于部署，手工部署只使用与 Server �
 默认直接执行真实发布，不需要手动填写版本：
 
 ```bash
-make release-user
+make deploy-user
 ```
 
 如需先预览，显式启用 dry-run：
 
 ```bash
-make release-user DRY_RUN=true
+make deploy-user DRY_RUN=true
 ```
 
 dry-run 会打印生成的版本、两个本地源码仓库和将要创建的三个 tag，不访问 GitHub
@@ -246,7 +246,7 @@ API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源�
 7. `user.yml` 从控制 tag 提取版本，使用 `secrets.GH_TOKEN` 解析两个
    `v<version>` 源码 tag，然后构建并发布精确版本镜像。
 
-本地发布只使用各仓库已有的 Git 凭据进行 push，`release-user` 不读取 `.env` 中的
+本地发布只使用各仓库已有的 Git 凭据进行 push，`deploy-user` 不读取 `.env` 中的
 `GH_TOKEN`。`one-action` 的 GitHub Repository Secret `GH_TOKEN` 只供 runner 读取
 Backend/Web 私有源码并发布 GHCR 镜像。
 

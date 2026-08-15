@@ -23,7 +23,7 @@ reject_text() {
   fi
 }
 
-require_text "$PROJECT_ROOT/make/workflows.mk" 'release-user: DRY_RUN = false'
+require_text "$PROJECT_ROOT/make/workflows.mk" 'deploy-user: DRY_RUN = false'
 require_text "$PROJECT_ROOT/make/workflows.mk" 'DRY_RUN="$(DRY_RUN)" VERSION="$(USER_RELEASE_VERSION)"'
 require_text "$PROJECT_ROOT/make/config.mk" 'timeZone:'\''Asia/Shanghai'\'''
 require_text "$release" "ACTION_REPOSITORY='voiceofhu/one-action'"

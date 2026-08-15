@@ -46,8 +46,8 @@ source_kind=''
 case "$WORKFLOW_NAME:$PUBLISH_IMAGE" in
   one-user:ghcr.io/voiceofhu/one-user-backend-next)
     source_kind=combined
-    expected_backend_repository=voiceofhu/one-user-backend-next
-    expected_web_repository=voiceofhu/one-user-web-next
+    expected_backend_repository=voiceofhu/one-user-backend
+    expected_web_repository=voiceofhu/one-user-web
     ;;
   one-amz:ghcr.io/voiceofhu/one-amz-backend-next)
     source_kind=combined

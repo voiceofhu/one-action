@@ -74,8 +74,8 @@ if [[ "$requested_ref" =~ ^[0-9a-f]{40}$ ]]; then
 else
   case "$url" in
     */repos/voiceofhu/one-action/commits/*) sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
-    */repos/voiceofhu/one-user-backend-next/commits/*) sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
-    */repos/voiceofhu/one-user-web-next/commits/*) sha=cccccccccccccccccccccccccccccccccccccccc ;;
+    */repos/voiceofhu/one-user-backend/commits/*) sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
+    */repos/voiceofhu/one-user-web/commits/*) sha=cccccccccccccccccccccccccccccccccccccccc ;;
     */repos/voiceofhu/one-amz-backend-next/commits/*) sha=dddddddddddddddddddddddddddddddddddddddd ;;
     */repos/voiceofhu/one-amz-web-next/commits/*) sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ;;
     */repos/voiceofhu/one-browser-backend-next/commits/*) sha=ffffffffffffffffffffffffffffffffffffffff ;;

@@ -144,9 +144,9 @@ jobs:
           case "$WORKFLOW_NAME" in
             one-user)
               expected_primary_label=backend
-              expected_primary_repository=voiceofhu/one-user-backend-next
+              expected_primary_repository=voiceofhu/one-user-backend
               expected_secondary_label=web
-              expected_secondary_repository=voiceofhu/one-user-web-next
+              expected_secondary_repository=voiceofhu/one-user-web
               expected_publish_supported=true
               ;;
             one-amz)

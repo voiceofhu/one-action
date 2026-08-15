@@ -43,9 +43,9 @@ expect_failure_before_api() {
 
 reset_api_log
 bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-  backend_repository=voiceofhu/one-user-backend-next \
+  backend_repository=voiceofhu/one-user-backend \
   backend_ref=main \
-  web_repository=voiceofhu/one-user-web-next \
+  web_repository=voiceofhu/one-user-web \
   web_ref=v1.0.0 \
   version= environment=dev publish=false deploy=false >"$output_file"
 
@@ -59,9 +59,9 @@ assert_no_post
 
 reset_api_log
 bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-  backend_repository=voiceofhu/one-user-backend-next \
+  backend_repository=voiceofhu/one-user-backend \
   backend_ref=main \
-  web_repository=voiceofhu/one-user-web-next \
+  web_repository=voiceofhu/one-user-web \
   web_ref=main \
   version=1.2.3 environment=prod publish=true deploy=true >"$output_file"
 grep -q '"publish": true' "$output_file"
@@ -71,9 +71,9 @@ assert_no_post
 
 reset_api_log
 bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-  backend_repository=voiceofhu/one-user-backend-next \
+  backend_repository=voiceofhu/one-user-backend \
   backend_ref=main \
-  web_repository=voiceofhu/one-user-web-next \
+  web_repository=voiceofhu/one-user-web \
   web_ref=main \
   version=1.2.3 environment=prod publish=true deploy=false >"$output_file"
 grep -q "\"confirmation\": \"enable:one-user:$action_sha\"" "$output_file"
@@ -98,18 +98,18 @@ expect_failure_before_api \
     app_repository=voiceofhu/one-browser-app-next app_ref=main version= publish=false extra=value
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-    backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
-    web_repository=voiceofhu/one-user-web-next web_ref=main \
+    backend_repository=voiceofhu/one-user-backend backend_ref=main \
+    web_repository=voiceofhu/one-user-web web_ref=main \
     version=v1.2.3 environment=dev publish=false deploy=false
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-    backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
-    web_repository=voiceofhu/one-user-web-next web_ref=main \
+    backend_repository=voiceofhu/one-user-backend backend_ref=main \
+    web_repository=voiceofhu/one-user-web web_ref=main \
     version=1.2.3 environment=qa publish=false deploy=false
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-    backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
-    web_repository=voiceofhu/one-user-web-next web_ref=main \
+    backend_repository=voiceofhu/one-user-backend backend_ref=main \
+    web_repository=voiceofhu/one-user-web web_ref=main \
     version=1.2.3 environment=prod publish=false deploy=true
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-amz.yml \
@@ -153,8 +153,8 @@ expect_failure_before_api \
     app_repository=voiceofhu/one-browser-app-next app_ref=main version= publish=false
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
-    backend_repository=voiceofhu/one-user-backend-next backend_ref=main \
-    web_repository=voiceofhu/one-user-web-next web_ref=main \
+    backend_repository=voiceofhu/one-user-backend backend_ref=main \
+    web_repository=voiceofhu/one-user-web web_ref=main \
     version=1.2.3 environment=prod publish=true deploy=false \
     confirmation=enable:one-user
 
@@ -177,10 +177,37 @@ grep -q '"backend_ref": "dddddddddddddddddddddddddddddddddddddddd"' "$output_fil
 grep -q '"web_ref": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' "$output_file"
 assert_no_post
 
+backend_fixture="$test_dir/one-user-backend"
+web_fixture="$test_dir/one-user-web"
+mkdir -p "$backend_fixture" "$web_fixture"
+git -C "$backend_fixture" init -q
+git -C "$backend_fixture" config user.name test
+git -C "$backend_fixture" config user.email test@example.invalid
+printf '%s\n' '[package]' 'name = "one-user-backend"' 'version = "0.1.0"' \
+  >"$backend_fixture/Cargo.toml"
+git -C "$backend_fixture" add Cargo.toml
+git -C "$backend_fixture" commit -qm initial
+git -C "$backend_fixture" remote add origin \
+  https://github.com/voiceofhu/one-user-backend.git
+
+git -C "$web_fixture" init -q
+git -C "$web_fixture" config user.name test
+git -C "$web_fixture" config user.email test@example.invalid
+printf '%s\n' '{"name":"one-user-web","version":"0.1.0"}' \
+  >"$web_fixture/package.json"
+git -C "$web_fixture" add package.json
+git -C "$web_fixture" commit -qm initial
+git -C "$web_fixture" remote add origin \
+  https://github.com/voiceofhu/one-user-web.git
+
 reset_api_log
 make --no-print-directory -s -C "$PROJECT_ROOT" deploy-user \
-  VERSION=1.2.3 DRY_RUN=true >"$output_file"
+  GENERATED_VERSION=26.815.1234 \
+  ONE_USER_BACKEND_DIR="$backend_fixture" \
+  ONE_USER_WEB_DIR="$web_fixture" \
+  DRY_RUN=true >"$output_file"
 grep -q 'File: user.yml' "$output_file"
+grep -q '"version": "26.815.1234"' "$output_file"
 grep -q '"environment": "prod"' "$output_file"
 grep -q '"publish": true' "$output_file"
 grep -q '"deploy": true' "$output_file"

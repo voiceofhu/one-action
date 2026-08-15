@@ -200,24 +200,40 @@ One User Web 会先编译进 Backend Docker 镜像，因此一个精确的 OCI i
 4. 回读并锁定镜像 digest；
 5. 通过 SSH 让服务器拉取该 digest、更新 Compose 服务并检查 `/readyz`。
 
-先 dry-run：
+版本获取方式与旧 `one-browser-action` 保持一致：默认按上海时区生成
+`YY.MDD.HHmm` 三段数字，并去掉每段前导零，例如：
 
-```bash
-make deploy-user VERSION=0.1.0
+```text
+2026-08-15 09:30 Asia/Shanghai -> 26.815.930
 ```
 
-检查输出的源码 SHA、payload 和两个确认字符串后，真实执行：
+先 dry-run，不需要手动填写版本：
+
+```bash
+make deploy-user
+```
+
+dry-run 会打印生成的版本、两个本地源码仓库、Action SHA、payload 和确认字符串，
+但不会修改源码、创建 tag、push、调度或部署。检查后真实执行：
 
 ```bash
 make deploy-user \
-  VERSION=0.1.0 \
   DRY_RUN=false \
   CONFIRM_DISPATCH='dispatch:user.yml:<action-sha>' \
   CONFIRM_MUTATION='mutate:user.yml:<action-sha>'
 ```
 
-版本必须同时等于 Backend `Cargo.toml` 和 Web `package.json` 中的版本。该目标固定使用
-`ENVIRONMENT=prod`、`PUBLISH=true` 和 `DEPLOY=true`，不能部署未发布或非生产镜像。
+真实执行会按旧发布流程：
+
+1. 要求本地 `../one-user/backend` 和 `../one-user/web` 均处于干净分支；
+2. 确认 origin 分别是 `voiceofhu/one-user-backend` 和 `voiceofhu/one-user-web`；
+3. 将 Backend `Cargo.toml`、`Cargo.lock` 与 Web `package.json` 更新为同一版本；
+4. 两个仓库分别创建版本 commit 和同名 `v<version>` tag，并原子 push 分支与 tag；
+5. 使用两个新 commit 的精确 SHA 触发 `user.yml`。
+
+如需固定版本，可在 dry-run 和真实执行时都显式传入，例如
+`VERSION=26.815.930`。版本必须是没有 `v` 前缀、没有前导零的三段数字。该目标固定
+使用 `ENVIRONMENT=prod`、`PUBLISH=true` 和 `DEPLOY=true`，不能部署未发布或非生产镜像。
 
 GitHub 中需要建立受保护的 `one-user-prod` environment，并配置：
 

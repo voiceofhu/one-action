@@ -5,10 +5,23 @@ DRY_RUN ?= true
 CONFIRM_DISPATCH ?=
 CONFIRM_MUTATION ?=
 
-ONE_USER_BACKEND_REPOSITORY ?= voiceofhu/one-user-backend-next
+ONE_USER_BACKEND_REPOSITORY ?= voiceofhu/one-user-backend
 ONE_USER_BACKEND_REF ?= main
-ONE_USER_WEB_REPOSITORY ?= voiceofhu/one-user-web-next
+ONE_USER_WEB_REPOSITORY ?= voiceofhu/one-user-web
 ONE_USER_WEB_REF ?= main
+
+SOURCE_ROOT ?= $(abspath $(PROJECT_ROOT)/..)
+ONE_USER_BACKEND_DIR ?= $(SOURCE_ROOT)/one-user/backend
+ONE_USER_WEB_DIR ?= $(SOURCE_ROOT)/one-user/web
+GENERATED_VERSION ?= $(shell node -e "\
+  const d=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Shanghai'}));\
+  const strip=value=>String(Number(value));\
+  const year=String(d.getFullYear()).slice(-2);\
+  const monthDay=String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');\
+  const hourMinute=String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');\
+  process.stdout.write([year,monthDay,hourMinute].map(strip).join('.'));\
+")
+USER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
 ONE_BROWSER_BACKEND_REPOSITORY ?= voiceofhu/one-browser-backend-next
 ONE_BROWSER_BACKEND_REF ?= main
@@ -44,6 +57,7 @@ export ACTION_REPOSITORY ACTION_REF GITHUB_API_URL DRY_RUN
 export CONFIRM_DISPATCH CONFIRM_MUTATION GH_TOKEN
 export ONE_USER_BACKEND_REPOSITORY ONE_USER_BACKEND_REF
 export ONE_USER_WEB_REPOSITORY ONE_USER_WEB_REF
+export ONE_USER_BACKEND_DIR ONE_USER_WEB_DIR GENERATED_VERSION
 export ONE_BROWSER_BACKEND_REPOSITORY ONE_BROWSER_BACKEND_REF
 export ONE_BROWSER_APP_REPOSITORY ONE_BROWSER_APP_REF
 export ONE_BROWSER_EGRESS_REPOSITORY ONE_BROWSER_EGRESS_REF

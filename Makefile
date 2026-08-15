@@ -52,8 +52,8 @@ help:
 		"    CONFIRM_MUTATION='mutate:egress.yml:<action-sha>'" \
 		"" \
 		"Example One User production deployment:" \
-		"  make deploy-user VERSION=1.2.3" \
-		"  make deploy-user VERSION=1.2.3 DRY_RUN=false \\" \
+		"  make deploy-user" \
+		"  make deploy-user DRY_RUN=false \\" \
 		"    CONFIRM_DISPATCH='dispatch:user.yml:<action-sha>' \\" \
 		"    CONFIRM_MUTATION='mutate:user.yml:<action-sha>'" \
 		"" \

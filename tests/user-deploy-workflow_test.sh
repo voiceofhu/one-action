@@ -5,6 +5,7 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow="$PROJECT_ROOT/.github/workflows/user.yml"
 dispatcher="$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
 deploy="$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
+release="$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
 ssh_config="$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
 
 require_text() {
@@ -17,8 +18,14 @@ require_text() {
 }
 
 require_text "$PROJECT_ROOT/make/workflows.mk" 'deploy-user:'
-require_text "$PROJECT_ROOT/make/workflows.mk" 'version="$${VERSION}" environment="prod"'
-require_text "$PROJECT_ROOT/make/workflows.mk" 'publish="true" deploy="true"'
+require_text "$PROJECT_ROOT/make/workflows.mk" 'VERSION="$(USER_RELEASE_VERSION)"'
+require_text "$PROJECT_ROOT/make/config.mk" 'timeZone:'\''Asia/Shanghai'\'''
+require_text "$PROJECT_ROOT/make/config.mk" 'USER_RELEASE_VERSION ='
+require_text "$release" 'bash "$DISPATCHER" user.yml'
+require_text "$release" 'version="$VERSION" environment=prod publish=true deploy=true'
+require_text "$release" 'chore: bump one-user-backend version to $release_tag'
+require_text "$release" 'chore: bump one-user-web version to $release_tag'
+require_text "$release" 'push --atomic origin'
 require_text "$dispatcher" "deployment is supported only for One User"
 require_text "$dispatcher" "One User deployment requires publication of the exact image"
 require_text "$dispatcher" "One User deployment requires environment=prod"

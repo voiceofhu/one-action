@@ -95,8 +95,8 @@ case "$workflow" in
   user.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
-    require_repository backend_repository voiceofhu/one-user-backend-next
-    require_repository web_repository voiceofhu/one-user-web-next
+    require_repository backend_repository voiceofhu/one-user-backend
+    require_repository web_repository voiceofhu/one-user-web
     publish_supported=true
     ;;
   one-amz.yml)

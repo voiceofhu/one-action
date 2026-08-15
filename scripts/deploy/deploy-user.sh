@@ -85,17 +85,12 @@ valid_image_ref "$DOCKER_IMAGE" || {
 
 env_file="$REMOTE_DIR/.env"
 compose_file="$REMOTE_DIR/docker-compose.yml"
-cert_dir="$REMOTE_DIR/cert"
 [[ -f "$env_file" && ! -L "$env_file" && -r "$env_file" ]] || {
   printf '%s\n' "Server-owned environment file is missing, unreadable, or unsafe: $env_file" >&2
   exit 1
 }
 [[ -f "$compose_file" && ! -L "$compose_file" && -r "$compose_file" ]] || {
   printf '%s\n' "Server-owned Compose file is missing, unreadable, or unsafe: $compose_file" >&2
-  exit 1
-}
-[[ -d "$cert_dir" && ! -L "$cert_dir" ]] || {
-  printf '%s\n' "Server-owned certificate directory is missing or unsafe: $cert_dir" >&2
   exit 1
 }
 command -v curl >/dev/null 2>&1 || {
@@ -123,6 +118,21 @@ compose() {
 
 docker_run compose version >/dev/null
 compose config --quiet
+cert_dir="$(compose config --environment | sed -n 's/^ONE_USER_CERT_DIR=//p')"
+[[ "$cert_dir" != *$'\n'* ]] || {
+  printf '%s\n' 'Compose resolved ONE_USER_CERT_DIR more than once' >&2
+  exit 1
+}
+cert_dir="${cert_dir:-./cert}"
+if [[ "$cert_dir" != /* ]]; then
+  cert_dir="$REMOTE_DIR/${cert_dir#./}"
+fi
+[[ -d "$cert_dir" && ! -L "$cert_dir" ]] || {
+  printf '%s\n' \
+    "Configured OIDC key directory is missing or unsafe: $cert_dir" \
+    "Create it with the One User signing key, or set ONE_USER_CERT_DIR in $env_file." >&2
+  exit 1
+}
 configured_images="$(compose config --images)"
 [[ "$configured_images" == "$DOCKER_IMAGE" ]] || {
   printf '%s\n' 'Compose did not resolve exactly the requested immutable One User image' >&2

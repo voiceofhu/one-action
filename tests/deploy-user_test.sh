@@ -68,6 +68,10 @@ fake_compose() {
         --quiet)
           return 0
           ;;
+        --environment)
+          printf '%s\n' 'ONE_USER_CERT_DIR=./custom-cert'
+          return 0
+          ;;
         --images)
           printf '%s\n' "$FAKE_EXPECTED_IMAGE"
           return 0
@@ -241,13 +245,14 @@ main() {
   export FAKE_EXPECTED_IMAGE_ID="sha256:$(printf 'b%.0s' {1..64})"
   export FAKE_CONTAINER_ID="$(printf 'c%.0s' {1..64})"
 
-  mkdir -p "$FAKE_BIN" "$FAKE_SERVER_ROOT/cert"
+  mkdir -p "$FAKE_BIN" "$FAKE_SERVER_ROOT/custom-cert"
   : >"$FAKE_COMMAND_LOG"
-  printf 'APP_ENV=production\nAPP_SECRET=fixture-only\n' >"$FAKE_SERVER_ROOT/.env"
+  printf 'APP_ENV=production\nAPP_SECRET=fixture-only\nONE_USER_CERT_DIR=./custom-cert\n' \
+    >"$FAKE_SERVER_ROOT/.env"
   printf 'services:\n  user:\n    image: ${DOCKER_IMAGE:?required}\n' >"$FAKE_SERVER_ROOT/docker-compose.yml"
-  printf '%s\n' 'fixture certificate' >"$FAKE_SERVER_ROOT/cert/server.crt"
-  printf '%s\n' 'fixture private key' >"$FAKE_SERVER_ROOT/cert/server.key"
-  chmod 600 "$FAKE_SERVER_ROOT/.env" "$FAKE_SERVER_ROOT/cert/server.key"
+  printf '%s\n' 'fixture certificate' >"$FAKE_SERVER_ROOT/custom-cert/server.crt"
+  printf '%s\n' 'fixture private key' >"$FAKE_SERVER_ROOT/custom-cert/server.key"
+  chmod 600 "$FAKE_SERVER_ROOT/.env" "$FAKE_SERVER_ROOT/custom-cert/server.key"
   ln -s "$test_script" "$FAKE_BIN/ssh"
   ln -s "$test_script" "$FAKE_BIN/docker"
   ln -s "$test_script" "$FAKE_BIN/curl"
@@ -265,6 +270,7 @@ main() {
 
   require_log "docker image=<$FAKE_EXPECTED_IMAGE> <compose> <version>"
   require_log "<config> <--quiet>"
+  require_log "<config> <--environment>"
   require_log "<config> <--images>"
   require_log "<pull> <$FAKE_SERVICE_NAME>"
   require_log "<image> <inspect> <--format> <{{.Id}}> <$FAKE_EXPECTED_IMAGE>"

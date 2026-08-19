@@ -200,7 +200,9 @@ jobs:
 
   protocol_contract:
     name: Verify typed Node control contract
-    needs: prepare
+    needs:
+      - normalize
+      - prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

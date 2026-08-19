@@ -1,22 +1,9 @@
-.PHONY: dispatch-one-user deploy-user dispatch-one-browser-backend dispatch-app \
+.PHONY: dispatch-one-browser-backend dispatch-app \
 	dispatch-app-debug dispatch-egress dispatch-browser-runtime dispatch-one-amz
 
 define dispatch_workflow
 	@bash $(PROJECT_ROOT)/scripts/github/dispatch-workflow.sh $(1) $(2)
 endef
-
-dispatch-one-user:
-	$(call dispatch_workflow,user.yml,\
-		backend_repository="$${ONE_USER_BACKEND_REPOSITORY}" \
-		backend_ref="$${ONE_USER_BACKEND_REF}" \
-		web_repository="$${ONE_USER_WEB_REPOSITORY}" \
-		web_ref="$${ONE_USER_WEB_REF}" \
-		version="$${VERSION}" publish="$${PUBLISH}")
-
-deploy-user: DRY_RUN = false
-deploy-user:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(USER_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-user-release.sh
 
 dispatch-one-browser-backend:
 	$(call dispatch_workflow,one-browser-backend.yml,\

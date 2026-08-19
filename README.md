@@ -12,6 +12,10 @@
 需要预览时必须显式传入 `DRY_RUN=true`。其余 GitHub Actions 调度默认都是
 `DRY_RUN=true`：只解析精确 commit SHA 并打印请求，不会发起工作流。
 
+三个 `deploy-*` 发布入口都只使用当前仓库已有的 Git 凭据推送源码 tag 和 Action
+控制 tag，不读取本机 `GH_TOKEN`。GitHub Actions 内部使用 Repository Secret
+`GH_TOKEN` 读取私有源码并完成后续发布、部署。
+
 ## 目录结构
 
 ```text
@@ -384,6 +388,8 @@ Server 镜像使用 `ghcr.io/voiceofhu/one-node-server:<version>@sha256:<index>`
 把当前源码中的 `deployments/docker-compose.yml` 先上传为 `.next`，健康检查同时通过
 `/api/healthz` 和 `/` 后才替换服务器上的 Compose 文件。Node Runtime 发布使用
 `ghcr.io/voiceofhu/one-node:<version>` 和 `one-node-v<version>` Release，不创建 `latest`。
+`deploy-node-server` 推送 `node-server-v<version>` 控制 tag；`deploy-node` 推送
+`one-node-v<version>` Action tag。两者均不要求本机设置 `GH_TOKEN`。
 
 One Node 的稳定入口位于：
 

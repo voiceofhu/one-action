@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+ACTION_REPOSITORY=voiceofhu/one-action
 : "${VERSION:?VERSION is required}"
 : "${ONE_NODE_DIR:?ONE_NODE_DIR is required}"
 : "${ONE_NODE_REPOSITORY:?ONE_NODE_REPOSITORY is required}"
@@ -34,6 +35,46 @@ case "${DRY_RUN:-true}" in
   *) printf '%s\n' 'DRY_RUN must be true or false' >&2; exit 1 ;;
 esac
 
+validate_action_repository() {
+  local remote branch status
+  remote="$(git -C "$PROJECT_ROOT" config --get remote.origin.url)"
+  case "$remote" in
+    "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
+    "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;
+    *) printf 'Action origin must be %s, got %s\n' "$ACTION_REPOSITORY" "$remote" >&2; exit 1 ;;
+  esac
+  branch="$(git -C "$PROJECT_ROOT" symbolic-ref --quiet --short HEAD)" || true
+  [[ "$branch" == main ]] || {
+    printf 'Action repository must be on main, got %s\n' "${branch:-detached HEAD}" >&2
+    exit 1
+  }
+  status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
+  [[ -z "$status" ]] || {
+    printf 'Action repository must be clean:\n%s\n' "$status" >&2
+    exit 1
+  }
+  git -C "$PROJECT_ROOT" rev-parse --verify HEAD
+}
+
+action_head="$(validate_action_repository)"
+! git -C "$PROJECT_ROOT" rev-parse -q --verify "refs/tags/$release_tag" >/dev/null || {
+  printf 'Action release tag already exists locally: %s\n' "$release_tag" >&2
+  exit 1
+}
+remote_action_tag_status=0
+git -C "$PROJECT_ROOT" ls-remote --exit-code --tags origin \
+  "refs/tags/$release_tag" "refs/tags/$release_tag^{}" >/dev/null || remote_action_tag_status=$?
+case "$remote_action_tag_status" in
+  0) printf 'Action release tag already exists remotely: %s\n' "$release_tag" >&2; exit 1 ;;
+  2) ;;
+  *) printf 'Could not check remote Action release tag %s.\n' "$release_tag" >&2; exit 1 ;;
+esac
+git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+[[ "$action_head" == "$(git -C "$PROJECT_ROOT" rev-parse refs/remotes/origin/main)" ]] || {
+  printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
+  exit 1
+}
+
 remote="$(git -C "$ONE_NODE_DIR" config --get remote.origin.url)"
 case "$remote" in
   "https://github.com/$ONE_NODE_REPOSITORY"|"https://github.com/$ONE_NODE_REPOSITORY.git"|\
@@ -48,7 +89,6 @@ if [[ -n "$remote_tag" ]]; then
     printf 'Remote Node tag %s does not contain matching VERSION metadata.\n' "$source_tag" >&2
     exit 1
   }
-  node_ref=$source_tag
 else
   [[ -z "$(git -C "$ONE_NODE_DIR" status --porcelain --untracked-files=all)" ]] || {
     printf 'One Node worktree must be clean: %s\n' "$ONE_NODE_DIR" >&2
@@ -85,14 +125,13 @@ else
   fi
   git -C "$ONE_NODE_DIR" push --atomic origin \
     "HEAD:refs/heads/$branch" "refs/tags/$source_tag:refs/tags/$source_tag"
-  node_ref=$source_tag
 fi
 
-action_sha="$(GH_TOKEN="${GH_TOKEN:-}" bash "$PROJECT_ROOT/scripts/github/resolve-ref.sh" \
-  voiceofhu/one-action "${ACTION_REF:-main}")"
-CONFIRM_DISPATCH="dispatch:node.yml:$action_sha" \
-CONFIRM_MUTATION="mutate:node.yml:$action_sha" \
-DRY_RUN=false \
-  exec bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
-    node_repository="$ONE_NODE_REPOSITORY" node_ref="$node_ref" \
-    version="$VERSION" publish=true deploy=false
+git -C "$PROJECT_ROOT" tag "$release_tag" "$action_head"
+if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$release_tag:refs/tags/$release_tag"; then
+  printf '%s\n' \
+    "Node source was published and local Action tag $release_tag was kept." \
+    "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$release_tag:refs/tags/$release_tag" >&2
+  exit 1
+fi
+printf 'Triggered One Node publication with Action tag: %s@%s\n' "$release_tag" "$action_head"

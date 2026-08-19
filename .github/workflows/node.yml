@@ -1,6 +1,9 @@
 name: One Node
 
 'on':
+  push:
+    tags:
+      - 'one-node-v*'
   workflow_dispatch:
     inputs:
       expected_action_sha:
@@ -38,32 +41,147 @@ permissions:
   contents: read
 
 jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      expected_action_sha: ${{ steps.normalize.outputs.expected_action_sha }}
+      node_repository: ${{ steps.normalize.outputs.node_repository }}
+      node_ref: ${{ steps.normalize.outputs.node_ref }}
+      version: ${{ steps.normalize.outputs.version }}
+      publish: ${{ steps.normalize.outputs.publish }}
+      confirmation: ${{ steps.normalize.outputs.confirmation }}
+    steps:
+      - name: Checkout exact workflow tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Normalize release inputs
+        id: normalize
+        shell: bash
+        env:
+          ACTION_SHA: ${{ github.sha }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          INPUT_DEPLOY: ${{ inputs.deploy }}
+          INPUT_EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          INPUT_NODE_REF: ${{ inputs.node_ref }}
+          INPUT_NODE_REPOSITORY: ${{ inputs.node_repository }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+
+          emit_output() {
+            local name=$1 value=$2
+            [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]]
+            printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
+          }
+
+          [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action \
+            && "$ACTION_SERVER_URL" == https://github.com \
+            && "$ACTION_SHA" =~ ^[0-9a-f]{40}$ \
+            && "$(git -C action rev-parse HEAD)" == "$ACTION_SHA" ]] || {
+            echo 'One Node release has an invalid Action trust root.' >&2
+            exit 1
+          }
+
+          case "$EVENT_NAME" in
+            push)
+              [[ "$TAG_NAME" =~ ^one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+                echo 'Release tag must use one-node-v<major>.<minor>.<patch>.' >&2
+                exit 1
+              }
+              [[ -n "$GH_TOKEN" ]] || {
+                echo 'Repository Secret GH_TOKEN is required.' >&2
+                exit 1
+              }
+              version=${TAG_NAME#one-node-v}
+              expected_action_sha=$ACTION_SHA
+              node_repository=voiceofhu/one-node-node
+              node_ref="$(bash action/scripts/github/resolve-ref.sh "$node_repository" "v$version")"
+              publish=true
+              confirmation="enable:node:$ACTION_SHA"
+              ;;
+            workflow_dispatch)
+              [[ "$INPUT_DEPLOY" == false ]] || {
+                echo 'One Node host deployment is not performed by this workflow.' >&2
+                exit 1
+              }
+              expected_action_sha=$INPUT_EXPECTED_ACTION_SHA
+              node_repository=$INPUT_NODE_REPOSITORY
+              node_ref=$INPUT_NODE_REF
+              version=$INPUT_VERSION
+              publish=$INPUT_PUBLISH
+              confirmation=$INPUT_CONFIRMATION
+              ;;
+            *) echo "Unsupported workflow event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+
+          [[ "$expected_action_sha" == "$ACTION_SHA" \
+            && "$node_repository" == voiceofhu/one-node-node \
+            && "$node_ref" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'One Node release inputs are invalid.' >&2
+            exit 1
+          }
+          [[ -z "$version" || "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ -n "$GH_TOKEN" \
+              && "$(bash action/scripts/github/resolve-ref.sh "$node_repository" "$node_ref")" == "$node_ref" ]] || {
+              echo 'One Node source commit could not be verified.' >&2
+              exit 1
+            }
+          fi
+          [[ "$publish" == true || "$publish" == false ]]
+          if [[ "$publish" == true ]]; then
+            [[ -n "$version" && "$confirmation" == "enable:node:$ACTION_SHA" ]]
+          else
+            [[ -z "$confirmation" ]]
+          fi
+
+          emit_output expected_action_sha "$expected_action_sha"
+          emit_output node_repository "$node_repository"
+          emit_output node_ref "$node_ref"
+          emit_output version "$version"
+          emit_output publish "$publish"
+          emit_output confirmation "$confirmation"
+
   prepare:
+    needs: normalize
     uses: ./.github/workflows/reusable-prepare.yml
     with:
       workflow_name: node
-      expected_action_sha: ${{ inputs.expected_action_sha }}
+      expected_action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
       primary_label: node
-      primary_repository: ${{ inputs.node_repository }}
-      primary_ref: ${{ inputs.node_ref }}
-      version: ${{ inputs.version }}
+      primary_repository: ${{ needs.normalize.outputs.node_repository }}
+      primary_ref: ${{ needs.normalize.outputs.node_ref }}
+      version: ${{ needs.normalize.outputs.version }}
       environment: prod
-      publish: ${{ inputs.publish }}
+      publish: ${{ needs.normalize.outputs.publish == 'true' }}
       publish_supported: true
-      deploy: ${{ inputs.deploy }}
-      confirmation: ${{ inputs.confirmation }}
+      deploy: false
+      confirmation: ${{ needs.normalize.outputs.confirmation }}
     secrets:
       source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
 
   build:
-    needs: prepare
+    needs:
+      - normalize
+      - prepare
     uses: ./.github/workflows/reusable-build-node.yml
     with:
-      action_sha: ${{ github.sha }}
-      source_repository: ${{ inputs.node_repository }}
+      action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
+      source_repository: ${{ needs.normalize.outputs.node_repository }}
       source_sha: ${{ needs.prepare.outputs.primary_sha }}
-      version: ${{ inputs.version }}
-      publish: ${{ inputs.publish }}
+      version: ${{ needs.normalize.outputs.version }}
+      publish: ${{ needs.normalize.outputs.publish == 'true' }}
     secrets:
       source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
 
@@ -71,6 +189,7 @@ jobs:
     name: Publish immutable One Node image and release
     if: needs.prepare.outputs.publish_authorized == 'true'
     needs:
+      - normalize
       - prepare
       - build
     runs-on: ubuntu-24.04
@@ -85,7 +204,7 @@ jobs:
       - name: Checkout exact Action tooling
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.expected_action_sha }}
+          ref: ${{ needs.normalize.outputs.expected_action_sha }}
           path: action
           fetch-depth: 1
           persist-credentials: false
@@ -93,7 +212,7 @@ jobs:
       - name: Checkout exact Node source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.node_repository }}
+          repository: ${{ needs.normalize.outputs.node_repository }}
           ref: ${{ needs.prepare.outputs.primary_sha }}
           path: node
           token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
@@ -202,6 +321,6 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" \
             dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 \
-            --target "${{ inputs.expected_action_sha }}" \
+            --target "${{ needs.normalize.outputs.expected_action_sha }}" \
             --title one-node \
             --notes "$release_body"

@@ -5,6 +5,7 @@ PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 include $(PROJECT_ROOT)/make/config.mk
 include $(PROJECT_ROOT)/make/github.mk
 include $(PROJECT_ROOT)/make/workflows.mk
+include $(PROJECT_ROOT)/make/user.mk
 include $(PROJECT_ROOT)/make/egress.mk
 include $(PROJECT_ROOT)/make/node.mk
 

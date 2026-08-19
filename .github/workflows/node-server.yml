@@ -1,6 +1,9 @@
 name: One Node Server
 
 'on':
+  push:
+    tags:
+      - 'node-server-v*'
   workflow_dispatch:
     inputs:
       expected_action_sha:
@@ -46,23 +49,152 @@ permissions:
   contents: read
 
 jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      expected_action_sha: ${{ steps.normalize.outputs.expected_action_sha }}
+      backend_repository: ${{ steps.normalize.outputs.backend_repository }}
+      backend_ref: ${{ steps.normalize.outputs.backend_ref }}
+      web_repository: ${{ steps.normalize.outputs.web_repository }}
+      web_ref: ${{ steps.normalize.outputs.web_ref }}
+      version: ${{ steps.normalize.outputs.version }}
+      publish: ${{ steps.normalize.outputs.publish }}
+      deploy: ${{ steps.normalize.outputs.deploy }}
+      confirmation: ${{ steps.normalize.outputs.confirmation }}
+    steps:
+      - name: Checkout exact workflow tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Normalize release inputs
+        id: normalize
+        shell: bash
+        env:
+          ACTION_SHA: ${{ github.sha }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          INPUT_BACKEND_REF: ${{ inputs.backend_ref }}
+          INPUT_BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          INPUT_DEPLOY: ${{ inputs.deploy }}
+          INPUT_EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_WEB_REF: ${{ inputs.web_ref }}
+          INPUT_WEB_REPOSITORY: ${{ inputs.web_repository }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+
+          emit_output() {
+            local name=$1 value=$2
+            [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]]
+            printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
+          }
+
+          [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action \
+            && "$ACTION_SERVER_URL" == https://github.com \
+            && "$ACTION_SHA" =~ ^[0-9a-f]{40}$ \
+            && "$(git -C action rev-parse HEAD)" == "$ACTION_SHA" ]] || {
+            echo 'One Node Server release has an invalid Action trust root.' >&2
+            exit 1
+          }
+
+          case "$EVENT_NAME" in
+            push)
+              [[ "$TAG_NAME" =~ ^node-server-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+                echo 'Control tag must use node-server-v<major>.<minor>.<patch>.' >&2
+                exit 1
+              }
+              [[ -n "$GH_TOKEN" ]] || {
+                echo 'Repository Secret GH_TOKEN is required.' >&2
+                exit 1
+              }
+              version=${TAG_NAME#node-server-v}
+              source_tag="v$version"
+              expected_action_sha=$ACTION_SHA
+              backend_repository=voiceofhu/one-node-server
+              backend_ref="$(bash action/scripts/github/resolve-ref.sh "$backend_repository" "$source_tag")"
+              web_repository=voiceofhu/one-node-web
+              web_ref="$(bash action/scripts/github/resolve-ref.sh "$web_repository" "$source_tag")"
+              publish=true
+              deploy=true
+              confirmation="enable:one-node-server:$ACTION_SHA"
+              ;;
+            workflow_dispatch)
+              expected_action_sha=$INPUT_EXPECTED_ACTION_SHA
+              backend_repository=$INPUT_BACKEND_REPOSITORY
+              backend_ref=$INPUT_BACKEND_REF
+              web_repository=$INPUT_WEB_REPOSITORY
+              web_ref=$INPUT_WEB_REF
+              version=$INPUT_VERSION
+              publish=$INPUT_PUBLISH
+              deploy=$INPUT_DEPLOY
+              confirmation=$INPUT_CONFIRMATION
+              ;;
+            *) echo "Unsupported workflow event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+
+          [[ "$expected_action_sha" == "$ACTION_SHA" \
+            && "$backend_repository" == voiceofhu/one-node-server \
+            && "$web_repository" == voiceofhu/one-node-web \
+            && "$backend_ref" =~ ^[0-9a-f]{40}$ \
+            && "$web_ref" =~ ^[0-9a-f]{40}$ \
+            && "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'One Node Server release inputs are invalid.' >&2
+            exit 1
+          }
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ -n "$GH_TOKEN" \
+              && "$(bash action/scripts/github/resolve-ref.sh "$backend_repository" "$backend_ref")" == "$backend_ref" \
+              && "$(bash action/scripts/github/resolve-ref.sh "$web_repository" "$web_ref")" == "$web_ref" ]] || {
+              echo 'One Node Server source commits could not be verified.' >&2
+              exit 1
+            }
+          fi
+          [[ "$publish" == true || "$publish" == false ]]
+          [[ "$deploy" == true || "$deploy" == false ]]
+          if [[ "$publish" == true ]]; then
+            [[ "$confirmation" == "enable:one-node-server:$ACTION_SHA" ]]
+          else
+            [[ -z "$confirmation" && "$deploy" == false ]]
+          fi
+          [[ "$deploy" == false || "$publish" == true ]]
+
+          emit_output expected_action_sha "$expected_action_sha"
+          emit_output backend_repository "$backend_repository"
+          emit_output backend_ref "$backend_ref"
+          emit_output web_repository "$web_repository"
+          emit_output web_ref "$web_ref"
+          emit_output version "$version"
+          emit_output publish "$publish"
+          emit_output deploy "$deploy"
+          emit_output confirmation "$confirmation"
+
   prepare:
+    needs: normalize
     uses: ./.github/workflows/reusable-prepare.yml
     with:
       workflow_name: one-node-server
-      expected_action_sha: ${{ inputs.expected_action_sha }}
+      expected_action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
       primary_label: backend
-      primary_repository: ${{ inputs.backend_repository }}
-      primary_ref: ${{ inputs.backend_ref }}
+      primary_repository: ${{ needs.normalize.outputs.backend_repository }}
+      primary_ref: ${{ needs.normalize.outputs.backend_ref }}
       secondary_label: web
-      secondary_repository: ${{ inputs.web_repository }}
-      secondary_ref: ${{ inputs.web_ref }}
-      version: ${{ inputs.version }}
+      secondary_repository: ${{ needs.normalize.outputs.web_repository }}
+      secondary_ref: ${{ needs.normalize.outputs.web_ref }}
+      version: ${{ needs.normalize.outputs.version }}
       environment: prod
-      publish: ${{ inputs.publish }}
+      publish: ${{ needs.normalize.outputs.publish == 'true' }}
       publish_supported: true
-      deploy: ${{ inputs.deploy }}
-      confirmation: ${{ inputs.confirmation }}
+      deploy: ${{ needs.normalize.outputs.deploy == 'true' }}
+      confirmation: ${{ needs.normalize.outputs.confirmation }}
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
 
@@ -106,7 +238,7 @@ jobs:
       - name: Checkout deploy Server source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.backend_repository }}
+          repository: ${{ needs.normalize.outputs.backend_repository }}
           ref: ${{ needs.prepare.outputs.primary_sha }}
           path: server-current
           token: ${{ secrets.GH_TOKEN }}
@@ -135,6 +267,7 @@ jobs:
   publish:
     if: needs.prepare.outputs.publish_authorized == 'true'
     needs:
+      - normalize
       - prepare
       - protocol_contract
     permissions:
@@ -143,20 +276,21 @@ jobs:
     uses: ./.github/workflows/reusable-publish-web-backend.yml
     with:
       workflow_name: one-node-server
-      action_sha: ${{ inputs.expected_action_sha }}
-      backend_repository: ${{ inputs.backend_repository }}
+      action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
+      backend_repository: ${{ needs.normalize.outputs.backend_repository }}
       backend_sha: ${{ needs.prepare.outputs.primary_sha }}
-      web_repository: ${{ inputs.web_repository }}
+      web_repository: ${{ needs.normalize.outputs.web_repository }}
       web_sha: ${{ needs.prepare.outputs.secondary_sha }}
-      version: ${{ inputs.version }}
+      version: ${{ needs.normalize.outputs.version }}
       environment: prod
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
 
   deploy:
     name: Deploy verified One Node Server image
-    if: inputs.deploy && needs.publish.result == 'success'
+    if: needs.normalize.outputs.deploy == 'true' && needs.publish.result == 'success'
     needs:
+      - normalize
       - prepare
       - publish
     runs-on: ubuntu-24.04
@@ -187,7 +321,7 @@ jobs:
       - name: Checkout exact deployment tooling
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.expected_action_sha }}
+          ref: ${{ needs.normalize.outputs.expected_action_sha }}
           path: action
           fetch-depth: 1
           persist-credentials: false
@@ -195,7 +329,7 @@ jobs:
       - name: Checkout exact Server deployment file
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.backend_repository }}
+          repository: ${{ needs.normalize.outputs.backend_repository }}
           ref: ${{ needs.prepare.outputs.primary_sha }}
           path: server
           token: ${{ secrets.GH_TOKEN }}

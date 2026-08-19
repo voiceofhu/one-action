@@ -225,6 +225,8 @@ done
 if [[ "$publish" == true ]]; then
   if [[ "$workflow" == user.yml ]]; then
     workflow_base=one-user
+  elif [[ "$workflow" == node-server.yml ]]; then
+    workflow_base=one-node-server
   else
     workflow_base="${workflow%.yml}"
   fi

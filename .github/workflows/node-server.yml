@@ -287,6 +287,7 @@ jobs:
       environment: prod
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
+      package_write_token: ${{ secrets.GH_TOKEN }}
 
   deploy:
     name: Deploy verified One Node Server image

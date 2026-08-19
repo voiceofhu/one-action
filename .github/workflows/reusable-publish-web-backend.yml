@@ -31,6 +31,9 @@ name: Publish combined Web and backend image
       source_read_token:
         description: Token limited to reading the fixed backend and Web repositories
         required: true
+      package_write_token:
+        description: Token allowed to publish the fixed GHCR package
+        required: false
     outputs:
       digest:
         description: Registry digest of the published multi-platform OCI index
@@ -60,7 +63,6 @@ jobs:
       backend_dockerfile: ${{ steps.config.outputs.backend_dockerfile }}
       web_package: ${{ steps.config.outputs.web_package }}
       web_output_dir: ${{ steps.config.outputs.web_output_dir }}
-      artifact_name: ${{ steps.config.outputs.artifact_name }}
       created_at: ${{ steps.config.outputs.created_at }}
     steps:
       - name: Validate immutable publication inputs
@@ -153,93 +155,8 @@ jobs:
             echo "backend_dockerfile=$backend_dockerfile"
             echo "web_package=$web_package"
             echo "web_output_dir=$web_output_dir"
-            echo "artifact_name=web-dist-$WORKFLOW_NAME-${WEB_SHA:0:12}"
             echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
-
-  web:
-    name: Build and verify Web once
-    needs: plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout Web at exact commit
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.web_repository }}
-          ref: ${{ inputs.web_sha }}
-          path: web
-          token: ${{ secrets.source_read_token }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ inputs.workflow_name == 'one-node-server' && '11.7.0' || '10.32.1' }}
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Verify and build Web once
-        shell: bash
-        env:
-          EXPECTED_WEB_PACKAGE: ${{ needs.plan.outputs.web_package }}
-          WEB_SHA: ${{ inputs.web_sha }}
-          VERSION: ${{ inputs.version }}
-          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
-          WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
-        run: |
-          set -Eeuo pipefail
-          [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
-            echo "Web checkout HEAD does not match web_sha." >&2
-            exit 1
-          }
-          test -f web/package.json && test ! -L web/package.json
-          test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
-          web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
-          web_version="$(jq -er '.version | select(type == "string")' web/package.json)"
-          [ "$web_package" = "$EXPECTED_WEB_PACKAGE" ] || {
-            echo "Web package name does not match the fixed product package." >&2
-            exit 1
-          }
-          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
-            [ "$web_version" = "$VERSION" ] || {
-              echo "Requested version does not match the Web package version." >&2
-              exit 1
-            }
-          fi
-          pnpm --dir web install --frozen-lockfile
-          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
-            pnpm --dir web format:check
-          fi
-          pnpm --dir web lint
-          case "$DEPLOYMENT_ENVIRONMENT" in
-            dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
-            stage) pnpm --dir web build:stage ;;
-            prod) pnpm --dir web build ;;
-            *) exit 1 ;;
-          esac
-          test -f "web/$WEB_OUTPUT_DIR/index.html"
-          if find "web/$WEB_OUTPUT_DIR" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
-            echo "Web dist may contain only regular files and directories." >&2
-            exit 1
-          fi
-          git -C web diff --exit-code -- .
-      - name: Upload verified Web dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ needs.plan.outputs.artifact_name }}
-          path: web/${{ needs.plan.outputs.web_output_dir }}
-          if-no-files-found: error
-          include-hidden-files: true
-          compression-level: 0
-          retention-days: 1
 
   verify_backend:
     name: Verify backend source
@@ -293,9 +210,7 @@ jobs:
           git diff --exit-code -- .
   build:
     name: Build ${{ matrix.suffix }} image
-    needs:
-      - plan
-      - web
+    needs: plan
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -325,34 +240,91 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Download verified Web dist
-        uses: actions/download-artifact@v4
+      - name: Checkout Web at exact commit
+        uses: actions/checkout@v4
         with:
-          name: ${{ needs.plan.outputs.artifact_name }}
-          path: web-dist
+          repository: ${{ inputs.web_repository }}
+          ref: ${{ inputs.web_sha }}
+          path: web
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.workflow_name == 'one-node-server' && '11.7.0' || '10.32.1' }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build Web from the fresh checkout
+        shell: bash
+        env:
+          EXPECTED_WEB_PACKAGE: ${{ needs.plan.outputs.web_package }}
+          WEB_SHA: ${{ inputs.web_sha }}
+          VERSION: ${{ inputs.version }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
+        run: |
+          set -Eeuo pipefail
+          [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
+            echo "Web checkout HEAD does not match web_sha." >&2
+            exit 1
+          }
+          test -f web/package.json && test ! -L web/package.json
+          test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
+          web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
+          web_version="$(jq -er '.version | select(type == "string")' web/package.json)"
+          [ "$web_package" = "$EXPECTED_WEB_PACKAGE" ] || {
+            echo "Web package name does not match the fixed product package." >&2
+            exit 1
+          }
+          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+            [ "$web_version" = "$VERSION" ] || {
+              echo "Requested version does not match the Web package version." >&2
+              exit 1
+            }
+          fi
+          pnpm --dir web install --frozen-lockfile
+          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+            pnpm --dir web format:check
+          fi
+          pnpm --dir web lint
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
+            stage) pnpm --dir web build:stage ;;
+            prod) pnpm --dir web build ;;
+            *) exit 1 ;;
+          esac
+          test -f "web/$WEB_OUTPUT_DIR/index.html"
+          if find "web/$WEB_OUTPUT_DIR" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
+            echo "Web dist may contain only regular files and directories." >&2
+            exit 1
+          fi
+          git -C web diff --exit-code -- .
 
       - name: Assemble exact architecture build context
         shell: bash
         env:
           BACKEND_SHA: ${{ inputs.backend_sha }}
           BACKEND_DOCKERFILE: ${{ needs.plan.outputs.backend_dockerfile }}
+          WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
         run: |
           set -Eeuo pipefail
           [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
             echo "Backend checkout HEAD does not match backend_sha." >&2
             exit 1
           }
-          test -f web-dist/index.html
-          if find web-dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
-            echo "Downloaded Web dist may contain only regular files and directories." >&2
-            exit 1
-          fi
           [ ! -e backend/web-dist ] || {
             echo "backend/web-dist must not be committed in source" >&2
             exit 1
           }
           mkdir backend/web-dist
-          cp -R web-dist/. backend/web-dist/
+          cp -R "web/$WEB_OUTPUT_DIR/." backend/web-dist/
           test -f "backend/$BACKEND_DOCKERFILE" && test ! -L "backend/$BACKEND_DOCKERFILE"
           test -f backend/web-dist/index.html
 
@@ -364,7 +336,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ github.token }}
+          password: ${{ secrets.package_write_token || github.token }}
 
       - name: Build and push architecture image
         uses: docker/build-push-action@v6
@@ -476,7 +448,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ github.token }}
+          password: ${{ secrets.package_write_token || github.token }}
 
       - name: Create, verify, and record OCI index
         id: publish
@@ -494,6 +466,6 @@ jobs:
           VERSION: ${{ inputs.version }}
           DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.package_write_token || github.token }}
           PUBLISHED_IMAGE_PATH: publication/published-image.json
         run: exec bash action/scripts/release/publish-ghcr-multiarch.sh

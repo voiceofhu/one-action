@@ -76,6 +76,7 @@ require_text "$one_amz" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
 
 require_text "$node_server" 'workflow_name: one-node-server'
 require_text "$node_server" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+require_text "$node_server" 'package_write_token: ${{ secrets.GH_TOKEN }}'
 require_text "$node_server" 'uses: actions/setup-go@v5'
 require_text "$node_server" 'go test -mod=readonly -count=1 ./...'
 require_text "$node_server" 'exec bash action/scripts/deploy/deploy-node-server.sh'
@@ -100,14 +101,8 @@ require_text "$combined" 'persist-credentials: false'
 require_text "$combined" 'pnpm --dir web install --frozen-lockfile'
 require_text "$combined" 'pnpm --dir web format:check'
 require_text "$combined" 'pnpm --dir web lint'
-require_text "$combined" 'name: Build and verify Web once'
-require_text "$combined" 'name: Upload verified Web dist'
-require_text "$combined" 'actions/upload-artifact@v4'
-require_text "$combined" 'compression-level: 0'
-require_text "$combined" 'retention-days: 1'
-require_text "$combined" 'name: Download verified Web dist'
-require_text "$combined" 'actions/download-artifact@v4'
-require_text "$combined" 'cp -R web-dist/. backend/web-dist/'
+require_text "$combined" 'name: Build Web from the fresh checkout'
+require_text "$combined" 'cp -R "web/$WEB_OUTPUT_DIR/." backend/web-dist/'
 require_text "$combined" 'cargo fmt --all -- --check'
 require_text "$combined" 'cargo clippy --all-targets --all-features --locked -- -D warnings'
 require_text "$combined" 'cargo test --all-features --locked'
@@ -127,7 +122,9 @@ require_text "$combined" 'publication sources do not match the fixed product rep
 require_text "$combined" 'ACTION_REPOSITORY" != voiceofhu/one-action'
 require_text "$combined" 'group: ghcr-${{ inputs.workflow_name }}-publish'
 require_text "$combined" 'source_read_token:'
+require_text "$combined" 'package_write_token:'
 require_text "$combined" 'token: ${{ secrets.source_read_token }}'
+require_text "$combined" 'password: ${{ secrets.package_write_token || github.token }}'
 require_text "$combined" 'Backend checkout HEAD does not match backend_sha.'
 require_text "$combined" 'Web checkout HEAD does not match web_sha.'
 require_text "$combined" 'web_package=one-user-web'
@@ -170,9 +167,8 @@ require_text "$combined" 'exec bash action/scripts/release/publish-ghcr-multiarc
 require_text "$combined" 'value: ${{ jobs.manifest.outputs.digest }}'
 require_text "$combined" 'value: ${{ jobs.manifest.outputs.image_ref }}'
 
-if [ "$(grep -Fc 'name: Verify and build Web once' "$combined")" -ne 1 ] \
-  || [ "$(grep -Fc 'name: Upload verified Web dist' "$combined")" -ne 1 ]; then
-  printf '%s\n' 'Combined publisher must build and upload Web exactly once.' >&2
+if grep -Eq 'actions/(upload|download)-artifact|artifact_name' "$combined"; then
+  printf '%s\n' 'Combined publisher must build Web from a fresh checkout in each architecture job.' >&2
   exit 1
 fi
 
@@ -185,25 +181,18 @@ if grep -Fq 'cargo check --all-targets --all-features --locked' "$combined"; the
   exit 1
 fi
 
-web_block="$(job_block "$combined" web)"
 verify_backend_block="$(job_block "$combined" verify_backend)"
 build_block="$(job_block "$combined" build)"
 manifest_block="$(job_block "$combined" manifest)"
 
-grep -Fq 'needs: plan' <<<"$web_block" || {
-  printf '%s\n' 'Web build must depend on the immutable publication plan.' >&2
-  exit 1
-}
 grep -Fq 'needs: plan' <<<"$verify_backend_block" || {
   printf '%s\n' 'Backend verification must depend on the immutable publication plan.' >&2
   exit 1
 }
-for dependency in plan web; do
-  grep -Fq -- "- $dependency" <<<"$build_block" || {
-    printf 'Architecture builds must depend on %s.\n' "$dependency" >&2
-    exit 1
-  }
-done
+grep -Fq 'needs: plan' <<<"$build_block" || {
+  printf '%s\n' 'Architecture builds must depend on the immutable publication plan.' >&2
+  exit 1
+}
 if grep -Fq -- '- verify_backend' <<<"$build_block"; then
   printf '%s\n' 'Architecture builds must run in parallel with backend verification.' >&2
   exit 1
@@ -246,9 +235,9 @@ for reusable in "$combined" "$rust"; do
   fi
 done
 
-require_text "$combined" 'GITHUB_TOKEN: ${{ github.token }}'
+require_text "$combined" 'GITHUB_TOKEN: ${{ secrets.package_write_token || github.token }}'
 require_text "$combined" 'PUBLISHED_IMAGE_PATH: publication/published-image.json'
-if [ "$(grep -Fc 'GITHUB_TOKEN: ${{ github.token }}' "$combined")" -ne 1 ]; then
+if [ "$(grep -Fc 'GITHUB_TOKEN: ${{ secrets.package_write_token || github.token }}' "$combined")" -ne 1 ]; then
   printf '%s\n' 'Combined publisher token must be exposed only to the final manifest step.' >&2
   exit 1
 fi

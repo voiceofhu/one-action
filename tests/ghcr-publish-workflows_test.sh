@@ -55,6 +55,7 @@ fi
 user="$PROJECT_ROOT/.github/workflows/user.yml"
 one_amz="$PROJECT_ROOT/.github/workflows/one-amz.yml"
 node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
+node_server_deployer="$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
 
 require_text "$user" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
 require_text "$user" 'workflow_name: one-user'
@@ -79,6 +80,11 @@ require_text "$node_server" 'workflow_name: one-node-server'
 require_text "$node_server" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
 require_text "$node_server" 'package_write_token: ${{ secrets.GH_TOKEN }}'
 require_text "$node_server" 'exec bash action/scripts/deploy/deploy-node-server.sh'
+require_text "$node_server" 'PUBLIC_URL: ${{ vars.DEPLOY_URL }}'
+require_text "$node_server_deployer" ': "${PUBLIC_URL:?PUBLIC_URL is required}"'
+require_text "$node_server_deployer" '"$public_url/api/healthz"'
+require_text "$node_server_deployer" '"$public_url/"'
+require_text "$node_server_deployer" 'One Node Server public endpoint is ready:'
 
 for direct_workflow in "$user" "$node_server"; do
   if grep -Eq 'protocol_contract|Validate immutable deployment image|needs\.prepare|publish_authorized' \

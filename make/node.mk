@@ -1,4 +1,4 @@
-.PHONY: node-check node-bundle-installers dispatch-node
+.PHONY: node-check node-bundle-installers dispatch-node deploy-node-server deploy-node
 
 node-check:
 	@sh $(PROJECT_ROOT)/node/tests/scripts_test.sh
@@ -16,3 +16,13 @@ dispatch-node:
 		node_repository="$${ONE_NODE_REPOSITORY}" \
 		node_ref="$${ONE_NODE_REF}" version="$${VERSION}" \
 		publish="$${PUBLISH}" deploy="$${DEPLOY}"
+
+deploy-node-server: DRY_RUN = false
+deploy-node-server:
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/deploy-node-server-release.sh
+
+deploy-node: DRY_RUN = false
+deploy-node:
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/deploy-node-release.sh

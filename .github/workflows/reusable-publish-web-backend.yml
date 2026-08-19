@@ -42,7 +42,6 @@ name: Publish combined Web and backend image
 permissions:
   contents: read
   packages: write
-
 concurrency:
   group: ghcr-${{ inputs.workflow_name }}-publish
   cancel-in-progress: false
@@ -60,6 +59,7 @@ jobs:
       backend_package: ${{ steps.config.outputs.backend_package }}
       backend_dockerfile: ${{ steps.config.outputs.backend_dockerfile }}
       web_package: ${{ steps.config.outputs.web_package }}
+      web_output_dir: ${{ steps.config.outputs.web_output_dir }}
       artifact_name: ${{ steps.config.outputs.artifact_name }}
       created_at: ${{ steps.config.outputs.created_at }}
     steps:
@@ -117,6 +117,17 @@ jobs:
               expected_backend_repository=voiceofhu/one-user-backend
               expected_web_repository=voiceofhu/one-user-web
               publish_tag="$VERSION"
+              web_output_dir=dist
+              ;;
+            one-node-server)
+              registry_image=ghcr.io/voiceofhu/one-node-server
+              backend_package=github.com/voh/one-node/one-node-server
+              backend_dockerfile=Dockerfile
+              web_package=one-node-web-vite
+              expected_backend_repository=voiceofhu/one-node-server
+              expected_web_repository=voiceofhu/one-node-web
+              publish_tag="$VERSION"
+              web_output_dir=out
               ;;
             one-amz)
               registry_image=ghcr.io/voiceofhu/one-amz-backend-next
@@ -126,6 +137,7 @@ jobs:
               expected_backend_repository=voiceofhu/one-amz-backend-next
               expected_web_repository=voiceofhu/one-amz-web-next
               publish_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
+              web_output_dir=dist
               ;;
             *) echo "workflow is not allowed to publish a combined image" >&2; exit 1 ;;
           esac
@@ -140,6 +152,7 @@ jobs:
             echo "backend_package=$backend_package"
             echo "backend_dockerfile=$backend_dockerfile"
             echo "web_package=$web_package"
+            echo "web_output_dir=$web_output_dir"
             echo "artifact_name=web-dist-$WORKFLOW_NAME-${WEB_SHA:0:12}"
             echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
@@ -165,7 +178,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.32.1
+          version: ${{ inputs.workflow_name == 'one-node-server' && '11.7.0' || '10.32.1' }}
           run_install: false
 
       - name: Set up Node.js
@@ -180,6 +193,7 @@ jobs:
           WEB_SHA: ${{ inputs.web_sha }}
           VERSION: ${{ inputs.version }}
           DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
         run: |
           set -Eeuo pipefail
           [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
@@ -194,12 +208,16 @@ jobs:
             echo "Web package name does not match the fixed product package." >&2
             exit 1
           }
-          [ "$web_version" = "$VERSION" ] || {
-            echo "Requested version does not match the Web package version." >&2
-            exit 1
-          }
+          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+            [ "$web_version" = "$VERSION" ] || {
+              echo "Requested version does not match the Web package version." >&2
+              exit 1
+            }
+          fi
           pnpm --dir web install --frozen-lockfile
-          pnpm --dir web format:check
+          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+            pnpm --dir web format:check
+          fi
           pnpm --dir web lint
           case "$DEPLOYMENT_ENVIRONMENT" in
             dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
@@ -207,18 +225,17 @@ jobs:
             prod) pnpm --dir web build ;;
             *) exit 1 ;;
           esac
-          test -f web/dist/index.html
-          if find web/dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
+          test -f "web/$WEB_OUTPUT_DIR/index.html"
+          if find "web/$WEB_OUTPUT_DIR" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
             echo "Web dist may contain only regular files and directories." >&2
             exit 1
           fi
           git -C web diff --exit-code -- .
-
       - name: Upload verified Web dist
         uses: actions/upload-artifact@v4
         with:
           name: ${{ needs.plan.outputs.artifact_name }}
-          path: web/dist
+          path: web/${{ needs.plan.outputs.web_output_dir }}
           if-no-files-found: error
           include-hidden-files: true
           compression-level: 0
@@ -243,6 +260,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify locked Rust source
+        if: inputs.workflow_name != 'one-node-server'
         shell: bash
         working-directory: backend
         env:
@@ -273,7 +291,6 @@ jobs:
           cargo clippy --all-targets --all-features --locked -- -D warnings
           cargo test --all-features --locked
           git diff --exit-code -- .
-
   build:
     name: Build ${{ matrix.suffix }} image
     needs:
@@ -370,6 +387,9 @@ jobs:
           sbom: false
           cache-from: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }}
           cache-to: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
+          build-args: |
+            VERSION=${{ inputs.version }}
+            COMMIT=${{ inputs.backend_sha }}
 
       - name: Verify pushed architecture image
         shell: bash

@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml) ;;
+  user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -111,6 +111,13 @@ case "$workflow" in
     require_repository backend_repository voiceofhu/one-browser-backend-next
     publish_supported=true
     ;;
+  node-server.yml)
+    require_inputs backend_repository backend_ref web_repository web_ref \
+      version publish deploy
+    require_repository backend_repository voiceofhu/one-node-server
+    require_repository web_repository voiceofhu/one-node-web
+    publish_supported=true
+    ;;
   app.yml)
     require_inputs app_repository app_ref version publish
     require_repository app_repository voiceofhu/one-browser-app-next
@@ -127,6 +134,7 @@ case "$workflow" in
   node.yml)
     require_inputs node_repository node_ref version publish deploy
     require_repository node_repository voiceofhu/one-node-node
+    publish_supported=true
     ;;
 esac
 
@@ -150,7 +158,12 @@ upload_artifact="$(input_value upload_artifact || printf false)"
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-[[ "$deploy" == false ]] || die 'deployment is manual; Action deployment is disabled'
+if [[ "$deploy" == true && "$workflow" != node-server.yml ]]; then
+  die 'deployment is implemented only for One Node Server'
+fi
+if [[ "$deploy" == true && "$publish" != true ]]; then
+  die 'One Node Server deployment requires publication'
+fi
 [[ "$upload_artifact" == false ]] || die 'artifact upload is not implemented; refusing before API access'
 if [[ "$publish" == true ]]; then
   [[ "$publish_supported" == true ]] || die 'workflow publication is not implemented'

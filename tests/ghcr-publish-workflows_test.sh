@@ -30,13 +30,14 @@ job_block() {
 
 require_text "$prepare" 'publish_supported:'
 require_text "$prepare" 'publish_authorized:'
-require_text "$prepare" 'Deployment requires One User production publication.'
+require_text "$prepare" 'Deployment requires One User or One Node Server production publication.'
 require_text "$prepare" '[ "$UPLOAD_ARTIFACT" = false ]'
 require_text "$prepare" 'version must be an unprefixed three-component numeric version'
 require_text "$prepare" 'expected="enable:$WORKFLOW_NAME:$EXPECTED_ACTION_SHA"'
 require_text "$prepare" 'Dispatcher-bound Action SHA is missing, invalid, or stale.'
 require_text "$prepare" 'one-user-backend'
 require_text "$prepare" 'one-amz-backend-next'
+require_text "$prepare" 'one-node-server'
 require_text "$prepare" 'one-browser-backend-next'
 require_text "$prepare" 'one-browser-egress-next'
 require_text "$prepare" 'Public Egress releases require environment=prod.'
@@ -53,6 +54,7 @@ fi
 
 user="$PROJECT_ROOT/.github/workflows/user.yml"
 one_amz="$PROJECT_ROOT/.github/workflows/one-amz.yml"
+node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
 
 require_text "$user" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
 require_text "$user" 'workflow_name: one-user'
@@ -71,6 +73,12 @@ require_text "$one_amz" 'backend_sha: ${{ needs.prepare.outputs.primary_sha }}'
 require_text "$one_amz" 'web_sha: ${{ needs.prepare.outputs.secondary_sha }}'
 require_text "$one_amz" 'packages: write'
 require_text "$one_amz" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
+
+require_text "$node_server" 'workflow_name: one-node-server'
+require_text "$node_server" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+require_text "$node_server" 'uses: actions/setup-go@v5'
+require_text "$node_server" 'go test -mod=readonly -count=1 ./...'
+require_text "$node_server" 'exec bash action/scripts/deploy/deploy-node-server.sh'
 
 browser="$PROJECT_ROOT/.github/workflows/one-browser-backend.yml"
 require_text "$browser" 'publish_supported: true'
@@ -108,10 +116,13 @@ require_text "$combined" 'one.action.repository=${{ github.repository }}'
 require_text "$combined" 'ghcr.io/voiceofhu/one-user'
 require_text "$combined" 'publish_tag="$VERSION"'
 require_text "$combined" 'ghcr.io/voiceofhu/one-amz-backend-next'
+require_text "$combined" 'ghcr.io/voiceofhu/one-node-server'
 require_text "$combined" 'expected_backend_repository=voiceofhu/one-user-backend'
 require_text "$combined" 'expected_web_repository=voiceofhu/one-user-web'
 require_text "$combined" 'expected_backend_repository=voiceofhu/one-amz-backend-next'
 require_text "$combined" 'expected_web_repository=voiceofhu/one-amz-web-next'
+require_text "$combined" 'expected_backend_repository=voiceofhu/one-node-server'
+require_text "$combined" 'expected_web_repository=voiceofhu/one-node-web'
 require_text "$combined" 'publication sources do not match the fixed product repositories'
 require_text "$combined" 'ACTION_REPOSITORY" != voiceofhu/one-action'
 require_text "$combined" 'group: ghcr-${{ inputs.workflow_name }}-publish'
@@ -121,6 +132,7 @@ require_text "$combined" 'Backend checkout HEAD does not match backend_sha.'
 require_text "$combined" 'Web checkout HEAD does not match web_sha.'
 require_text "$combined" 'web_package=one-user-web'
 require_text "$combined" 'web_package=one-amz-web'
+require_text "$combined" 'web_package=one-node-web-vite'
 require_text "$combined" 'backend_dockerfile=deploy/docker/Dockerfile'
 require_text "$combined" 'backend_dockerfile=Dockerfile'
 require_text "$combined" 'backend_dockerfile: ${{ steps.config.outputs.backend_dockerfile }}'

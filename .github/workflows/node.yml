@@ -20,12 +20,12 @@ name: One Node
         required: false
         type: string
       publish:
-        description: Reserved; true fails closed until protected central publication is implemented
+        description: Publish immutable Node image and Action release
         required: false
         type: boolean
         default: false
       deploy:
-        description: Reserved; true always fails closed because deployment is not implemented
+        description: Reserved; Node hosts install or upgrade through the published lifecycle scripts
         required: false
         type: boolean
         default: false
@@ -47,9 +47,9 @@ jobs:
       primary_repository: ${{ inputs.node_repository }}
       primary_ref: ${{ inputs.node_ref }}
       version: ${{ inputs.version }}
-      environment: dev
+      environment: prod
       publish: ${{ inputs.publish }}
-      publish_supported: false
+      publish_supported: true
       deploy: ${{ inputs.deploy }}
       confirmation: ${{ inputs.confirmation }}
     secrets:
@@ -63,5 +63,145 @@ jobs:
       source_repository: ${{ inputs.node_repository }}
       source_sha: ${{ needs.prepare.outputs.primary_sha }}
       version: ${{ inputs.version }}
+      publish: ${{ inputs.publish }}
     secrets:
       source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
+
+  publish:
+    name: Publish immutable One Node image and release
+    if: needs.prepare.outputs.publish_authorized == 'true'
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+    concurrency:
+      group: one-node-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact Action tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact Node source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.node_repository }}
+          ref: ${{ needs.prepare.outputs.primary_sha }}
+          path: node
+          token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download exact release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: node-release-${{ needs.prepare.outputs.primary_sha }}
+          path: dist
+
+      - name: Validate exact release assets
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.source_version }}
+        run: |
+          set -Eeuo pipefail
+          expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
+          actual_assets="$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)"
+          [[ "$actual_assets" == "$expected_assets" ]]
+          (cd dist && sha256sum -c SHA256SUMS)
+          chmod 0755 dist/one-node-linux-amd64 dist/one-node-linux-arm64
+          [[ "$(dist/one-node-linux-amd64 version --product-name)" == "$VERSION" ]]
+          cp dist/one-node-linux-amd64 node/dist/one-node-linux-amd64
+          cp dist/one-node-linux-arm64 node/dist/one-node-linux-arm64
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push immutable candidate image
+        uses: docker/build-push-action@v6
+        with:
+          context: node
+          file: node/one/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/voiceofhu/one-node:build-${{ needs.prepare.outputs.primary_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          labels: |
+            org.opencontainers.image.title=One Node
+            org.opencontainers.image.description=One Node runtime agent
+            org.opencontainers.image.source=https://github.com/voiceofhu/one-node-node
+            org.opencontainers.image.documentation=https://github.com/voiceofhu/one-action
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.primary_sha }}
+            org.opencontainers.image.version=${{ needs.build.outputs.source_version }}
+            io.one-node.upstream.version=${{ needs.build.outputs.upstream_version }}
+            io.one-node.upstream.commit=${{ needs.build.outputs.upstream_commit }}
+          provenance: false
+          sbom: false
+          cache-from: type=registry,ref=ghcr.io/voiceofhu/one-node:buildcache
+          cache-to: type=registry,ref=ghcr.io/voiceofhu/one-node:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
+
+      - name: Publish immutable revision and version tags
+        shell: bash
+        env:
+          IMAGE: ghcr.io/voiceofhu/one-node
+          IMAGE_REVISION_TAG: sha-${{ needs.prepare.outputs.primary_sha }}
+          IMAGE_VERSION: ${{ needs.build.outputs.source_version }}
+          IMAGE_BUILD_TAG: build-${{ needs.prepare.outputs.primary_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          IMAGE_SOURCE: https://github.com/voiceofhu/one-node-node
+          IMAGE_DESCRIPTION: One Node runtime agent
+          IMAGE_REVISION: ${{ needs.prepare.outputs.primary_sha }}
+          EXPECTED_VERSION: ${{ needs.build.outputs.source_version }}
+          EXPECTED_COMMIT: ${{ needs.prepare.outputs.primary_sha }}
+          EXPECTED_UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
+          EXPECTED_UPSTREAM_COMMIT: ${{ needs.build.outputs.upstream_commit }}
+          SHOULD_BUILD: 'true'
+        run: exec bash action/scripts/release/publish-node-image.sh
+
+      - name: Publish or verify immutable Action release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: one-node-v${{ needs.build.outputs.source_version }}
+          NODE_SHA: ${{ needs.prepare.outputs.primary_sha }}
+          UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.build.outputs.upstream_commit }}
+          VERSION: ${{ needs.build.outputs.source_version }}
+        run: |
+          set -Eeuo pipefail
+          release_body="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s\nImmutable image: ghcr.io/voiceofhu/one-node:sha-%s' \
+            "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION" "$NODE_SHA")"
+          if existing_release="$(gh release view "$RELEASE_TAG" --json body,assets,isPrerelease 2>/dev/null)"; then
+            jq -e --arg body "$release_body" '.isPrerelease == false and .body == $body' \
+              <<<"$existing_release" >/dev/null
+            [[ "$(jq -r '.assets[].name' <<<"$existing_release" | LC_ALL=C sort)" == \
+              $'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64' ]]
+            existing_dir="$(mktemp -d)"
+            trap 'rm -rf "$existing_dir"' EXIT
+            gh release download "$RELEASE_TAG" --dir "$existing_dir"
+            for asset in SHA256SUMS one-node-linux-amd64 one-node-linux-arm64; do
+              cmp -s "dist/$asset" "$existing_dir/$asset"
+            done
+            printf 'Immutable One Node release %s already exists with identical bytes.\n' "$RELEASE_TAG"
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" \
+            dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 \
+            --target "${{ inputs.expected_action_sha }}" \
+            --title one-node \
+            --notes "$release_body"

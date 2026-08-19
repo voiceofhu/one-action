@@ -42,7 +42,7 @@ ruby -ryaml -e '
   end
 ' "$PROJECT_ROOT"
 
-for workflow in user.yml one-browser-backend.yml app.yml app-debug.yml egress.yml browser-runtime.yml one-amz.yml node.yml; do
+for workflow in user.yml one-browser-backend.yml app.yml app-debug.yml egress.yml browser-runtime.yml one-amz.yml node.yml node-server.yml; do
   [[ -f "$PROJECT_ROOT/.github/workflows/$workflow" ]] || {
     printf 'Missing required workflow: %s\n' "$workflow" >&2
     exit 1
@@ -85,8 +85,8 @@ bash "$PROJECT_ROOT/tests/combined-build-workflows_test.sh"
 bash "$PROJECT_ROOT/tests/rust-docker-workflows_test.sh"
 bash "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
 bash "$PROJECT_ROOT/tests/deploy-user_test.sh"
-bash "$PROJECT_ROOT/tests/user-deploy-workflow_test.sh"
 bash "$PROJECT_ROOT/tests/user-release-version_test.sh"
+bash "$PROJECT_ROOT/tests/node-release-version_test.sh"
 bash "$PROJECT_ROOT/tests/app-build-workflows_test.sh"
 bash "$PROJECT_ROOT/browser/egress/tests/egress-installers_test.sh"
 bash "$PROJECT_ROOT/tests/egress-release-workflow_test.sh"

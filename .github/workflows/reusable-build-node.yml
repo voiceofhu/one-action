@@ -16,6 +16,20 @@ name: Build One Node at an exact commit
         required: false
         type: string
         default: ''
+      publish:
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      source_version:
+        description: Verified One Node product version
+        value: ${{ jobs.build.outputs.source_version }}
+      upstream_version:
+        description: Verified sing-box upstream version
+        value: ${{ jobs.build.outputs.upstream_version }}
+      upstream_commit:
+        description: Verified sing-box upstream commit
+        value: ${{ jobs.build.outputs.upstream_commit }}
     secrets:
       source_read_token:
         description: Token limited to reading the fixed private One Node source
@@ -28,6 +42,10 @@ jobs:
   build:
     name: Test and build immutable One Node inputs
     runs-on: ubuntu-24.04
+    outputs:
+      source_version: ${{ steps.metadata.outputs.source_version }}
+      upstream_version: ${{ steps.metadata.outputs.upstream_version }}
+      upstream_commit: ${{ steps.metadata.outputs.upstream_commit }}
     permissions:
       contents: read
     steps:
@@ -249,3 +267,22 @@ jobs:
             echo '- Native assets: linux/amd64 and linux/arm64 checksum-read back locally'
             echo '- Artifact upload/GHCR/Release/deploy: not run'
           } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable Node release inputs
+        if: inputs.publish
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir release-assets
+          cp source/dist/one-node-linux-amd64 release-assets/
+          cp source/dist/one-node-linux-arm64 release-assets/
+          cp provenance/SHA256SUMS release-assets/
+
+      - name: Store immutable Node release inputs
+        if: inputs.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-release-${{ inputs.source_sha }}
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 1

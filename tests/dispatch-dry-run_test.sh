@@ -58,6 +58,17 @@ grep -q 'DRY_RUN=true: no workflow was dispatched.' "$output_file"
 assert_no_post
 
 reset_api_log
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-server.yml \
+  backend_repository=voiceofhu/one-node-server backend_ref=main \
+  web_repository=voiceofhu/one-node-web web_ref=main \
+  version=1.2.3 publish=true deploy=true >"$output_file"
+grep -q '"backend_ref": "4444444444444444444444444444444444444444"' "$output_file"
+grep -q '"web_ref": "5555555555555555555555555555555555555555"' "$output_file"
+grep -q '"deploy": true' "$output_file"
+grep -q "Publication confirmation: mutate:node-server.yml:$action_sha" "$output_file"
+assert_no_post
+
+reset_api_log
 bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
   backend_repository=voiceofhu/one-user-backend \
   backend_ref=main \
@@ -105,6 +116,11 @@ expect_failure_before_api \
     web_repository=voiceofhu/one-amz-web-next web_ref=main \
     version=1.2.3 environment=prod publish=true deploy=true
 expect_failure_before_api \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-server.yml \
+    backend_repository=voiceofhu/one-node-server backend_ref=main \
+    web_repository=voiceofhu/one-node-web web_ref=main \
+    version=1.2.3 publish=false deploy=true
+expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" app-debug.yml \
     app_repository=voiceofhu/one-browser-app-next app_ref=main upload_artifact=true
 expect_failure_before_api \
@@ -131,10 +147,13 @@ assert_no_post
 expect_failure_before_api \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
     node_repository=attacker/node node_ref=main version= publish=false deploy=false
-expect_failure_before_api \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
-    node_repository=voiceofhu/one-node-node node_ref=main \
-    version=1.2.3 publish=true deploy=false
+reset_api_log
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
+  node_repository=voiceofhu/one-node-node node_ref=main \
+  version=1.2.3 publish=true deploy=false >"$output_file"
+grep -q '"publish": true' "$output_file"
+grep -q "Publication confirmation: mutate:node.yml:$action_sha" "$output_file"
+assert_no_post
 expect_failure_before_api \
   env GITHUB_API_URL=https://attacker.invalid \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" app.yml \
@@ -205,6 +224,16 @@ if [ -s "$FAKE_CURL_LOG" ]; then
   printf '%s\n' 'One User dry-run unexpectedly accessed the GitHub API.' >&2
   exit 1
 fi
+
+env -u GH_TOKEN make --no-print-directory -s -C "$PROJECT_ROOT" deploy-node-server \
+  DRY_RUN=true VERSION=1.2.3 ENV_FILE="$test_dir/no-env" >"$output_file"
+grep -q 'One Node Server deployment plan:' "$output_file"
+grep -q 'ghcr.io/voiceofhu/one-node-server' "$output_file"
+
+env -u GH_TOKEN make --no-print-directory -s -C "$PROJECT_ROOT" deploy-node \
+  DRY_RUN=true VERSION=1.2.3 ENV_FILE="$test_dir/no-env" >"$output_file"
+grep -q 'One Node release plan:' "$output_file"
+grep -q 'one-node-v1.2.3' "$output_file"
 
 export DRY_RUN=false
 reset_api_log

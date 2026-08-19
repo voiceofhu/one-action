@@ -3,6 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 DEPLOY_PORT=${DEPLOY_PORT:-22}
+SSH_ALIAS=${SSH_ALIAS:-one-user-deploy}
 
 for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
   [[ -n "${!name:-}" ]] || {
@@ -24,10 +25,14 @@ done
   printf '%s\n' 'DEPLOY_USER is invalid' >&2
   exit 1
 }
+[[ "$SSH_ALIAS" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || {
+  printf '%s\n' 'SSH_ALIAS is invalid' >&2
+  exit 1
+}
 
 ssh_dir="$HOME/.ssh"
-key_path="$ssh_dir/one-user-deploy-key"
-known_hosts_path="$ssh_dir/one-user-known-hosts"
+key_path="$ssh_dir/$SSH_ALIAS-key"
+known_hosts_path="$ssh_dir/$SSH_ALIAS-known-hosts"
 config_path="$ssh_dir/config"
 
 install -d -m 0700 "$ssh_dir"
@@ -51,7 +56,7 @@ awk '
 }
 
 {
-  printf '%s\n' 'Host one-user-deploy'
+  printf 'Host %s\n' "$SSH_ALIAS"
   printf '  HostName %s\n' "$DEPLOY_HOST"
   printf '  Port %s\n' "$DEPLOY_PORT"
   printf '  User %s\n' "$DEPLOY_USER"
@@ -68,4 +73,4 @@ awk '
 } >"$config_path"
 chmod 0600 "$config_path"
 
-ssh one-user-deploy 'printf "%s\n" one-user-ssh-ready'
+ssh "$SSH_ALIAS" 'printf "%s\n" ssh-ready'

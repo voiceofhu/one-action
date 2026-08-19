@@ -156,6 +156,17 @@ jobs:
               expected_secondary_repository=voiceofhu/one-amz-web-next
               expected_publish_supported=true
               ;;
+            one-node-server)
+              expected_primary_label=backend
+              expected_primary_repository=voiceofhu/one-node-server
+              expected_secondary_label=web
+              expected_secondary_repository=voiceofhu/one-node-web
+              expected_publish_supported=true
+              [ "$DEPLOYMENT_ENVIRONMENT" = prod ] || {
+                echo "One Node Server publication requires environment=prod." >&2
+                exit 1
+              }
+              ;;
             one-browser-backend)
               expected_primary_label=backend
               expected_primary_repository=voiceofhu/one-browser-backend-next
@@ -197,9 +208,9 @@ jobs:
               expected_primary_repository=voiceofhu/one-node-node
               expected_secondary_label=
               expected_secondary_repository=
-              expected_publish_supported=false
-              [ "$DEPLOYMENT_ENVIRONMENT" = dev ] || {
-                echo "One Node validation requires environment=dev." >&2
+              expected_publish_supported=true
+              [ "$DEPLOYMENT_ENVIRONMENT" = prod ] || {
+                echo "One Node publication requires environment=prod." >&2
                 exit 1
               }
               ;;
@@ -227,10 +238,10 @@ jobs:
             exit 1
           fi
           if [ "$DEPLOY" = true ]; then
-            [ "$WORKFLOW_NAME" = one-user ] \
+            { [ "$WORKFLOW_NAME" = one-user ] || [ "$WORKFLOW_NAME" = one-node-server ]; } \
               && [ "$PUBLISH" = true ] \
               && [ "$DEPLOYMENT_ENVIRONMENT" = prod ] || {
-              echo "Deployment requires One User production publication." >&2
+              echo "Deployment requires One User or One Node Server production publication." >&2
               exit 1
             }
           fi

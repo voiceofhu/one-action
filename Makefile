@@ -16,6 +16,8 @@ help:
 		"Safety defaults:" \
 		"  DRY_RUN=true                Resolve and print only for dispatch targets" \
 		"  deploy-user                 Publish and deploy the real User release" \
+		"  deploy-node-server          Publish and deploy the real Node Server release" \
+		"  deploy-node                 Publish the real Node runtime release" \
 		"  CONFIRM_DISPATCH=...        Action-SHA-bound guard when DRY_RUN=false" \
 		"  CONFIRM_MUTATION=...        Action-SHA-bound publication guard" \
 		"" \
@@ -36,6 +38,8 @@ help:
 		"  make dispatch-node             Exact-SHA One Node build/test; publication blocked" \
 		"  make dispatch-one-amz" \
 		"  make deploy-user             Publish combined User image and deploy it" \
+		"  make deploy-node-server      Publish combined Node Server image and deploy it" \
+		"  make deploy-node             Publish Node image and immutable Release assets" \
 		"" \
 		"Example real dispatch (non-publishing build validation):" \
 		"  First dry-run and copy its exact Action SHA into <action-sha>" \
@@ -55,6 +59,12 @@ help:
 		"Example One User image release and deployment:" \
 		"  make deploy-user" \
 		"  make deploy-user DRY_RUN=true  # Preview only" \
+		"" \
+		"Example One Node releases:" \
+		"  make deploy-node-server" \
+		"  make deploy-node" \
+		"  make deploy-node-server DRY_RUN=true  # Preview only" \
+		"  make deploy-node DRY_RUN=true         # Preview only" \
 		"" \
 		"Example One Node exact-source validation (no publication/deployment):" \
 		"  make dispatch-node" \

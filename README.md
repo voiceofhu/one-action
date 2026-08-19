@@ -5,12 +5,12 @@
 它主要提供三类能力：
 
 - 通过本地 Make 命令安全地触发 GitHub Actions；
-- 发布后端 GHCR 镜像和 Browser Egress Release；
+- 发布后端 GHCR 镜像、One Node 与 Browser Egress Release；
 - 提供 Browser Egress 与 One Node 的安装、升级和卸载脚本。
 
-除 `make deploy-user` 外，所有 GitHub Actions 调度默认都是 `DRY_RUN=true`：只解析
-分支或标签对应的精确 commit SHA、打印请求内容，不会发起工作流。`deploy-user` 默认执行
-真实版本发布和服务器部署，需要预览时必须显式传入 `DRY_RUN=true`。
+`make deploy-user`、`make deploy-node-server` 和 `make deploy-node` 默认执行真实发布；
+需要预览时必须显式传入 `DRY_RUN=true`。其余 GitHub Actions 调度默认都是
+`DRY_RUN=true`：只解析精确 commit SHA 并打印请求，不会发起工作流。
 
 ## 目录结构
 
@@ -19,7 +19,7 @@
 browser/egress/      Browser Egress 安装、卸载和本地测试
 node/                One Node 安装、升级、卸载和本地测试
 scripts/github/      GitHub ref 解析、token 检查和工作流调度
-scripts/deploy/      strict SSH、远端 registry 登录和 One User Compose 部署
+scripts/deploy/      strict SSH、远端 registry 登录和 Compose 部署
 scripts/release/     checksum、GHCR 和 Egress Release 发布脚本
 tests/               跨产品工作流契约测试
 make/                Makefile 子模块
@@ -366,6 +366,25 @@ sudo env DRY_RUN=false ./browser/egress/uninstall.sh \
 
 ## 8. One Node 生命周期
 
+发布 Node Server（`one-node-web` + `one-node-server`）并部署生产 Compose：
+
+```bash
+make deploy-node-server
+make deploy-node-server DRY_RUN=true
+```
+
+发布 Node Runtime 的双架构镜像、二进制、`SHA256SUMS` 和不可变 GitHub Release：
+
+```bash
+make deploy-node
+make deploy-node DRY_RUN=true
+```
+
+Server 镜像使用 `ghcr.io/voiceofhu/one-node-server:<version>@sha256:<index>`，部署时
+把当前源码中的 `deployments/docker-compose.yml` 先上传为 `.next`，健康检查同时通过
+`/api/healthz` 和 `/` 后才替换服务器上的 Compose 文件。Node Runtime 发布使用
+`ghcr.io/voiceofhu/one-node:<version>` 和 `one-node-v<version>` Release，不创建 `latest`。
+
 One Node 的稳定入口位于：
 
 ```text
@@ -420,11 +439,11 @@ sudo ./node/uninstall.sh
 ## 当前限制
 
 - `dispatch-browser-runtime` 当前会直接失败，因为 Runtime 源仓库信任根尚未确定；
-- `dispatch-node` 只支持精确源码的构建与测试，不支持发布或部署；
+- `dispatch-node` 默认只验证；设置发布参数后会发布 Node Runtime，但不会直接登录节点主机；
 - App 和 App Debug 只做构建验证，不支持签名、发布或 artifact 上传；
-- One User 支持精确 OCI index digest 的 SSH 部署，但仓库静态检查不能证明远端服务器、
+- One User 和 One Node Server 支持精确 OCI index digest 的 SSH 部署，但仓库静态检查不能证明远端服务器、
   protected environment、审批人或 Secrets 已正确配置；
-- Egress 以外的公开 App/Runtime Release 尚未实现；
+- App 与 Browser Runtime Release 尚未实现；
 - 本仓库代码本身不能证明远端 protected environment、审批人、权限或 secret 已正确配置。
 
 仓库当前状态不代表远端 Package、Release 或部署已经存在。首次发布后必须在 GitHub

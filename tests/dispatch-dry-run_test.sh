@@ -228,7 +228,7 @@ fi
 env -u GH_TOKEN make --no-print-directory -s -C "$PROJECT_ROOT" deploy-node-server \
   DRY_RUN=true VERSION=1.2.3 ENV_FILE="$test_dir/no-env" >"$output_file"
 grep -q 'One Node Server deployment plan:' "$output_file"
-grep -q 'ghcr.io/voiceofhu/one-node-server' "$output_file"
+grep -q 'ghcr.io/voiceofhu/node-server' "$output_file"
 
 env -u GH_TOKEN make --no-print-directory -s -C "$PROJECT_ROOT" deploy-node \
   DRY_RUN=true VERSION=1.2.3 ENV_FILE="$test_dir/no-env" >"$output_file"

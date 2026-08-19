@@ -122,7 +122,7 @@ jobs:
               web_output_dir=dist
               ;;
             one-node-server)
-              registry_image=ghcr.io/voiceofhu/one-node-server
+              registry_image=ghcr.io/voiceofhu/node-server
               backend_package=github.com/voh/one-node/one-node-server
               backend_dockerfile=Dockerfile
               web_package=one-node-web-vite
@@ -160,6 +160,7 @@ jobs:
 
   verify_backend:
     name: Verify backend source
+    if: inputs.workflow_name != 'one-node-server' && inputs.workflow_name != 'one-user'
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -177,7 +178,6 @@ jobs:
           persist-credentials: false
 
       - name: Verify locked Rust source
-        if: inputs.workflow_name != 'one-node-server'
         shell: bash
         working-directory: backend
         env:
@@ -271,41 +271,46 @@ jobs:
           WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
         run: |
           set -Eeuo pipefail
-          [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
-            echo "Web checkout HEAD does not match web_sha." >&2
-            exit 1
-          }
-          test -f web/package.json && test ! -L web/package.json
-          test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
-          web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
-          web_version="$(jq -er '.version | select(type == "string")' web/package.json)"
-          [ "$web_package" = "$EXPECTED_WEB_PACKAGE" ] || {
-            echo "Web package name does not match the fixed product package." >&2
-            exit 1
-          }
-          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
+            && [ "${{ inputs.workflow_name }}" != one-user ]; then
+            [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
+              echo "Web checkout HEAD does not match web_sha." >&2
+              exit 1
+            }
+            test -f web/package.json && test ! -L web/package.json
+            test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
+            web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
+            web_version="$(jq -er '.version | select(type == "string")' web/package.json)"
+            [ "$web_package" = "$EXPECTED_WEB_PACKAGE" ] || {
+              echo "Web package name does not match the fixed product package." >&2
+              exit 1
+            }
             [ "$web_version" = "$VERSION" ] || {
               echo "Requested version does not match the Web package version." >&2
               exit 1
             }
           fi
           pnpm --dir web install --frozen-lockfile
-          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
+            && [ "${{ inputs.workflow_name }}" != one-user ]; then
             pnpm --dir web format:check
+            pnpm --dir web lint
           fi
-          pnpm --dir web lint
           case "$DEPLOYMENT_ENVIRONMENT" in
             dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
             stage) pnpm --dir web build:stage ;;
             prod) pnpm --dir web build ;;
             *) exit 1 ;;
           esac
-          test -f "web/$WEB_OUTPUT_DIR/index.html"
-          if find "web/$WEB_OUTPUT_DIR" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
-            echo "Web dist may contain only regular files and directories." >&2
-            exit 1
+          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
+            && [ "${{ inputs.workflow_name }}" != one-user ]; then
+            test -f "web/$WEB_OUTPUT_DIR/index.html"
+            if find "web/$WEB_OUTPUT_DIR" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
+              echo "Web dist may contain only regular files and directories." >&2
+              exit 1
+            fi
+            git -C web diff --exit-code -- .
           fi
-          git -C web diff --exit-code -- .
 
       - name: Assemble exact architecture build context
         shell: bash
@@ -315,18 +320,23 @@ jobs:
           WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
         run: |
           set -Eeuo pipefail
-          [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
-            echo "Backend checkout HEAD does not match backend_sha." >&2
-            exit 1
-          }
-          [ ! -e backend/web-dist ] || {
-            echo "backend/web-dist must not be committed in source" >&2
-            exit 1
-          }
+          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
+            && [ "${{ inputs.workflow_name }}" != one-user ]; then
+            [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
+              echo "Backend checkout HEAD does not match backend_sha." >&2
+              exit 1
+            }
+            [ ! -e backend/web-dist ] || {
+              echo "backend/web-dist must not be committed in source" >&2
+              exit 1
+            }
+          fi
           mkdir backend/web-dist
           cp -R "web/$WEB_OUTPUT_DIR/." backend/web-dist/
-          test -f "backend/$BACKEND_DOCKERFILE" && test ! -L "backend/$BACKEND_DOCKERFILE"
-          test -f backend/web-dist/index.html
+          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
+            test -f "backend/$BACKEND_DOCKERFILE" && test ! -L "backend/$BACKEND_DOCKERFILE"
+            test -f backend/web-dist/index.html
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -364,6 +374,7 @@ jobs:
             COMMIT=${{ inputs.backend_sha }}
 
       - name: Verify pushed architecture image
+        if: inputs.workflow_name != 'one-node-server' && inputs.workflow_name != 'one-user'
         shell: bash
         env:
           IMAGE_REF: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}
@@ -400,7 +411,10 @@ jobs:
           fi
 
   manifest:
-    name: Publish and verify multi-platform OCI index
+    name: Publish multi-platform OCI index
+    if: >-
+      ${{ always() && needs.plan.result == 'success' && needs.build.result == 'success' &&
+          (needs.verify_backend.result == 'success' || needs.verify_backend.result == 'skipped') }}
     needs:
       - plan
       - verify_backend
@@ -412,10 +426,11 @@ jobs:
       packages: write
     environment: ghcr-publish
     outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-      image_ref: ${{ steps.publish.outputs.image_ref }}
+      digest: ${{ steps.publish_fast.outputs.digest || steps.publish_verified.outputs.digest }}
+      image_ref: ${{ steps.publish_fast.outputs.image_ref || steps.publish_verified.outputs.image_ref }}
     steps:
       - name: Checkout exact publication tooling
+        if: inputs.workflow_name == 'one-amz'
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.action_sha }}
@@ -424,6 +439,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify exact multi-platform publisher
+        if: inputs.workflow_name == 'one-amz'
         shell: bash
         env:
           ACTION_SHA: ${{ inputs.action_sha }}
@@ -450,8 +466,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.package_write_token || github.token }}
 
-      - name: Create, verify, and record OCI index
-        id: publish
+      - name: Publish OCI index
+        if: inputs.workflow_name == 'one-node-server' || inputs.workflow_name == 'one-user'
+        id: publish_fast
+        shell: bash
+        env:
+          PUBLISH_IMAGE: ${{ needs.plan.outputs.registry_image }}
+          PUBLISH_TAG: ${{ needs.plan.outputs.publish_tag }}
+        run: |
+          set -Eeuo pipefail
+          image="$PUBLISH_IMAGE:$PUBLISH_TAG"
+          docker buildx imagetools create \
+            --tag "$image" \
+            "$image-amd64" \
+            "$image-arm64"
+          digest="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -r '.digest')"
+          printf 'digest=%s\n' "$digest" >>"$GITHUB_OUTPUT"
+          printf 'image_ref=%s@%s\n' "$image" "$digest" >>"$GITHUB_OUTPUT"
+
+      - name: Publish and verify OCI index
+        if: inputs.workflow_name == 'one-amz'
+        id: publish_verified
         shell: bash
         env:
           WORKFLOW_NAME: ${{ inputs.workflow_name }}

@@ -16,7 +16,7 @@ set -Eeuo pipefail
   printf '%s\n' 'REMOTE_DIR must be a canonical path below /opt' >&2
   exit 1
 }
-[[ "$DOCKER_IMAGE" =~ ^ghcr\.io/voiceofhu/one-node-server:(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)@sha256:[0-9a-f]{64}$ ]] || {
+[[ "$DOCKER_IMAGE" =~ ^ghcr\.io/voiceofhu/node-server:(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)@sha256:[0-9a-f]{64}$ ]] || {
   printf '%s\n' 'DOCKER_IMAGE must be the fixed One Node Server version pinned to an OCI index digest' >&2
   exit 1
 }
@@ -66,7 +66,7 @@ rollback() {
   local exit_code=$?
   trap - ERR
   printf '%s\n' 'One Node Server deployment failed; attempting to restore the previous container' >&2
-  if [[ "$previous_image" =~ ^ghcr\.io/voiceofhu/one-node-server:.*@sha256:[0-9a-f]{64}$ ]] \
+  if [[ "$previous_image" =~ ^ghcr\.io/voiceofhu/node-server:.*@sha256:[0-9a-f]{64}$ ]] \
     && [[ "$previous_image" != "$image" ]] \
     && [[ -f docker-compose.yml ]]; then
     local failed_image=$image

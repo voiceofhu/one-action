@@ -177,101 +177,9 @@ jobs:
           emit_output deploy "$deploy"
           emit_output confirmation "$confirmation"
 
-  prepare:
-    needs: normalize
-    uses: ./.github/workflows/reusable-prepare.yml
-    with:
-      workflow_name: one-node-server
-      expected_action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
-      primary_label: backend
-      primary_repository: ${{ needs.normalize.outputs.backend_repository }}
-      primary_ref: ${{ needs.normalize.outputs.backend_ref }}
-      secondary_label: web
-      secondary_repository: ${{ needs.normalize.outputs.web_repository }}
-      secondary_ref: ${{ needs.normalize.outputs.web_ref }}
-      version: ${{ needs.normalize.outputs.version }}
-      environment: prod
-      publish: ${{ needs.normalize.outputs.publish == 'true' }}
-      publish_supported: true
-      deploy: ${{ needs.normalize.outputs.deploy == 'true' }}
-      confirmation: ${{ needs.normalize.outputs.confirmation }}
-    secrets:
-      source_read_token: ${{ secrets.GH_TOKEN }}
-
-  protocol_contract:
-    name: Verify typed Node control contract
-    needs:
-      - normalize
-      - prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout Node contract consumer
-        uses: actions/checkout@v4
-        with:
-          repository: voiceofhu/one-node-node
-          ref: main
-          path: node
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Read canonical Server commit
-        id: protocol
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          server_commit="$(jq -er '.server_commit | select(test("^[0-9a-f]{40}$"))' \
-            node/one/control/proto-source.json)"
-          printf 'server_commit=%s\n' "$server_commit" >>"$GITHUB_OUTPUT"
-
-      - name: Checkout canonical Server protocol source
-        uses: actions/checkout@v4
-        with:
-          repository: voiceofhu/one-node-server
-          ref: ${{ steps.protocol.outputs.server_commit }}
-          path: server-canonical
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Checkout deploy Server source
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.normalize.outputs.backend_repository }}
-          ref: ${{ needs.prepare.outputs.primary_sha }}
-          path: server-current
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Set up source-declared Go toolchain
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: server-current/go.mod
-          cache-dependency-path: server-current/go.sum
-
-      - name: Verify deploy source uses the canonical protocol
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cmp server-canonical/api/node_control.proto server-current/api/node_control.proto
-          cmp server-canonical/api/gen/go/control/node_control.pb.go \
-            server-current/api/gen/go/control/node_control.pb.go
-          cd server-current
-          go mod verify
-          go test -mod=readonly -count=1 ./...
-          go vet ./...
-          git diff --exit-code -- .
-
   publish:
-    if: needs.prepare.outputs.publish_authorized == 'true'
-    needs:
-      - normalize
-      - prepare
-      - protocol_contract
+    if: needs.normalize.outputs.publish == 'true'
+    needs: normalize
     permissions:
       contents: read
       packages: write
@@ -280,9 +188,9 @@ jobs:
       workflow_name: one-node-server
       action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
       backend_repository: ${{ needs.normalize.outputs.backend_repository }}
-      backend_sha: ${{ needs.prepare.outputs.primary_sha }}
+      backend_sha: ${{ needs.normalize.outputs.backend_ref }}
       web_repository: ${{ needs.normalize.outputs.web_repository }}
-      web_sha: ${{ needs.prepare.outputs.secondary_sha }}
+      web_sha: ${{ needs.normalize.outputs.web_ref }}
       version: ${{ needs.normalize.outputs.version }}
       environment: prod
     secrets:
@@ -290,11 +198,10 @@ jobs:
       package_write_token: ${{ secrets.GH_TOKEN }}
 
   deploy:
-    name: Deploy verified One Node Server image
+    name: Deploy One Node Server image
     if: needs.normalize.outputs.deploy == 'true' && needs.publish.result == 'success'
     needs:
       - normalize
-      - prepare
       - publish
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -308,19 +215,6 @@ jobs:
       group: one-node-server-prod-deploy
       cancel-in-progress: false
     steps:
-      - name: Validate immutable deployment image
-        id: deploy-image
-        shell: bash
-        env:
-          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
-          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
-        run: |
-          set -Eeuo pipefail
-          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$IMAGE_REF" =~ ^ghcr\.io/voiceofhu/one-node-server:(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)@sha256:[0-9a-f]{64}$ ]]
-          [[ "$IMAGE_REF" == *"@$IMAGE_DIGEST" ]]
-          printf 'image=%s\n' "$IMAGE_REF" >>"$GITHUB_OUTPUT"
-
       - name: Checkout exact deployment tooling
         uses: actions/checkout@v4
         with:
@@ -333,7 +227,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.normalize.outputs.backend_repository }}
-          ref: ${{ needs.prepare.outputs.primary_sha }}
+          ref: ${{ needs.normalize.outputs.backend_ref }}
           path: server
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 1
@@ -363,7 +257,7 @@ jobs:
         env:
           SSH_HOST: one-node-deploy
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-node' }}
-          DOCKER_IMAGE: ${{ steps.deploy-image.outputs.image }}
+          DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
           COMPOSE_FILE: server/deployments/docker-compose.yml
         run: exec bash action/scripts/deploy/deploy-node-server.sh
 

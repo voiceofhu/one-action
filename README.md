@@ -202,17 +202,11 @@ One User Web 会先编译进 Backend Docker 镜像。发布结果是同时包含
 `user-v<version>` 控制 tag。该 tag 触发 `.github/workflows/user.yml`，工作流从 tag
 提取版本并使用 Repository Secrets，依次完成：
 
-1. 一次完成发布策略校验，并解析 Action、Backend 和 Web 的精确 commit SHA；
-2. Web 构建与 Backend 的 fmt、clippy、test 并行执行；Web 只构建一次，同一份
-   `web-dist` 交给两个架构任务；
-3. Web 完成后，在 `ubuntu-latest` 原生 amd64 runner 构建并上传 `linux/amd64`
-   镜像，同时 Backend 校验可以继续运行；
-4. Web 完成后，在 `ubuntu-24.04-arm` 原生 arm64 runner 构建并上传 `linux/arm64`
-   镜像，同时 Backend 校验可以继续运行；
-5. 只有 Backend 校验和两个架构构建全部成功，才合并平台镜像为
-   `ghcr.io/voiceofhu/one-user` 的 OCI index，以 Server 版本作为 tag，回读并
-   锁定 index digest；
-6. `deploy` job 只接收
+1. 解析 Backend 和 Web 的精确 commit SHA；
+2. amd64 与 arm64 任务分别重新拉取 Backend、Web 源码并直接编译；
+3. 两个原生架构 runner 分别构建并推送镜像，不执行 fmt、clippy、test 或 lint；
+4. 合并两个架构镜像为 `ghcr.io/voiceofhu/one-user` OCI index；
+5. `deploy` job 接收
    `ghcr.io/voiceofhu/one-user:<version>@sha256:<OCI-index-digest>`，通过 SSH 让生产服务器
    拉取该精确镜像，等待 Compose 服务健康后再检查 `/readyz` 和实际运行镜像 ID。
 
@@ -255,7 +249,7 @@ API，也不要求本机提供 `GH_TOKEN` 或 `CONFIRM_*`；它不会修改源�
 6. 在当前 `one-action` commit 创建并 push `user-v<version>` 控制 tag；
 7. `user.yml` 从控制 tag 提取版本，使用 `secrets.GH_TOKEN` 解析两个
    `v<version>` 源码 tag，然后构建并发布精确版本镜像；
-8. OCI index 回读验证通过后，`deploy` job 使用受保护的 `one-user-prod` environment
+8. OCI index 发布后，`deploy` job 使用受保护的 `one-user-prod` environment
    串行连接服务器并部署该精确 digest。
 
 本地发布只使用各仓库已有的 Git 凭据进行 push，`deploy-user` 不读取 `.env` 中的
@@ -384,12 +378,14 @@ make deploy-node
 make deploy-node DRY_RUN=true
 ```
 
-Server 镜像使用 `ghcr.io/voiceofhu/one-node-server:<version>@sha256:<index>`，部署时
+Server 镜像使用 `ghcr.io/voiceofhu/node-server:<version>@sha256:<index>`，部署时
 把当前源码中的 `deployments/docker-compose.yml` 先上传为 `.next`，健康检查同时通过
 `/api/healthz` 和 `/` 后才替换服务器上的 Compose 文件。Node Runtime 发布使用
 `ghcr.io/voiceofhu/one-node:<version>` 和 `one-node-v<version>` Release，不创建 `latest`。
 `deploy-node-server` 推送 `node-server-v<version>` 控制 tag；`deploy-node` 推送
 `one-node-v<version>` Action tag。两者均不要求本机设置 `GH_TOKEN`。
+Node Server Action 直接拉取 Backend 与 Web 的固定提交，在两个原生架构 runner 上
+分别编译和推送镜像，不执行协议测试、Go test、vet、Web lint 或发布前镜像校验。
 
 One Node 的稳定入口位于：
 

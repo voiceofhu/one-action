@@ -55,7 +55,7 @@ case "$WORKFLOW_NAME:$PUBLISH_IMAGE" in
     expected_web_repository=voiceofhu/one-user-web
     expected_tag="$VERSION"
     ;;
-  one-node-server:ghcr.io/voiceofhu/one-node-server)
+  one-node-server:ghcr.io/voiceofhu/node-server)
     expected_backend_repository=voiceofhu/one-node-server
     expected_web_repository=voiceofhu/one-node-web
     expected_tag="$VERSION"

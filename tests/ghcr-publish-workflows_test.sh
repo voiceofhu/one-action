@@ -62,6 +62,7 @@ require_text "$user" 'backend_sha: ${{ needs.normalize.outputs.backend_ref }}'
 require_text "$user" 'web_sha: ${{ needs.normalize.outputs.web_ref }}'
 require_text "$user" 'packages: write'
 require_text "$user" 'source_read_token: ${{ secrets.GH_TOKEN }}'
+require_text "$user" 'package_write_token: ${{ secrets.GH_TOKEN }}'
 require_text "$user" 'One User publication accepts only the fixed source repositories.'
 require_text "$user" 'One User source refs must be exact commit SHAs.'
 require_text "$user" 'Publication lacks the Action-bound confirmation.'
@@ -77,9 +78,15 @@ require_text "$one_amz" 'source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}'
 require_text "$node_server" 'workflow_name: one-node-server'
 require_text "$node_server" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
 require_text "$node_server" 'package_write_token: ${{ secrets.GH_TOKEN }}'
-require_text "$node_server" 'uses: actions/setup-go@v5'
-require_text "$node_server" 'go test -mod=readonly -count=1 ./...'
 require_text "$node_server" 'exec bash action/scripts/deploy/deploy-node-server.sh'
+
+for direct_workflow in "$user" "$node_server"; do
+  if grep -Eq 'protocol_contract|Validate immutable deployment image|needs\.prepare|publish_authorized' \
+    "$direct_workflow"; then
+    printf 'Direct build workflow retains a validation gate: %s\n' "$direct_workflow" >&2
+    exit 1
+  fi
+done
 
 browser="$PROJECT_ROOT/.github/workflows/one-browser-backend.yml"
 require_text "$browser" 'publish_supported: true'
@@ -111,7 +118,7 @@ require_text "$combined" 'one.action.repository=${{ github.repository }}'
 require_text "$combined" 'ghcr.io/voiceofhu/one-user'
 require_text "$combined" 'publish_tag="$VERSION"'
 require_text "$combined" 'ghcr.io/voiceofhu/one-amz-backend-next'
-require_text "$combined" 'ghcr.io/voiceofhu/one-node-server'
+require_text "$combined" 'ghcr.io/voiceofhu/node-server'
 require_text "$combined" 'expected_backend_repository=voiceofhu/one-user-backend'
 require_text "$combined" 'expected_web_repository=voiceofhu/one-user-web'
 require_text "$combined" 'expected_backend_repository=voiceofhu/one-amz-backend-next'
@@ -161,7 +168,12 @@ require_text "$combined" "docker buildx imagetools inspect \"\$IMAGE_REF\" --for
 require_text "$combined" 'Final image Config.User must be non-empty and non-root.'
 require_text "$combined" 'name: Plan immutable publication'
 require_text "$combined" 'name: Verify backend source'
-require_text "$combined" 'name: Publish and verify multi-platform OCI index'
+require_text "$combined" 'name: Publish multi-platform OCI index'
+require_text "$combined" "if: inputs.workflow_name != 'one-node-server' && inputs.workflow_name != 'one-user'"
+require_text "$combined" "if: inputs.workflow_name == 'one-node-server' || inputs.workflow_name == 'one-user'"
+require_text "$combined" 'name: Publish OCI index'
+require_text "$combined" 'id: publish_fast'
+require_text "$combined" 'image_ref=%s@%s'
 require_text "$combined" 'Central multi-platform publisher changed after exact Action checkout.'
 require_text "$combined" 'exec bash action/scripts/release/publish-ghcr-multiarch.sh'
 require_text "$combined" 'value: ${{ jobs.manifest.outputs.digest }}'

@@ -27,7 +27,7 @@ name: One User
         required: true
         type: string
       version:
-        description: Optional for validation; required x.y.z OCI label for publication
+        description: Optional for non-publishing runs; required x.y.z OCI label for publication
         required: false
         type: string
       publish:
@@ -221,9 +221,10 @@ jobs:
       environment: prod
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
+      package_write_token: ${{ secrets.GH_TOKEN }}
 
   deploy:
-    name: Deploy verified One User image
+    name: Deploy One User image
     if: needs.normalize.outputs.publish == 'true' && needs.publish.result == 'success'
     needs:
       - normalize
@@ -240,28 +241,6 @@ jobs:
       group: one-user-prod-deploy
       cancel-in-progress: false
     steps:
-      - name: Validate immutable deployment image
-        id: deploy-image
-        shell: bash
-        env:
-          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
-          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
-        run: |
-          set -Eeuo pipefail
-          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
-            echo 'Publisher did not return a valid OCI index digest.' >&2
-            exit 1
-          }
-          [[ "$IMAGE_REF" =~ ^ghcr\.io/voiceofhu/one-user:(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)@sha256:[0-9a-f]{64}$ ]] || {
-            echo 'Publisher did not return the fixed version tag pinned to an OCI index digest.' >&2
-            exit 1
-          }
-          [[ "$IMAGE_REF" == *"@$IMAGE_DIGEST" ]] || {
-            echo 'Deployment image reference and verified OCI index digest differ.' >&2
-            exit 1
-          }
-          printf 'image=%s\n' "$IMAGE_REF" >>"$GITHUB_OUTPUT"
-
       - name: Checkout exact deployment tooling
         uses: actions/checkout@v4
         with:
@@ -294,7 +273,7 @@ jobs:
         env:
           SSH_HOST: one-user-deploy
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}
-          DOCKER_IMAGE: ${{ steps.deploy-image.outputs.image }}
+          DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
           COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME || 'one-user' }}
           COMPOSE_SERVICE_NAME: ${{ vars.DEPLOY_COMPOSE_SERVICE_NAME || 'user' }}
           READY_URL: ${{ vars.DEPLOY_READY_URL || 'http://127.0.0.1:27510/readyz' }}

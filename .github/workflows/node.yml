@@ -272,6 +272,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: voiceofhu/one-action
           RELEASE_TAG: one-node-v${{ needs.build.outputs.source_version }}
           NODE_SHA: ${{ needs.normalize.outputs.node_ref }}
           UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
@@ -281,14 +282,16 @@ jobs:
           set -Eeuo pipefail
           release_body="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s\nImmutable image: ghcr.io/voiceofhu/one-node:sha-%s' \
             "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION" "$NODE_SHA")"
-          if existing_release="$(gh release view "$RELEASE_TAG" --json body,assets,isPrerelease 2>/dev/null)"; then
+          if existing_release="$(gh release view "$RELEASE_TAG" \
+            --repo "$RELEASE_REPOSITORY" --json body,assets,isPrerelease 2>/dev/null)"; then
             jq -e --arg body "$release_body" '.isPrerelease == false and .body == $body' \
               <<<"$existing_release" >/dev/null
             [[ "$(jq -r '.assets[].name' <<<"$existing_release" | LC_ALL=C sort)" == \
               $'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64' ]]
             existing_dir="$(mktemp -d)"
             trap 'rm -rf "$existing_dir"' EXIT
-            gh release download "$RELEASE_TAG" --dir "$existing_dir"
+            gh release download "$RELEASE_TAG" \
+              --repo "$RELEASE_REPOSITORY" --dir "$existing_dir"
             for asset in SHA256SUMS one-node-linux-amd64 one-node-linux-arm64; do
               cmp -s "dist/$asset" "$existing_dir/$asset"
             done
@@ -297,6 +300,7 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" \
             dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 \
+            --repo "$RELEASE_REPOSITORY" \
             --target "${{ needs.normalize.outputs.expected_action_sha }}" \
             --title one-node \
             --notes "$release_body"

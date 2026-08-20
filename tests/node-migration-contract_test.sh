@@ -68,6 +68,10 @@ require_text "$CALLER" 'id: github_identity'
 require_text "$CALLER" 'run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"'
 require_text "$CALLER" 'username: ${{ steps.github_identity.outputs.login }}'
 require_text "$CALLER" 'password: ${{ secrets.GH_TOKEN }}'
+require_text "$CALLER" 'RELEASE_REPOSITORY: voiceofhu/one-action'
+if [ "$(grep -Fc -- '--repo "$RELEASE_REPOSITORY"' "$CALLER")" -ne 3 ]; then
+  fail 'Every One Node Release operation must explicitly target voiceofhu/one-action'
+fi
 
 if grep -Eq 'needs\.prepare|publish_authorized|secrets\.SOURCE_READ_TOKEN' "$CALLER"; then
   fail 'One Node direct build workflow retains a redundant validation gate or obsolete source token'

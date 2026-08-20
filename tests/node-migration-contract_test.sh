@@ -64,6 +64,10 @@ require_text "$CALLER" 'ghcr.io/voiceofhu/one-node'
 require_text "$CALLER" 'one-node-v${{ needs.build.outputs.source_version }}'
 require_text "$CALLER" 'action/scripts/release/publish-node-image.sh'
 require_text "$CALLER" 'mkdir -p node/dist'
+require_text "$CALLER" 'id: github_identity'
+require_text "$CALLER" 'run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"'
+require_text "$CALLER" 'username: ${{ steps.github_identity.outputs.login }}'
+require_text "$CALLER" 'password: ${{ secrets.GH_TOKEN }}'
 
 if grep -Eq 'needs\.prepare|publish_authorized|secrets\.SOURCE_READ_TOKEN' "$CALLER"; then
   fail 'One Node direct build workflow retains a redundant validation gate or obsolete source token'

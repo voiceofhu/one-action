@@ -30,7 +30,8 @@ require_text "$CALLER" 'node_repository:'
 require_text "$CALLER" 'node_ref:'
 require_text "$CALLER" 'uses: ./.github/workflows/reusable-build-node.yml'
 require_text "$CALLER" 'source_sha: ${{ needs.normalize.outputs.node_ref }}'
-require_text "$CALLER" 'GH_TOKEN: ${{ github.token }}'
+require_text "$CALLER" 'https://github.com/voiceofhu/one-node-node.git'
+require_text "$CALLER" "rev-parse --verify 'FETCH_HEAD^{commit}'"
 require_text "$CALLER" "if: needs.normalize.outputs.publish == 'true'"
 require_text "$DISPATCHER" 'require_repository node_repository voiceofhu/one-node-node'
 require_text "$DISPATCHER" 'publish_supported=true'
@@ -64,6 +65,10 @@ require_text "$CALLER" 'action/scripts/release/publish-node-image.sh'
 
 if grep -Eq 'needs\.prepare|publish_authorized|secrets\.(GH_TOKEN|SOURCE_READ_TOKEN)' "$CALLER"; then
   fail 'One Node direct build workflow retains a redundant validation or repository-token gate'
+fi
+
+if grep -Fq 'action/scripts/github/resolve-ref.sh' "$CALLER"; then
+  fail 'One Node normalization must not apply custom token-shape validation to GitHub runtime tokens'
 fi
 
 if grep -Fq 'voiceofhu/one-node-action' "$CALLER" "$BUILD" "$DISPATCHER"; then

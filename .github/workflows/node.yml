@@ -67,7 +67,6 @@ jobs:
           ACTION_SHA: ${{ github.sha }}
           ACTION_SERVER_URL: ${{ github.server_url }}
           EVENT_NAME: ${{ github.event_name }}
-          GH_TOKEN: ${{ github.token }}
           INPUT_CONFIRMATION: ${{ inputs.confirmation }}
           INPUT_DEPLOY: ${{ inputs.deploy }}
           INPUT_EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
@@ -102,7 +101,13 @@ jobs:
               version=${TAG_NAME#one-node-v}
               expected_action_sha=$ACTION_SHA
               node_repository=voiceofhu/one-node-node
-              node_ref="$(bash action/scripts/github/resolve-ref.sh "$node_repository" "v$version")"
+              node_ref_dir="$(mktemp -d)"
+              trap 'rm -rf "$node_ref_dir"' EXIT
+              git -C "$node_ref_dir" init --quiet
+              GIT_TERMINAL_PROMPT=0 git -c credential.helper= -C "$node_ref_dir" fetch \
+                --quiet --depth=1 https://github.com/voiceofhu/one-node-node.git \
+                "refs/tags/v$version"
+              node_ref="$(git -C "$node_ref_dir" rev-parse --verify 'FETCH_HEAD^{commit}')"
               publish=true
               confirmation="enable:node:$ACTION_SHA"
               ;;

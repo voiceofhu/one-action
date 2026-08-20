@@ -12,6 +12,7 @@ main() {
 	parse_install_arguments "$@"
 	validate_install_host
 	validate_install_config
+	probe_control_endpoint
 	validate_install_target
 	if [ "$INSTALL_OPERATION" = "reconfigure" ]; then
 		if [ "$INSTALL_MODE" = "native" ]; then

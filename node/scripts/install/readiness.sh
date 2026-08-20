@@ -9,12 +9,39 @@ runtime_is_active() {
 	fi
 }
 
+probe_control_endpoint() {
+	case "$ONE_NODE_SERVER" in
+	grpcs://*)
+		probe_url="https://${ONE_NODE_SERVER#grpcs://}"
+		;;
+	https://*)
+		probe_url=$ONE_NODE_SERVER
+		;;
+	*) return 0 ;;
+	esac
+
+	status_code=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 \
+		--silent --show-error --no-location \
+		--connect-timeout 10 --max-time 15 \
+		--output /dev/null --write-out '%{http_code}' "$probe_url") ||
+		die "unable to reach the public One Node control endpoint: $ONE_NODE_SERVER"
+	case "$status_code" in
+	[1-4][0-9][0-9]) ;;
+	5[0-9][0-9])
+		die "public One Node control endpoint returned HTTP $status_code; verify its TLS/HTTP2 proxy and port 27519 upstream"
+		;;
+	*) die "public One Node control endpoint returned an invalid HTTP status" ;;
+	esac
+}
+
 print_runtime_logs() {
 	log "recent ${INSTALL_MODE} runtime logs:"
 	if [ "$INSTALL_MODE" = "native" ]; then
-		journalctl --unit one-node.service --lines 120 --no-pager --output cat >&2 || true
+		log_window_seconds=$((ONE_NODE_ENROLL_TIMEOUT + 15))
+		journalctl --unit one-node.service --since "-${log_window_seconds} seconds" \
+			--lines 120 --no-pager --output cat >&2 || true
 	else
-		docker logs --tail 120 "$CONTAINER_NAME" >&2 || true
+		docker logs --since "${ONE_NODE_ENROLL_TIMEOUT}s" --tail 120 "$CONTAINER_NAME" >&2 || true
 	fi
 }
 
@@ -84,5 +111,9 @@ wait_for_ready_heartbeat() {
 		remaining=$((remaining - 1))
 	done
 	print_runtime_logs
-	readiness_failure "Server did not accept a sing_box heartbeat at the expected config and binding revisions"
+	if ! identity_is_active; then
+		readiness_failure "Node registration did not complete through $ONE_NODE_SERVER; verify that the public gRPC route reaches the One Node control listener"
+	else
+		readiness_failure "One Node did not reach the expected config and binding revisions"
+	fi
 }

@@ -50,6 +50,7 @@ From this directory:
 
 ```sh
 sh tests/scripts_test.sh
+sh tests/readiness_test.sh
 sh tests/reconfigure_test.sh
 sh tests/reset_test.sh
 sh tests/native_recovery_test.sh

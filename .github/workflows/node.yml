@@ -205,6 +205,7 @@ jobs:
           (cd dist && sha256sum -c SHA256SUMS)
           chmod 0755 dist/one-node-linux-amd64 dist/one-node-linux-arm64
           [[ "$(dist/one-node-linux-amd64 version --product-name)" == "$VERSION" ]]
+          mkdir -p node/dist
           cp dist/one-node-linux-amd64 node/dist/one-node-linux-amd64
           cp dist/one-node-linux-arm64 node/dist/one-node-linux-arm64
 

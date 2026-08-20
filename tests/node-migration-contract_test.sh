@@ -30,8 +30,9 @@ require_text "$CALLER" 'node_repository:'
 require_text "$CALLER" 'node_ref:'
 require_text "$CALLER" 'uses: ./.github/workflows/reusable-build-node.yml'
 require_text "$CALLER" 'source_sha: ${{ needs.normalize.outputs.node_ref }}'
-require_text "$CALLER" 'https://github.com/voiceofhu/one-node-node.git'
-require_text "$CALLER" "rev-parse --verify 'FETCH_HEAD^{commit}'"
+require_text "$CALLER" 'node_ref="$(gh api "repos/$node_repository/commits/v$version" --jq .sha)"'
+require_text "$CALLER" 'source_read_token: ${{ secrets.GH_TOKEN }}'
+require_text "$CALLER" 'token: ${{ secrets.GH_TOKEN }}'
 require_text "$CALLER" "if: needs.normalize.outputs.publish == 'true'"
 require_text "$DISPATCHER" 'require_repository node_repository voiceofhu/one-node-node'
 require_text "$DISPATCHER" 'publish_supported=true'
@@ -63,8 +64,8 @@ require_text "$CALLER" 'ghcr.io/voiceofhu/one-node'
 require_text "$CALLER" 'one-node-v${{ needs.build.outputs.source_version }}'
 require_text "$CALLER" 'action/scripts/release/publish-node-image.sh'
 
-if grep -Eq 'needs\.prepare|publish_authorized|secrets\.(GH_TOKEN|SOURCE_READ_TOKEN)' "$CALLER"; then
-  fail 'One Node direct build workflow retains a redundant validation or repository-token gate'
+if grep -Eq 'needs\.prepare|publish_authorized|secrets\.SOURCE_READ_TOKEN' "$CALLER"; then
+  fail 'One Node direct build workflow retains a redundant validation gate or obsolete source token'
 fi
 
 if grep -Fq 'action/scripts/github/resolve-ref.sh' "$CALLER"; then

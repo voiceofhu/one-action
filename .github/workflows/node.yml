@@ -67,7 +67,7 @@ jobs:
           ACTION_SHA: ${{ github.sha }}
           ACTION_SERVER_URL: ${{ github.server_url }}
           EVENT_NAME: ${{ github.event_name }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           INPUT_CONFIRMATION: ${{ inputs.confirmation }}
           INPUT_DEPLOY: ${{ inputs.deploy }}
           INPUT_EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
@@ -99,10 +99,6 @@ jobs:
                 echo 'Release tag must use one-node-v<major>.<minor>.<patch>.' >&2
                 exit 1
               }
-              [[ -n "$GH_TOKEN" ]] || {
-                echo 'Repository Secret GH_TOKEN is required.' >&2
-                exit 1
-              }
               version=${TAG_NAME#one-node-v}
               expected_action_sha=$ACTION_SHA
               node_repository=voiceofhu/one-node-node
@@ -132,13 +128,6 @@ jobs:
             exit 1
           }
           [[ -z "$version" || "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            [[ -n "$GH_TOKEN" \
-              && "$(bash action/scripts/github/resolve-ref.sh "$node_repository" "$node_ref")" == "$node_ref" ]] || {
-              echo 'One Node source commit could not be verified.' >&2
-              exit 1
-            }
-          fi
           [[ "$publish" == true || "$publish" == false ]]
           if [[ "$publish" == true ]]; then
             [[ -n "$version" && "$confirmation" == "enable:node:$ACTION_SHA" ]]
@@ -153,44 +142,21 @@ jobs:
           emit_output publish "$publish"
           emit_output confirmation "$confirmation"
 
-  prepare:
-    needs: normalize
-    uses: ./.github/workflows/reusable-prepare.yml
-    with:
-      workflow_name: node
-      expected_action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
-      primary_label: node
-      primary_repository: ${{ needs.normalize.outputs.node_repository }}
-      primary_ref: ${{ needs.normalize.outputs.node_ref }}
-      version: ${{ needs.normalize.outputs.version }}
-      environment: prod
-      publish: ${{ needs.normalize.outputs.publish == 'true' }}
-      publish_supported: true
-      deploy: false
-      confirmation: ${{ needs.normalize.outputs.confirmation }}
-    secrets:
-      source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
-
   build:
-    needs:
-      - normalize
-      - prepare
+    needs: normalize
     uses: ./.github/workflows/reusable-build-node.yml
     with:
       action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
       source_repository: ${{ needs.normalize.outputs.node_repository }}
-      source_sha: ${{ needs.prepare.outputs.primary_sha }}
+      source_sha: ${{ needs.normalize.outputs.node_ref }}
       version: ${{ needs.normalize.outputs.version }}
       publish: ${{ needs.normalize.outputs.publish == 'true' }}
-    secrets:
-      source_read_token: ${{ secrets.SOURCE_READ_TOKEN }}
 
   publish:
     name: Publish immutable One Node image and release
-    if: needs.prepare.outputs.publish_authorized == 'true'
+    if: needs.normalize.outputs.publish == 'true'
     needs:
       - normalize
-      - prepare
       - build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -213,16 +179,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.normalize.outputs.node_repository }}
-          ref: ${{ needs.prepare.outputs.primary_sha }}
+          ref: ${{ needs.normalize.outputs.node_ref }}
           path: node
-          token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
+          token: ${{ github.token }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Download exact release assets
         uses: actions/download-artifact@v4
         with:
-          name: node-release-${{ needs.prepare.outputs.primary_sha }}
+          name: node-release-${{ needs.normalize.outputs.node_ref }}
           path: dist
 
       - name: Validate exact release assets
@@ -260,13 +226,13 @@ jobs:
           file: node/one/docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/voiceofhu/one-node:build-${{ needs.prepare.outputs.primary_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          tags: ghcr.io/voiceofhu/one-node:build-${{ needs.normalize.outputs.node_ref }}-${{ github.run_id }}-${{ github.run_attempt }}
           labels: |
             org.opencontainers.image.title=One Node
             org.opencontainers.image.description=One Node runtime agent
             org.opencontainers.image.source=https://github.com/voiceofhu/one-node-node
             org.opencontainers.image.documentation=https://github.com/voiceofhu/one-action
-            org.opencontainers.image.revision=${{ needs.prepare.outputs.primary_sha }}
+            org.opencontainers.image.revision=${{ needs.normalize.outputs.node_ref }}
             org.opencontainers.image.version=${{ needs.build.outputs.source_version }}
             io.one-node.upstream.version=${{ needs.build.outputs.upstream_version }}
             io.one-node.upstream.commit=${{ needs.build.outputs.upstream_commit }}
@@ -279,14 +245,14 @@ jobs:
         shell: bash
         env:
           IMAGE: ghcr.io/voiceofhu/one-node
-          IMAGE_REVISION_TAG: sha-${{ needs.prepare.outputs.primary_sha }}
+          IMAGE_REVISION_TAG: sha-${{ needs.normalize.outputs.node_ref }}
           IMAGE_VERSION: ${{ needs.build.outputs.source_version }}
-          IMAGE_BUILD_TAG: build-${{ needs.prepare.outputs.primary_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          IMAGE_BUILD_TAG: build-${{ needs.normalize.outputs.node_ref }}-${{ github.run_id }}-${{ github.run_attempt }}
           IMAGE_SOURCE: https://github.com/voiceofhu/one-node-node
           IMAGE_DESCRIPTION: One Node runtime agent
-          IMAGE_REVISION: ${{ needs.prepare.outputs.primary_sha }}
+          IMAGE_REVISION: ${{ needs.normalize.outputs.node_ref }}
           EXPECTED_VERSION: ${{ needs.build.outputs.source_version }}
-          EXPECTED_COMMIT: ${{ needs.prepare.outputs.primary_sha }}
+          EXPECTED_COMMIT: ${{ needs.normalize.outputs.node_ref }}
           EXPECTED_UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
           EXPECTED_UPSTREAM_COMMIT: ${{ needs.build.outputs.upstream_commit }}
           SHOULD_BUILD: 'true'
@@ -297,7 +263,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: one-node-v${{ needs.build.outputs.source_version }}
-          NODE_SHA: ${{ needs.prepare.outputs.primary_sha }}
+          NODE_SHA: ${{ needs.normalize.outputs.node_ref }}
           UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.build.outputs.upstream_commit }}
           VERSION: ${{ needs.build.outputs.source_version }}

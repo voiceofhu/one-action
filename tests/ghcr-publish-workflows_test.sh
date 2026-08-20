@@ -55,6 +55,7 @@ fi
 user="$PROJECT_ROOT/.github/workflows/user.yml"
 one_amz="$PROJECT_ROOT/.github/workflows/one-amz.yml"
 node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
+node="$PROJECT_ROOT/.github/workflows/node.yml"
 node_server_deployer="$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
 
 require_text "$user" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
@@ -87,7 +88,7 @@ require_text "$node_server_deployer" '"$public_url/api/healthz"'
 require_text "$node_server_deployer" '"$public_url/"'
 require_text "$node_server_deployer" 'One Node Server public endpoint is ready:'
 
-for direct_workflow in "$user" "$node_server"; do
+for direct_workflow in "$user" "$node_server" "$node"; do
   if grep -Eq 'protocol_contract|Validate immutable deployment image|needs\.prepare|publish_authorized' \
     "$direct_workflow"; then
     printf 'Direct build workflow retains a validation gate: %s\n' "$direct_workflow" >&2

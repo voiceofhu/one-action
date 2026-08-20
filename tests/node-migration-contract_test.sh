@@ -4,7 +4,6 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 CALLER="$PROJECT_ROOT/.github/workflows/node.yml"
 BUILD="$PROJECT_ROOT/.github/workflows/reusable-build-node.yml"
-PREPARE="$PROJECT_ROOT/.github/workflows/reusable-prepare.yml"
 DISPATCHER="$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
 
 fail() {
@@ -29,14 +28,10 @@ require_text "$CALLER" 'workflow_dispatch:'
 require_text "$CALLER" 'expected_action_sha:'
 require_text "$CALLER" 'node_repository:'
 require_text "$CALLER" 'node_ref:'
-require_text "$CALLER" 'publish_supported: true'
-require_text "$CALLER" 'deploy: ${{ inputs.deploy }}'
-require_text "$CALLER" 'uses: ./.github/workflows/reusable-prepare.yml'
 require_text "$CALLER" 'uses: ./.github/workflows/reusable-build-node.yml'
-require_text "$CALLER" 'source_sha: ${{ needs.prepare.outputs.primary_sha }}'
-
-require_text "$PREPARE" 'expected_primary_repository=voiceofhu/one-node-node'
-require_text "$PREPARE" 'One Node publication requires environment=prod.'
+require_text "$CALLER" 'source_sha: ${{ needs.normalize.outputs.node_ref }}'
+require_text "$CALLER" 'GH_TOKEN: ${{ github.token }}'
+require_text "$CALLER" "if: needs.normalize.outputs.publish == 'true'"
 require_text "$DISPATCHER" 'require_repository node_repository voiceofhu/one-node-node'
 require_text "$DISPATCHER" 'publish_supported=true'
 
@@ -67,7 +62,11 @@ require_text "$CALLER" 'ghcr.io/voiceofhu/one-node'
 require_text "$CALLER" 'one-node-v${{ needs.build.outputs.source_version }}'
 require_text "$CALLER" 'action/scripts/release/publish-node-image.sh'
 
-if grep -Fq 'voiceofhu/one-node-action' "$CALLER" "$BUILD" "$PREPARE" "$DISPATCHER"; then
+if grep -Eq 'needs\.prepare|publish_authorized|secrets\.(GH_TOKEN|SOURCE_READ_TOKEN)' "$CALLER"; then
+  fail 'One Node direct build workflow retains a redundant validation or repository-token gate'
+fi
+
+if grep -Fq 'voiceofhu/one-node-action' "$CALLER" "$BUILD" "$DISPATCHER"; then
   fail 'One Node workflow still trusts the legacy Action repository'
 fi
 

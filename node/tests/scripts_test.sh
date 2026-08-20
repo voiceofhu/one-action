@@ -13,8 +13,9 @@ for entrypoint in install.sh uninstall.sh upgrade.sh; do
 	sh -n "$ROOT_DIR/$entrypoint"
 	grep -F 'https://raw.githubusercontent.com/voiceofhu/one-action/${ONE_ACTION_COMMIT}/node/scripts' \
 		"$ROOT_DIR/$entrypoint" >/dev/null
-	grep -F 'https://api.github.com/repos/voiceofhu/one-action/git/ref/heads/main' \
+	grep -F 'https://api.github.com/repos/voiceofhu/one-action/commits/main' \
 		"$ROOT_DIR/$entrypoint" >/dev/null
+	grep -F 'Accept: application/vnd.github.sha' "$ROOT_DIR/$entrypoint" >/dev/null
 done
 grep -F 'https://github.com/voiceofhu/one-action/releases/download/one-node-v${ONE_NODE_VERSION}' \
 	"$ROOT_DIR/scripts/install/config.sh" >/dev/null
@@ -106,10 +107,8 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$output" ] && [ -n "$url" ]
 case "$url" in
-https://api.github.com/repos/voiceofhu/one-action/git/ref/heads/main)
-	printf '%s\n' '{' '  "ref": "refs/heads/main",' '  "object": {' \
-		'    "sha": "0123456789abcdef0123456789abcdef01234567",' \
-		'    "type": "commit"' '  }' '}' >"$output"
+https://api.github.com/repos/voiceofhu/one-action/commits/main)
+	printf '%s' "${ONE_NODE_TEST_ACTION_RESPONSE:-0123456789abcdef0123456789abcdef01234567}" >"$output"
 	[ -z "$write_out" ] || printf '%s' 200
 	;;
 *)
@@ -143,6 +142,15 @@ for entrypoint in install.sh uninstall.sh upgrade.sh; do
 		exit 1
 	fi
 done
+
+if PATH="$TEST_TEMP_DIR/bin:$PATH" \
+	ONE_NODE_TEST_ACTION_RESPONSE='{"object":{"sha":"0123456789abcdef0123456789abcdef01234567"}}' \
+	"$TEST_TEMP_DIR/install.sh" --help >"$TEST_TEMP_DIR/invalid-commit-response.log" 2>&1; then
+	printf '%s\n' "installer accepted a JSON commit response" >&2
+	exit 1
+fi
+grep -F 'One Action commit response must be an exact lowercase commit SHA' \
+	"$TEST_TEMP_DIR/invalid-commit-response.log" >/dev/null
 
 grep -F 'MANIFEST_FORMAT_NAME="one-node-manifest"' \
 	"$ROOT_DIR/scripts/shared/manifest.sh" >/dev/null

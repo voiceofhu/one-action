@@ -45,19 +45,17 @@ entrypoint_resolve_action_commit() {
 		status_code=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 \
 			--fail --silent --show-error --no-location \
 			--connect-timeout 10 --max-time 30 --max-filesize 1048576 \
-			--header 'Accept: application/vnd.github+json' \
+			--header 'Accept: application/vnd.github.sha' \
 			--header 'X-GitHub-Api-Version: 2022-11-28' \
 			--user-agent 'one-node-installer' \
 			--write-out '%{http_code}' \
-			'https://api.github.com/repos/voiceofhu/one-action/git/ref/heads/main' \
+			'https://api.github.com/repos/voiceofhu/one-action/commits/main' \
 			--output "$response_path") ||
 			entrypoint_die "unable to resolve the One Action commit"
-		[ "$status_code" = 200 ] || entrypoint_die "unexpected One Action ref response"
-		action_commit=$(sed -n \
-			's/^[[:space:]]*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f][0-9a-f]*\)"[,[:space:]]*$/\1/p' \
-			"$response_path")
-		[ "$(printf '%s\n' "$action_commit" | awk 'NF { count++ } END { print count + 0 }')" -eq 1 ] ||
-			entrypoint_die "One Action ref response must contain exactly one commit"
+		[ "$status_code" = 200 ] || entrypoint_die "unexpected One Action commit response"
+		action_commit=$(tr -d '\r\n' <"$response_path")
+		entrypoint_validate_action_commit "$action_commit" ||
+			entrypoint_die "One Action commit response must be an exact lowercase commit SHA"
 	fi
 	entrypoint_validate_action_commit "$action_commit" ||
 		entrypoint_die "ONE_ACTION_COMMIT must be an exact lowercase commit SHA"
@@ -96,7 +94,7 @@ entrypoint_download_modules() {
 	command -v curl >/dev/null 2>&1 ||
 		entrypoint_die "curl is required to load the installer"
 	if [ -z "${ONE_NODE_SCRIPT_BASE_URL:-}" ]; then
-		entrypoint_resolve_action_commit "${destination}/one-action-ref.json"
+		entrypoint_resolve_action_commit "${destination}/one-action-commit.sha"
 	fi
 	base_url=$(entrypoint_module_base_url)
 	case "$base_url" in

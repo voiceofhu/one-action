@@ -80,8 +80,9 @@ require_text "$node_server" 'workflow_name: one-node-server'
 require_text "$node_server" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
 require_text "$node_server" 'package_write_token: ${{ secrets.GH_TOKEN }}'
 require_text "$node_server" 'exec bash action/scripts/deploy/deploy-node-server.sh'
-require_text "$node_server" 'PUBLIC_URL: ${{ vars.DEPLOY_URL }}'
-require_text "$node_server_deployer" ': "${PUBLIC_URL:?PUBLIC_URL is required}"'
+require_text "$node_server" "url: \${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}"
+require_text "$node_server" "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}"
+require_text "$node_server_deployer" 'PUBLIC_URL=${PUBLIC_URL:-https://marseo.eu.org}'
 require_text "$node_server_deployer" '"$public_url/api/healthz"'
 require_text "$node_server_deployer" '"$public_url/"'
 require_text "$node_server_deployer" 'One Node Server public endpoint is ready:'

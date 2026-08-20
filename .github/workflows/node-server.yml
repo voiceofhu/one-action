@@ -210,7 +210,7 @@ jobs:
       packages: read
     environment:
       name: one-node-prod
-      url: ${{ vars.DEPLOY_URL }}
+      url: ${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}
     concurrency:
       group: one-node-server-prod-deploy
       cancel-in-progress: false
@@ -259,7 +259,7 @@ jobs:
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-node' }}
           DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
           COMPOSE_FILE: server/deployments/docker-compose.yml
-          PUBLIC_URL: ${{ vars.DEPLOY_URL }}
+          PUBLIC_URL: ${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}
         run: exec bash action/scripts/deploy/deploy-node-server.sh
 
       - name: Log server out of GitHub Container Registry

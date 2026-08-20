@@ -382,6 +382,8 @@ Server 镜像使用 `ghcr.io/voiceofhu/node-server:<version>@sha256:<index>`，�
 把当前源码中的 `deployments/docker-compose.yml` 先上传为 `.next`，健康检查同时通过
 `/api/healthz` 和 `/` 后才替换服务器上的 Compose 文件。Node Runtime 发布使用
 `ghcr.io/voiceofhu/one-node:<version>` 和 `one-node-v<version>` Release，不创建 `latest`。
+Node Server 公网健康检查默认使用 `https://marseo.eu.org`；仅当入口变更时才需在
+`one-node-prod` environment 中使用可选的 `DEPLOY_URL` 覆盖。
 `deploy-node-server` 推送 `node-server-v<version>` 控制 tag；`deploy-node` 推送
 `one-node-v<version>` Action tag。两者均不要求本机设置 `GH_TOKEN`。
 Node Server Action 直接拉取 Backend 与 Web 的固定提交，在两个原生架构 runner 上

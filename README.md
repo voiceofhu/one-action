@@ -397,29 +397,25 @@ node/upgrade.sh
 node/uninstall.sh
 ```
 
-安装需要由控制面提供节点 ID、bootstrap token、目标版本和版本对应的不可变产物
-信息。Native 示例：
+安装需要由控制面提供节点 ID 和 bootstrap token。未设置版本时，安装器自动选择
+最新发布的 `one-node-v<version>`；显式设置 `ONE_NODE_VERSION` 可固定版本或回滚。
+Native 示例：
 
 ```bash
 sudo env \
   ONE_NODE_SERVER='https://server.example.com' \
   ONE_NODE_ID='123' \
   ONE_NODE_BOOTSTRAP_TOKEN='replace-me' \
-  ONE_NODE_VERSION='1.2.3' \
-  ONE_NODE_BINARY_SHA256_AMD64='<64-hex-sha256>' \
-  ONE_NODE_BINARY_SHA256_ARM64='<64-hex-sha256>' \
   ./node/install.sh --mode native
 ```
 
-Docker 模式使用精确 digest：
+Docker 模式默认拉取同版本 tag，并在写入安装清单前解析为精确 digest：
 
 ```bash
 sudo env \
   ONE_NODE_SERVER='https://server.example.com' \
   ONE_NODE_ID='123' \
   ONE_NODE_BOOTSTRAP_TOKEN='replace-me' \
-  ONE_NODE_VERSION='1.2.3' \
-  ONE_NODE_DOCKER_IMAGE='ghcr.io/voiceofhu/one-node@sha256:<64-hex-digest>' \
   ./node/install.sh --mode docker
 ```
 

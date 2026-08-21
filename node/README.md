@@ -19,9 +19,11 @@ repository. Native
 and Docker installation, registration reconfiguration, manifest-owned cleanup,
 readiness checks, immutable-version upgrade, automatic failed-upgrade recovery,
 explicit rollback, and uninstall remain separate from Browser Egress lifecycle
-code. Public downloads require the exact central `one-node-v<version>` Release;
-the runtime image must be
-`ghcr.io/voiceofhu/one-node@sha256:<digest>`. Neither defaults to `latest`.
+code. When `ONE_NODE_VERSION` is omitted, installation resolves the newest
+published central `one-node-v<version>` Release. Native then downloads that
+exact Release, while Docker pulls its matching version tag and records the
+resolved immutable digest. Explicit version and digest inputs remain available
+for rollback or fixed-version installation.
 
 ## Migration record
 
@@ -50,6 +52,7 @@ From this directory:
 
 ```sh
 sh tests/scripts_test.sh
+sh tests/latest_release_test.sh
 sh tests/readiness_test.sh
 sh tests/reconfigure_test.sh
 sh tests/reset_test.sh

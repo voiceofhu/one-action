@@ -67,6 +67,27 @@ parse_install_arguments() {
 	esac
 }
 
+resolve_latest_node_version() {
+	[ -z "$ONE_NODE_VERSION" ] || return 0
+	command -v curl >/dev/null 2>&1 ||
+		die "curl is required to resolve the latest One Node release"
+	releases=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 \
+		--fail --silent --show-error --no-location \
+		--connect-timeout 10 --max-time 30 --max-filesize 8388608 \
+		--header 'Accept: application/vnd.github+json' \
+		--header 'X-GitHub-Api-Version: 2022-11-28' \
+		--user-agent 'one-node-installer' \
+		'https://api.github.com/repos/voiceofhu/one-action/releases?per_page=100') ||
+		die "unable to resolve the latest One Node release"
+	release_tag=$(printf '%s' "$releases" |
+		grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"' |
+		sed -n '1s/^.*"one-node-v\([^"]*\)"$/\1/p')
+	manifest_validate_version "$release_tag" ||
+		die "latest One Node release response did not contain a valid version"
+	ONE_NODE_VERSION=$release_tag
+	log "using latest published One Node version $ONE_NODE_VERSION"
+}
+
 validate_install_config() {
 	for pair in \
 		"ONE_NODE_SERVER|$ONE_NODE_SERVER" \
@@ -84,6 +105,7 @@ validate_install_config() {
 	case "$ONE_NODE_ID" in
 	''|*[!0-9]*|0) die "ONE_NODE_ID must be a positive integer" ;;
 	esac
+	resolve_latest_node_version
 	manifest_validate_version "$ONE_NODE_VERSION" ||
 		die "ONE_NODE_VERSION must be an exact three-component numeric version"
 	validate_decimal "$ONE_NODE_EXPECTED_CONFIG_REVISION" ||
@@ -133,8 +155,11 @@ validate_install_config() {
 		esac
 		ONE_NODE_BINARY_URL="${ONE_NODE_RELEASE_BASE_URL%/}/${ONE_NODE_BINARY_NAME}"
 	else
-		require_value "ONE_NODE_DOCKER_IMAGE" "$ONE_NODE_DOCKER_IMAGE"
-		manifest_validate_image "$ONE_NODE_DOCKER_IMAGE" ||
-			die "ONE_NODE_DOCKER_IMAGE must pin ghcr.io/voiceofhu/one-node by digest"
+		version_image="ghcr.io/voiceofhu/one-node:${ONE_NODE_VERSION}"
+		ONE_NODE_DOCKER_IMAGE=${ONE_NODE_DOCKER_IMAGE:-$version_image}
+		if [ "$ONE_NODE_DOCKER_IMAGE" != "$version_image" ]; then
+			manifest_validate_image "$ONE_NODE_DOCKER_IMAGE" ||
+				die "ONE_NODE_DOCKER_IMAGE must match the selected version tag or pin ghcr.io/voiceofhu/one-node by digest"
+		fi
 	fi
 }

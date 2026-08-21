@@ -4,70 +4,21 @@ PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 include $(PROJECT_ROOT)/make/config.mk
 include $(PROJECT_ROOT)/make/github.mk
-include $(PROJECT_ROOT)/make/workflows.mk
 include $(PROJECT_ROOT)/make/user.mk
-include $(PROJECT_ROOT)/make/egress.mk
 include $(PROJECT_ROOT)/make/node.mk
 
 .PHONY: help
 help:
 	@printf '%s\n' \
-		"One Action (greenfield)" \
+		"One Action" \
 		"" \
-		"Safety defaults:" \
-		"  DRY_RUN=true                Resolve and print only for dispatch targets" \
-		"  deploy-user                 Publish and deploy the real User release" \
-		"  deploy-node-server          Publish and deploy the real Node Server release" \
-		"  deploy-node                 Publish the real Node runtime release" \
-		"  CONFIRM_DISPATCH=...        Action-SHA-bound guard when DRY_RUN=false" \
-		"  CONFIRM_MUTATION=...        Action-SHA-bound publication guard" \
+		"Local checks:" \
+		"  make validate               Validate active shell and workflow contracts locally" \
+		"  make node-check             Test the One Node lifecycle locally" \
+		"  make node-bundle-installers Build local One Node installer snapshots" \
+		"  make check-token            Check read-only access to active workflows" \
 		"" \
-		"Checks:" \
-		"  make validate               Check shell syntax and workflow YAML" \
-		"  make egress-installer-test Test installers with local fixtures only" \
-		"  make node-check             Test the namespaced Node lifecycle locally" \
-		"  make node-bundle-installers Build local Node installer snapshots" \
-		"  make check-token            Read-only GitHub token/access check" \
-		"" \
-		"Workflow plans (dry-run by default):" \
-		"  make dispatch-one-user" \
-		"  make dispatch-one-browser-backend" \
-		"  make dispatch-app" \
-		"  make dispatch-app-debug" \
-		"  make dispatch-egress" \
-		"  make dispatch-browser-runtime  BLOCKED: Runtime trust root unresolved" \
-		"  make dispatch-node             Exact-SHA One Node build/test; publication blocked" \
-		"  make dispatch-one-amz" \
-		"  make deploy-user             Publish combined User image and deploy it" \
-		"  make deploy-node-server      Publish combined Node Server image and deploy it" \
-		"  make deploy-node             Publish Node image and immutable Release assets" \
-		"" \
-		"Example real dispatch (non-publishing build validation):" \
-		"  First dry-run and copy its exact Action SHA into <action-sha>" \
-		"  make dispatch-one-user DRY_RUN=false \\" \
-		"    CONFIRM_DISPATCH='dispatch:user.yml:<action-sha>'" \
-		"" \
-		"Example GHCR publication (no deployment):" \
-		"  make dispatch-one-user PUBLISH=true VERSION=1.2.3 DRY_RUN=false \\" \
-		"    CONFIRM_DISPATCH='dispatch:user.yml:<action-sha>' \\" \
-		"    CONFIRM_MUTATION='mutate:user.yml:<action-sha>'" \
-		"" \
-		"Example Egress public Release (no deployment):" \
-		"  make dispatch-egress PUBLISH=true VERSION=1.2.3 ENVIRONMENT=prod DRY_RUN=false \\" \
-		"    CONFIRM_DISPATCH='dispatch:egress.yml:<action-sha>' \\" \
-		"    CONFIRM_MUTATION='mutate:egress.yml:<action-sha>'" \
-		"" \
-		"Example One User image release and deployment:" \
-		"  make deploy-user" \
-		"  make deploy-user DRY_RUN=true  # Preview only" \
-		"" \
-		"Example One Node releases:" \
-		"  make deploy-node-server" \
-		"  make deploy-node" \
-		"  make deploy-node-server DRY_RUN=true  # Preview only" \
-		"  make deploy-node DRY_RUN=true         # Preview only" \
-		"" \
-		"Example One Node exact-source validation (no publication/deployment):" \
-		"  make dispatch-node" \
-		"  make dispatch-node DRY_RUN=false \\" \
-		"    CONFIRM_DISPATCH='dispatch:node.yml:<action-sha>'"
+		"Tag-triggered compile/upload (no deployment):" \
+		"  make deploy-user            Tag One User sources for compile and upload" \
+		"  make deploy-node-server     Tag Node Server sources for compile and upload" \
+		"  make deploy-node            Tag One Node source for compile and upload"

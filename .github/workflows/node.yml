@@ -4,219 +4,118 @@ name: One Node
   push:
     tags:
       - 'one-node-v*'
-  workflow_dispatch:
-    inputs:
-      expected_action_sha:
-        description: Dispatcher-resolved exact central Action commit SHA
-        required: true
-        type: string
-      node_repository:
-        description: Fixed migration-period One Node source repository
-        required: true
-        type: string
-      node_ref:
-        description: Dispatcher-resolved exact One Node source commit SHA
-        required: true
-        type: string
-      version:
-        description: Optional x.y.z guard; empty reads VERSION from the exact source
-        required: false
-        type: string
-      publish:
-        description: Publish immutable Node image and Action release
-        required: false
-        type: boolean
-        default: false
-      deploy:
-        description: Reserved; Node hosts install or upgrade through the published lifecycle scripts
-        required: false
-        type: boolean
-        default: false
-      confirmation:
-        description: Reserved dispatcher-owned publication confirmation
-        required: false
-        type: string
 
 permissions:
   contents: read
 
-jobs:
-  normalize:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      expected_action_sha: ${{ steps.normalize.outputs.expected_action_sha }}
-      node_repository: ${{ steps.normalize.outputs.node_repository }}
-      node_ref: ${{ steps.normalize.outputs.node_ref }}
-      version: ${{ steps.normalize.outputs.version }}
-      publish: ${{ steps.normalize.outputs.publish }}
-      confirmation: ${{ steps.normalize.outputs.confirmation }}
-    steps:
-      - name: Checkout exact workflow tooling
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: action
-          fetch-depth: 1
-          persist-credentials: false
+concurrency:
+  group: one-node-${{ github.ref_name }}
+  cancel-in-progress: false
 
-      - name: Normalize release inputs
-        id: normalize
+jobs:
+  prepare:
+    name: Resolve fixed release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      version: ${{ steps.source.outputs.version }}
+      node_sha: ${{ steps.source.outputs.node_sha }}
+      upstream_version: ${{ steps.source.outputs.upstream_version }}
+      upstream_commit: ${{ steps.source.outputs.upstream_commit }}
+    steps:
+      - name: Resolve exact One Node source
+        id: source
         shell: bash
         env:
-          ACTION_SHA: ${{ github.sha }}
-          ACTION_SERVER_URL: ${{ github.server_url }}
-          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
-          INPUT_DEPLOY: ${{ inputs.deploy }}
-          INPUT_EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
-          INPUT_NODE_REF: ${{ inputs.node_ref }}
-          INPUT_NODE_REPOSITORY: ${{ inputs.node_repository }}
-          INPUT_PUBLISH: ${{ inputs.publish }}
-          INPUT_VERSION: ${{ inputs.version }}
-          TAG_NAME: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action ]]
+          [[ -n "$GH_TOKEN" ]]
+          [[ "$RELEASE_TAG" =~ ^one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
 
-          emit_output() {
-            local name=$1 value=$2
-            [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]]
-            printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
+          version=${RELEASE_TAG#one-node-v}
+          node_sha="$(gh api "repos/voiceofhu/one-node-node/commits/v$version" --jq .sha)"
+          [[ "$node_sha" =~ ^[0-9a-f]{40}$ ]]
+
+          read_source_file() {
+            gh api "repos/voiceofhu/one-node-node/contents/$1?ref=$node_sha" --jq .content |
+              base64 --decode | tr -d '\r\n'
           }
+          [[ "$(read_source_file VERSION)" == "$version" ]]
+          upstream_version="$(read_source_file one/version/UPSTREAM_VERSION)"
+          upstream_commit="$(read_source_file one/version/UPSTREAM_COMMIT)"
+          [[ "$upstream_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$upstream_commit" =~ ^[0-9a-f]{40}$ ]]
 
-          [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action \
-            && "$ACTION_SERVER_URL" == https://github.com \
-            && "$ACTION_SHA" =~ ^[0-9a-f]{40}$ \
-            && "$(git -C action rev-parse HEAD)" == "$ACTION_SHA" ]] || {
-            echo 'One Node release has an invalid Action trust root.' >&2
-            exit 1
-          }
-
-          case "$EVENT_NAME" in
-            push)
-              [[ "$TAG_NAME" =~ ^one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
-                echo 'Release tag must use one-node-v<major>.<minor>.<patch>.' >&2
-                exit 1
-              }
-              version=${TAG_NAME#one-node-v}
-              expected_action_sha=$ACTION_SHA
-              node_repository=voiceofhu/one-node-node
-              node_ref="$(gh api "repos/$node_repository/commits/v$version" --jq .sha)"
-              publish=true
-              confirmation="enable:node:$ACTION_SHA"
-              ;;
-            workflow_dispatch)
-              [[ "$INPUT_DEPLOY" == false ]] || {
-                echo 'One Node host deployment is not performed by this workflow.' >&2
-                exit 1
-              }
-              expected_action_sha=$INPUT_EXPECTED_ACTION_SHA
-              node_repository=$INPUT_NODE_REPOSITORY
-              node_ref=$INPUT_NODE_REF
-              version=$INPUT_VERSION
-              publish=$INPUT_PUBLISH
-              confirmation=$INPUT_CONFIRMATION
-              ;;
-            *) echo "Unsupported workflow event: $EVENT_NAME" >&2; exit 1 ;;
-          esac
-
-          [[ "$expected_action_sha" == "$ACTION_SHA" \
-            && "$node_repository" == voiceofhu/one-node-node \
-            && "$node_ref" =~ ^[0-9a-f]{40}$ ]] || {
-            echo 'One Node release inputs are invalid.' >&2
-            exit 1
-          }
-          [[ -z "$version" || "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          [[ "$publish" == true || "$publish" == false ]]
-          if [[ "$publish" == true ]]; then
-            [[ -n "$version" && "$confirmation" == "enable:node:$ACTION_SHA" ]]
-          else
-            [[ -z "$confirmation" ]]
-          fi
-
-          emit_output expected_action_sha "$expected_action_sha"
-          emit_output node_repository "$node_repository"
-          emit_output node_ref "$node_ref"
-          emit_output version "$version"
-          emit_output publish "$publish"
-          emit_output confirmation "$confirmation"
+          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+          printf 'node_sha=%s\n' "$node_sha" >>"$GITHUB_OUTPUT"
+          printf 'upstream_version=%s\n' "$upstream_version" >>"$GITHUB_OUTPUT"
+          printf 'upstream_commit=%s\n' "$upstream_commit" >>"$GITHUB_OUTPUT"
 
   build:
-    needs: normalize
-    uses: ./.github/workflows/reusable-build-node.yml
-    with:
-      action_sha: ${{ needs.normalize.outputs.expected_action_sha }}
-      source_repository: ${{ needs.normalize.outputs.node_repository }}
-      source_sha: ${{ needs.normalize.outputs.node_ref }}
-      version: ${{ needs.normalize.outputs.version }}
-      publish: ${{ needs.normalize.outputs.publish == 'true' }}
-    secrets:
-      source_read_token: ${{ secrets.GH_TOKEN }}
-
-  publish:
-    name: Publish immutable One Node image and release
-    if: needs.normalize.outputs.publish == 'true'
-    needs:
-      - normalize
-      - build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    name: Build and upload linux/${{ matrix.arch }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
       packages: write
-    concurrency:
-      group: one-node-publish
-      cancel-in-progress: false
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
-      - name: Checkout exact Action tooling
+      - name: Checkout exact One Node source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.normalize.outputs.expected_action_sha }}
-          path: action
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Checkout exact Node source
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.normalize.outputs.node_repository }}
-          ref: ${{ needs.normalize.outputs.node_ref }}
+          repository: voiceofhu/one-node-node
+          ref: ${{ needs.prepare.outputs.node_sha }}
           path: node
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Download exact release assets
-        uses: actions/download-artifact@v4
+      - name: Set up source-declared Go toolchain
+        uses: actions/setup-go@v5
         with:
-          name: node-release-${{ needs.normalize.outputs.node_ref }}
-          path: dist
+          go-version-file: node/go.mod
+          cache: false
 
-      - name: Validate exact release assets
+      - name: Build Linux binary
+        working-directory: node
         shell: bash
         env:
-          VERSION: ${{ needs.build.outputs.source_version }}
+          ARCH: ${{ matrix.arch }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.node_sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
         run: |
           set -Eeuo pipefail
-          expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
-          actual_assets="$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)"
-          [[ "$actual_assets" == "$expected_assets" ]]
-          (cd dist && sha256sum -c SHA256SUMS)
-          chmod 0755 dist/one-node-linux-amd64 dist/one-node-linux-arm64
-          [[ "$(dist/one-node-linux-amd64 version --product-name)" == "$VERSION" ]]
-          mkdir -p node/dist
-          cp dist/one-node-linux-amd64 node/dist/one-node-linux-amd64
-          cp dist/one-node-linux-arm64 node/dist/one-node-linux-arm64
+          make --no-print-directory "build-linux-$ARCH" \
+            ONE_NODE_VERSION="$VERSION" \
+            ONE_NODE_COMMIT="$SOURCE_SHA" \
+            ONE_NODE_UPSTREAM_VERSION="$UPSTREAM_VERSION" \
+            ONE_NODE_UPSTREAM_COMMIT="$UPSTREAM_COMMIT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-node-linux-${{ matrix.arch }}
+          path: node/dist/one-node-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Resolve GitHub token identity
-        id: github_identity
+      - name: Resolve registry token owner
+        id: registry
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -226,81 +125,249 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ steps.github_identity.outputs.login }}
+          username: ${{ steps.registry.outputs.login }}
           password: ${{ secrets.GH_TOKEN }}
 
-      - name: Build and push immutable candidate image
+      - name: Build and push architecture image
         uses: docker/build-push-action@v6
         with:
           context: node
           file: node/one/docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           push: true
-          tags: ghcr.io/voiceofhu/one-node:build-${{ needs.normalize.outputs.node_ref }}-${{ github.run_id }}-${{ github.run_attempt }}
+          tags: ghcr.io/voiceofhu/one-node:build-${{ needs.prepare.outputs.node_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           labels: |
-            org.opencontainers.image.title=One Node
-            org.opencontainers.image.description=One Node runtime agent
             org.opencontainers.image.source=https://github.com/voiceofhu/one-node-node
-            org.opencontainers.image.documentation=https://github.com/voiceofhu/one-action
-            org.opencontainers.image.revision=${{ needs.normalize.outputs.node_ref }}
-            org.opencontainers.image.version=${{ needs.build.outputs.source_version }}
-            io.one-node.upstream.version=${{ needs.build.outputs.upstream_version }}
-            io.one-node.upstream.commit=${{ needs.build.outputs.upstream_commit }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.node_sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            io.one-node.upstream.version=${{ needs.prepare.outputs.upstream_version }}
+            io.one-node.upstream.commit=${{ needs.prepare.outputs.upstream_commit }}
           provenance: false
           sbom: false
-          cache-from: type=registry,ref=ghcr.io/voiceofhu/one-node:buildcache
-          cache-to: type=registry,ref=ghcr.io/voiceofhu/one-node:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
 
-      - name: Publish immutable revision and version tags
+  publish-image:
+    name: Publish immutable OCI image
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve registry token owner
+        id: registry
         shell: bash
         env:
-          IMAGE: ghcr.io/voiceofhu/one-node
-          IMAGE_REVISION_TAG: sha-${{ needs.normalize.outputs.node_ref }}
-          IMAGE_VERSION: ${{ needs.build.outputs.source_version }}
-          IMAGE_BUILD_TAG: build-${{ needs.normalize.outputs.node_ref }}-${{ github.run_id }}-${{ github.run_attempt }}
-          IMAGE_SOURCE: https://github.com/voiceofhu/one-node-node
-          IMAGE_DESCRIPTION: One Node runtime agent
-          IMAGE_REVISION: ${{ needs.normalize.outputs.node_ref }}
-          EXPECTED_VERSION: ${{ needs.build.outputs.source_version }}
-          EXPECTED_COMMIT: ${{ needs.normalize.outputs.node_ref }}
-          EXPECTED_UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
-          EXPECTED_UPSTREAM_COMMIT: ${{ needs.build.outputs.upstream_commit }}
-          SHOULD_BUILD: 'true'
-        run: exec bash action/scripts/release/publish-node-image.sh
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
-      - name: Publish or verify immutable Action release
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ steps.registry.outputs.login }}
+          password: ${{ secrets.GH_TOKEN }}
+
+      - name: Publish version and revision tags
+        shell: bash
+        env:
+          NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          image=ghcr.io/voiceofhu/one-node
+          candidate="$image:build-$NODE_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          fingerprint() {
+            docker buildx imagetools inspect --raw "$1" |
+              jq -er '[.manifests[] | select(.platform.os == "linux" and (.platform.architecture == "amd64" or .platform.architecture == "arm64")) | "\(.platform.architecture)=\(.digest)"] | sort | if length == 2 then join(",") else error("expected two Linux architectures") end'
+          }
+
+          docker buildx imagetools create \
+            --tag "$candidate" \
+            "$candidate-amd64" \
+            "$candidate-arm64"
+          candidate_fingerprint="$(fingerprint "$candidate")"
+          version_ref="$image:$VERSION"
+          revision_ref="$image:sha-$NODE_SHA"
+          version_exists=false
+          revision_exists=false
+          docker buildx imagetools inspect "$version_ref" >/dev/null 2>&1 && version_exists=true
+          docker buildx imagetools inspect "$revision_ref" >/dev/null 2>&1 && revision_exists=true
+
+          verify_final() {
+            local target=$1
+            docker buildx imagetools inspect --raw "$target" |
+              jq -e --arg revision "$NODE_SHA" --arg version "$VERSION" '
+                .annotations["org.opencontainers.image.revision"] == $revision and
+                .annotations["org.opencontainers.image.version"] == $version
+              ' >/dev/null
+          }
+
+          if [[ "$version_exists" == true && "$revision_exists" == true ]]; then
+            verify_final "$version_ref"
+            verify_final "$revision_ref"
+            [[ "$(fingerprint "$version_ref")" == "$(fingerprint "$revision_ref")" ]]
+          elif [[ "$version_exists" == true || "$revision_exists" == true ]]; then
+            if [[ "$version_exists" == true ]]; then
+              existing_ref=$version_ref
+              missing_ref=$revision_ref
+            else
+              existing_ref=$revision_ref
+              missing_ref=$version_ref
+            fi
+            verify_final "$existing_ref"
+            docker buildx imagetools create \
+              --annotation "index:org.opencontainers.image.revision=$NODE_SHA" \
+              --annotation "index:org.opencontainers.image.version=$VERSION" \
+              --tag "$missing_ref" \
+              "$existing_ref"
+          else
+            docker buildx imagetools create \
+              --annotation "index:org.opencontainers.image.revision=$NODE_SHA" \
+              --annotation "index:org.opencontainers.image.version=$VERSION" \
+              --tag "$version_ref" \
+              --tag "$revision_ref" \
+              "$candidate"
+          fi
+
+          verify_final "$version_ref"
+          verify_final "$revision_ref"
+          final_fingerprint="$(fingerprint "$version_ref")"
+          [[ "$(fingerprint "$revision_ref")" == "$final_fingerprint" ]]
+          if [[ "$version_exists" == false && "$revision_exists" == false ]]; then
+            [[ "$final_fingerprint" == "$candidate_fingerprint" ]]
+          fi
+
+  upload-release:
+    name: Upload draft GitHub Release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: one-node-linux-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create release checksums
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod 0755 dist/one-node-linux-amd64 dist/one-node-linux-arm64
+          (cd dist && sha256sum one-node-linux-amd64 one-node-linux-arm64 >SHA256SUMS)
+
+      - name: Create or resume GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_REPOSITORY: voiceofhu/one-action
-          RELEASE_TAG: one-node-v${{ needs.build.outputs.source_version }}
-          NODE_SHA: ${{ needs.normalize.outputs.node_ref }}
-          UPSTREAM_VERSION: ${{ needs.build.outputs.upstream_version }}
-          UPSTREAM_COMMIT: ${{ needs.build.outputs.upstream_commit }}
-          VERSION: ${{ needs.build.outputs.source_version }}
+          NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -Eeuo pipefail
-          release_body="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s\nImmutable image: ghcr.io/voiceofhu/one-node:sha-%s' \
-            "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION" "$NODE_SHA")"
-          if existing_release="$(gh release view "$RELEASE_TAG" \
-            --repo "$RELEASE_REPOSITORY" --json body,assets,isPrerelease 2>/dev/null)"; then
-            jq -e --arg body "$release_body" '.isPrerelease == false and .body == $body' \
-              <<<"$existing_release" >/dev/null
-            [[ "$(jq -r '.assets[].name' <<<"$existing_release" | LC_ALL=C sort)" == \
-              $'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64' ]]
-            existing_dir="$(mktemp -d)"
-            trap 'rm -rf "$existing_dir"' EXIT
-            gh release download "$RELEASE_TAG" \
-              --repo "$RELEASE_REPOSITORY" --dir "$existing_dir"
+          expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
+          notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
+            "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION")"
+
+          verify_assets() {
+            local directory=$1
             for asset in SHA256SUMS one-node-linux-amd64 one-node-linux-arm64; do
-              cmp -s "dist/$asset" "$existing_dir/$asset"
+              cmp -s "dist/$asset" "$directory/$asset"
             done
-            printf 'Immutable One Node release %s already exists with identical bytes.\n' "$RELEASE_TAG"
-            exit 0
+          }
+
+          if release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+            --json body,assets,isDraft,isPrerelease 2>/dev/null)"; then
+            jq -e --arg body "$notes" '.body == $body and .isPrerelease == false' \
+              <<<"$release_json" >/dev/null
+            actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
+            if [[ "$(jq -r .isDraft <<<"$release_json")" == false ]]; then
+              [[ "$actual_assets" == "$expected_assets" ]]
+              existing_dir="$(mktemp -d)"
+              trap 'rm -rf "$existing_dir"' EXIT
+              gh release download "$RELEASE_TAG" --repo voiceofhu/one-action --dir "$existing_dir"
+              verify_assets "$existing_dir"
+              exit 0
+            fi
+            while IFS= read -r asset; do
+              case "$asset" in
+                ''|SHA256SUMS|one-node-linux-amd64|one-node-linux-arm64) ;;
+                *) printf 'Unexpected draft Release asset: %s\n' "$asset" >&2; exit 1 ;;
+              esac
+            done <<<"$actual_assets"
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo voiceofhu/one-action \
+              --verify-tag \
+              --draft \
+              --title one-node \
+              --notes "$notes" \
+              --latest=false
           fi
-          gh release create "$RELEASE_TAG" \
+
+          gh release upload "$RELEASE_TAG" \
             dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 \
-            --repo "$RELEASE_REPOSITORY" \
-            --target "${{ needs.normalize.outputs.expected_action_sha }}" \
-            --title one-node \
-            --notes "$release_body"
+            --repo voiceofhu/one-action \
+            --clobber
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          gh release download "$RELEASE_TAG" --repo voiceofhu/one-action --dir "$readback_dir"
+          verify_assets "$readback_dir"
+          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+            --json body,assets,isDraft,isPrerelease)"
+          actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
+          jq -e --arg body "$notes" \
+            '.body == $body and .isDraft == true and .isPrerelease == false' \
+            <<<"$release_json" >/dev/null
+          [[ "$actual_assets" == "$expected_assets" ]]
+
+  publish-release:
+    name: Publish verified GitHub Release
+    needs:
+      - prepare
+      - publish-image
+      - upload-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: write
+    steps:
+      - name: Publish verified draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
+          notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
+            "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION")"
+          gh release edit "$RELEASE_TAG" \
+            --repo voiceofhu/one-action \
+            --draft=false \
+            --latest=false
+          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+            --json body,assets,isDraft,isPrerelease)"
+          actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
+          jq -e --arg body "$notes" \
+            '.body == $body and .isDraft == false and .isPrerelease == false' \
+            <<<"$release_json" >/dev/null
+          [[ "$actual_assets" == "$expected_assets" ]]

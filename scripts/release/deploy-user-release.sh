@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTION_REPOSITORY='voiceofhu/one-action'
@@ -116,8 +117,8 @@ printf '%s\n' \
 
 if [[ "$dry_run" == true ]]; then
   printf '%s\n' \
-    'DRY_RUN=true: source versions, commits, tags, pushes, and deployment are not changed.' \
-    'The real run will preflight Action main, update and push both source versions, then push the control tag.'
+    'DRY_RUN=true: checks, source versions, commits, tags, pushes, and uploads are not changed.' \
+    'The real run checks both sources, publishes their versions, then pushes the Action control tag.'
   exit 0
 fi
 
@@ -165,6 +166,11 @@ action_remote_head="$(git -C "$PROJECT_ROOT" rev-parse --verify refs/remotes/ori
     'Push or synchronize the Action main branch, then retry; no source repositories were changed.' >&2
   exit 1
 }
+make --no-print-directory -C "$PROJECT_ROOT" validate
+[[ "$(validate_action_repository)" == "$action_head" ]] || {
+  printf '%s\n' 'Action source changed during local validation.' >&2
+  exit 1
+}
 
 preflight_release_repository() {
   local label=$1
@@ -189,6 +195,30 @@ preflight_release_repository() {
 
 preflight_release_repository Backend "$ONE_USER_BACKEND_DIR" "$backend_branch"
 preflight_release_repository Web "$ONE_USER_WEB_DIR" "$web_branch"
+
+(
+  cd "$ONE_USER_BACKEND_DIR"
+  cargo fmt --all -- --check
+)
+make --no-print-directory -C "$ONE_USER_BACKEND_DIR" check
+make --no-print-directory -C "$ONE_USER_BACKEND_DIR" test
+make --no-print-directory -C "$ONE_USER_BACKEND_DIR" build
+pnpm --dir "$ONE_USER_WEB_DIR" install --frozen-lockfile
+pnpm --dir "$ONE_USER_WEB_DIR" format:check
+pnpm --dir "$ONE_USER_WEB_DIR" lint
+pnpm --dir "$ONE_USER_WEB_DIR" test
+pnpm --dir "$ONE_USER_WEB_DIR" build
+
+[[ "$(git -C "$ONE_USER_BACKEND_DIR" rev-parse HEAD)" == "$backend_head" \
+  && -z "$(git -C "$ONE_USER_BACKEND_DIR" status --porcelain --untracked-files=all)" ]] || {
+  printf '%s\n' 'Backend source changed during local validation.' >&2
+  exit 1
+}
+[[ "$(git -C "$ONE_USER_WEB_DIR" rev-parse HEAD)" == "$web_head" \
+  && -z "$(git -C "$ONE_USER_WEB_DIR" status --porcelain --untracked-files=all)" ]] || {
+  printf '%s\n' 'Web source changed during local validation.' >&2
+  exit 1
+}
 
 update_backend_version() {
   local manifest="$ONE_USER_BACKEND_DIR/Cargo.toml"
@@ -309,5 +339,5 @@ if ! git -C "$PROJECT_ROOT" push origin \
     "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
   exit 1
 fi
-printf 'Triggered One User image publication with Action control tag: %s@%s\n' \
+printf 'Triggered One User image compilation and upload with Action control tag: %s@%s\n' \
   "$control_tag" "$action_head"

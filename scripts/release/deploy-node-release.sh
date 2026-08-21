@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTION_REPOSITORY=voiceofhu/one-action
@@ -74,6 +75,11 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
   printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
   exit 1
 }
+make --no-print-directory -C "$PROJECT_ROOT" validate
+[[ "$(validate_action_repository)" == "$action_head" ]] || {
+  printf '%s\n' 'Action source changed during local validation.' >&2
+  exit 1
+}
 
 remote="$(git -C "$ONE_NODE_DIR" config --get remote.origin.url)"
 case "$remote" in
@@ -87,6 +93,13 @@ if [[ -n "$remote_tag" ]]; then
   git -C "$ONE_NODE_DIR" fetch --quiet --no-tags origin "refs/tags/$source_tag"
   [[ "$(git -C "$ONE_NODE_DIR" show FETCH_HEAD:VERSION 2>/dev/null || true)" == "$VERSION" ]] || {
     printf 'Remote Node tag %s does not contain matching VERSION metadata.\n' "$source_tag" >&2
+    exit 1
+  }
+  node_ref="$(git -C "$ONE_NODE_DIR" rev-parse 'FETCH_HEAD^{commit}')"
+  [[ -z "$(git -C "$ONE_NODE_DIR" status --porcelain --untracked-files=all)" \
+    && "$(git -C "$ONE_NODE_DIR" rev-parse HEAD)" == "$node_ref" ]] || {
+    printf 'Local One Node checkout must exactly match existing remote tag %s before verification.\n' \
+      "$source_tag" >&2
     exit 1
   }
 else
@@ -103,7 +116,24 @@ else
     printf 'One Node branch must exactly match origin/%s before release.\n' "$branch" >&2
     exit 1
   }
-  make --no-print-directory -C "$ONE_NODE_DIR" test
+  node_ref="$(git -C "$ONE_NODE_DIR" rev-parse HEAD)"
+fi
+
+upstream_version="$(tr -d '\r\n' <"$ONE_NODE_DIR/one/version/UPSTREAM_VERSION")"
+upstream_commit="$(tr -d '\r\n' <"$ONE_NODE_DIR/one/version/UPSTREAM_COMMIT")"
+make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
+  ONE_NODE_VERSION="$VERSION" \
+  ONE_NODE_COMMIT="$node_ref" \
+  ONE_NODE_UPSTREAM_VERSION="$upstream_version" \
+  ONE_NODE_UPSTREAM_COMMIT="$upstream_commit"
+
+[[ "$(git -C "$ONE_NODE_DIR" rev-parse HEAD)" == "$node_ref" \
+  && -z "$(git -C "$ONE_NODE_DIR" status --porcelain --untracked-files=all)" ]] || {
+  printf '%s\n' 'One Node source changed during local validation.' >&2
+  exit 1
+}
+
+if [[ -z "$remote_tag" ]]; then
   version_tmp="$(mktemp "$ONE_NODE_DIR/VERSION.tmp.XXXXXX")"
   trap 'rm -f "$version_tmp"' EXIT
   printf '%s\n' "$VERSION" >"$version_tmp"
@@ -125,7 +155,13 @@ else
   fi
   git -C "$ONE_NODE_DIR" push --atomic origin \
     "HEAD:refs/heads/$branch" "refs/tags/$source_tag:refs/tags/$source_tag"
+  node_ref="$(git -C "$ONE_NODE_DIR" rev-parse HEAD)"
 fi
+
+[[ "$node_ref" =~ ^[0-9a-f]{40}$ ]] || {
+  printf '%s\n' 'Resolved Node release source is not an exact commit SHA.' >&2
+  exit 1
+}
 
 git -C "$PROJECT_ROOT" tag "$release_tag" "$action_head"
 if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$release_tag:refs/tags/$release_tag"; then
@@ -134,4 +170,5 @@ if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$release_tag:refs/tags/$relea
     "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$release_tag:refs/tags/$release_tag" >&2
   exit 1
 fi
-printf 'Triggered One Node publication with Action tag: %s@%s\n' "$release_tag" "$action_head"
+printf 'Triggered One Node image and Release upload with Action tag: %s@%s\n' \
+  "$release_tag" "$action_head"

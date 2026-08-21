@@ -23,7 +23,7 @@ printf 'OK token identity: %s\n' "$login"
 github_get "repos/$action_repository" "$response_file"
 printf 'OK action repository: %s\n' "$action_repository"
 
-for workflow in user.yml one-browser-backend.yml app.yml app-debug.yml egress.yml browser-runtime.yml one-amz.yml node.yml; do
+for workflow in user.yml node-server.yml node.yml reusable-publish-web-backend.yml; do
   github_get "repos/$action_repository/actions/workflows/$workflow" "$response_file"
   printf 'OK workflow: %s\n' "$workflow"
 done

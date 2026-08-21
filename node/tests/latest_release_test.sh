@@ -66,7 +66,7 @@ systemctl() {
 	:
 }
 docker() {
-	case "$1:$2" in
+	case "$1:${2:-}" in
 	info:|compose:version|pull:*) ;;
 	image:inspect)
 		printf '%s\n' 'ghcr.io/voiceofhu/one-node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'

@@ -1,4 +1,4 @@
-name: Publish combined Web and backend image
+name: Publish Web and backend image
 
 'on':
   workflow_call:
@@ -9,13 +9,7 @@ name: Publish combined Web and backend image
       action_sha:
         required: true
         type: string
-      backend_repository:
-        required: true
-        type: string
       backend_sha:
-        required: true
-        type: string
-      web_repository:
         required: true
         type: string
       web_sha:
@@ -24,226 +18,53 @@ name: Publish combined Web and backend image
       version:
         required: true
         type: string
-      environment:
+      created_at:
         required: true
         type: string
     secrets:
       source_read_token:
-        description: Token limited to reading the fixed backend and Web repositories
         required: true
       package_write_token:
-        description: Token allowed to publish the fixed GHCR package
-        required: false
+        required: true
     outputs:
       digest:
-        description: Registry digest of the published multi-platform OCI index
         value: ${{ jobs.manifest.outputs.digest }}
       image_ref:
-        description: Digest-qualified multi-platform image reference
         value: ${{ jobs.manifest.outputs.image_ref }}
 
 permissions:
   contents: read
   packages: write
-concurrency:
-  group: ghcr-${{ inputs.workflow_name }}-publish
-  cancel-in-progress: false
 
 jobs:
-  plan:
-    name: Plan immutable publication
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    outputs:
-      registry_image: ${{ steps.config.outputs.registry_image }}
-      publish_tag: ${{ steps.config.outputs.publish_tag }}
-      backend_package: ${{ steps.config.outputs.backend_package }}
-      backend_dockerfile: ${{ steps.config.outputs.backend_dockerfile }}
-      web_package: ${{ steps.config.outputs.web_package }}
-      web_output_dir: ${{ steps.config.outputs.web_output_dir }}
-      created_at: ${{ steps.config.outputs.created_at }}
-    steps:
-      - name: Validate immutable publication inputs
-        id: config
-        shell: bash
-        env:
-          WORKFLOW_NAME: ${{ inputs.workflow_name }}
-          ACTION_SHA: ${{ inputs.action_sha }}
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
-          WEB_SHA: ${{ inputs.web_sha }}
-          WEB_REPOSITORY: ${{ inputs.web_repository }}
-          VERSION: ${{ inputs.version }}
-          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
-          WORKFLOW_ACTION_SHA: ${{ github.sha }}
-          ACTION_REPOSITORY: ${{ github.repository }}
-          ACTION_SERVER_URL: ${{ github.server_url }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          set -Eeuo pipefail
-          for entry in "action_sha:$ACTION_SHA" "backend_sha:$BACKEND_SHA" "web_sha:$WEB_SHA"; do
-            label="${entry%%:*}"
-            sha="${entry#*:}"
-            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
-              echo "$label must be an exact commit SHA" >&2
-              exit 1
-            }
-          done
-          [ "$ACTION_SHA" = "$WORKFLOW_ACTION_SHA" ] || {
-            echo "Action SHA does not match the reusable workflow revision." >&2
-            exit 1
-          }
-          if [ "$ACTION_REPOSITORY" != voiceofhu/one-action ] \
-            || [ "$ACTION_SERVER_URL" != https://github.com ]; then
-            echo "publication must run from the fixed central Action repository" >&2
-            exit 1
-          fi
-          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
-            || ((${#VERSION} > 32)); then
-            echo "version must be at most 32 characters and contain three numeric components without a v prefix" >&2
-            exit 1
-          fi
-          case "$DEPLOYMENT_ENVIRONMENT" in
-            dev|stage|prod) ;;
-            *) echo "environment must be dev, stage, or prod" >&2; exit 1 ;;
-          esac
-          case "$WORKFLOW_NAME" in
-            one-user)
-              registry_image=ghcr.io/voiceofhu/one-user
-              backend_package=one-user-backend
-              backend_dockerfile=deploy/docker/Dockerfile
-              web_package=one-user-web
-              expected_backend_repository=voiceofhu/one-user-backend
-              expected_web_repository=voiceofhu/one-user-web
-              publish_tag="$VERSION"
-              web_output_dir=dist
-              ;;
-            one-node-server)
-              registry_image=ghcr.io/voiceofhu/node-server
-              backend_package=github.com/voh/one-node/one-node-server
-              backend_dockerfile=Dockerfile
-              web_package=one-node-web-vite
-              expected_backend_repository=voiceofhu/one-node-server
-              expected_web_repository=voiceofhu/one-node-web
-              publish_tag="$VERSION"
-              web_output_dir=out
-              ;;
-            one-amz)
-              registry_image=ghcr.io/voiceofhu/one-amz-backend-next
-              backend_package=one-amz-backend
-              backend_dockerfile=Dockerfile
-              web_package=one-amz-web
-              expected_backend_repository=voiceofhu/one-amz-backend-next
-              expected_web_repository=voiceofhu/one-amz-web-next
-              publish_tag="run-a${ACTION_SHA:0:12}-b${BACKEND_SHA:0:12}-w${WEB_SHA:0:12}-r${RUN_ID}-a${RUN_ATTEMPT}"
-              web_output_dir=dist
-              ;;
-            *) echo "workflow is not allowed to publish a combined image" >&2; exit 1 ;;
-          esac
-          if [ "$BACKEND_REPOSITORY" != "$expected_backend_repository" ] \
-            || [ "$WEB_REPOSITORY" != "$expected_web_repository" ]; then
-            echo "publication sources do not match the fixed product repositories" >&2
-            exit 1
-          fi
-          {
-            echo "registry_image=$registry_image"
-            echo "publish_tag=$publish_tag"
-            echo "backend_package=$backend_package"
-            echo "backend_dockerfile=$backend_dockerfile"
-            echo "web_package=$web_package"
-            echo "web_output_dir=$web_output_dir"
-            echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } >> "$GITHUB_OUTPUT"
-
-  verify_backend:
-    name: Verify backend source
-    if: inputs.workflow_name != 'one-node-server' && inputs.workflow_name != 'one-user'
-    needs: plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout backend at exact commit
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.backend_repository }}
-          ref: ${{ inputs.backend_sha }}
-          path: backend
-          token: ${{ secrets.source_read_token }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Verify locked Rust source
-        shell: bash
-        working-directory: backend
-        env:
-          EXPECTED_BACKEND_PACKAGE: ${{ needs.plan.outputs.backend_package }}
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -Eeuo pipefail
-          [ "$(git rev-parse HEAD)" = "$BACKEND_SHA" ] || {
-            echo "Backend checkout HEAD does not match backend_sha." >&2
-            exit 1
-          }
-          test -f Cargo.toml && test ! -L Cargo.toml
-          test -f Cargo.lock && test ! -L Cargo.lock
-          test -f rust-toolchain.toml && test ! -L rust-toolchain.toml
-          package_version="$(
-            cargo metadata --format-version 1 --no-deps --locked |
-              jq -er --arg package "$EXPECTED_BACKEND_PACKAGE" '
-                [.packages[] | select(.name == $package) | .version] |
-                if length == 1 then .[0] else error("expected exactly one fixed backend package") end
-              '
-          )"
-          [ "$package_version" = "$VERSION" ] || {
-            echo "Requested version does not match the backend Cargo package version." >&2
-            exit 1
-          }
-          cargo fmt --all -- --check
-          cargo clippy --all-targets --all-features --locked -- -D warnings
-          cargo test --all-features --locked
-          git diff --exit-code -- .
   build:
-    name: Build ${{ matrix.suffix }} image
-    needs: plan
+    name: Build and push ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: write
-    environment: ghcr-publish
+    timeout-minutes: 20
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
-            architecture: amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - platform: linux/arm64
-            architecture: arm64
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
             runner: ubuntu-24.04-arm
-            suffix: arm64
     steps:
-      - name: Checkout backend at exact commit
+      - name: Checkout exact backend source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.backend_repository }}
+          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || 'voiceofhu/one-node-server' }}
           ref: ${{ inputs.backend_sha }}
           path: backend
           token: ${{ secrets.source_read_token }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Checkout Web at exact commit
+      - name: Checkout exact Web source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.web_repository }}
+          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || 'voiceofhu/one-node-web' }}
           ref: ${{ inputs.web_sha }}
           path: web
           token: ${{ secrets.source_read_token }}
@@ -261,246 +82,135 @@ jobs:
         with:
           node-version: 24
 
-      - name: Build Web from the fresh checkout
+      - name: Build and stage Web
         shell: bash
         env:
-          EXPECTED_WEB_PACKAGE: ${{ needs.plan.outputs.web_package }}
-          WEB_SHA: ${{ inputs.web_sha }}
-          VERSION: ${{ inputs.version }}
-          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
-          WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
+          BUILD_TIME: ${{ inputs.created_at }}
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
         run: |
           set -Eeuo pipefail
-          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
-            && [ "${{ inputs.workflow_name }}" != one-user ]; then
-            [ "$(git -C web rev-parse HEAD)" = "$WEB_SHA" ] || {
-              echo "Web checkout HEAD does not match web_sha." >&2
-              exit 1
-            }
-            test -f web/package.json && test ! -L web/package.json
-            test -f web/pnpm-lock.yaml && test ! -L web/pnpm-lock.yaml
-            web_package="$(jq -er '.name | select(type == "string")' web/package.json)"
-            web_version="$(jq -er '.version | select(type == "string")' web/package.json)"
-            [ "$web_package" = "$EXPECTED_WEB_PACKAGE" ] || {
-              echo "Web package name does not match the fixed product package." >&2
-              exit 1
-            }
-            [ "$web_version" = "$VERSION" ] || {
-              echo "Requested version does not match the Web package version." >&2
-              exit 1
-            }
-          fi
-          pnpm --dir web install --frozen-lockfile
-          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
-            && [ "${{ inputs.workflow_name }}" != one-user ]; then
-            pnpm --dir web format:check
-            pnpm --dir web lint
-          fi
-          case "$DEPLOYMENT_ENVIRONMENT" in
-            dev) pnpm --dir web exec tsc -b && pnpm --dir web exec vite build --mode development ;;
-            stage) pnpm --dir web build:stage ;;
-            prod) pnpm --dir web build ;;
-            *) exit 1 ;;
+          case "$WORKFLOW_NAME" in
+            one-user) web_output_dir=dist ;;
+            one-node-server) web_output_dir=out ;;
+            *) echo "Unsupported workflow: $WORKFLOW_NAME" >&2; exit 1 ;;
           esac
-          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
-            && [ "${{ inputs.workflow_name }}" != one-user ]; then
-            test -f "web/$WEB_OUTPUT_DIR/index.html"
-            if find "web/$WEB_OUTPUT_DIR" -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
-              echo "Web dist may contain only regular files and directories." >&2
-              exit 1
-            fi
-            git -C web diff --exit-code -- .
-          fi
-
-      - name: Assemble exact architecture build context
-        shell: bash
-        env:
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-          BACKEND_DOCKERFILE: ${{ needs.plan.outputs.backend_dockerfile }}
-          WEB_OUTPUT_DIR: ${{ needs.plan.outputs.web_output_dir }}
-        run: |
-          set -Eeuo pipefail
-          if [ "${{ inputs.workflow_name }}" != one-node-server ] \
-            && [ "${{ inputs.workflow_name }}" != one-user ]; then
-            [ "$(git -C backend rev-parse HEAD)" = "$BACKEND_SHA" ] || {
-              echo "Backend checkout HEAD does not match backend_sha." >&2
-              exit 1
-            }
-            [ ! -e backend/web-dist ] || {
-              echo "backend/web-dist must not be committed in source" >&2
-              exit 1
-            }
-          fi
+          pnpm --dir web install --frozen-lockfile
+          VITE_BUILD_TIME="$BUILD_TIME" pnpm --dir web build
           mkdir backend/web-dist
-          cp -R "web/$WEB_OUTPUT_DIR/." backend/web-dist/
-          if [ "${{ inputs.workflow_name }}" != one-node-server ]; then
-            test -f "backend/$BACKEND_DOCKERFILE" && test ! -L "backend/$BACKEND_DOCKERFILE"
-            test -f backend/web-dist/index.html
-          fi
+          cp -R "web/$web_output_dir/." backend/web-dist/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Resolve registry token owner
+        id: registry
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.package_write_token }}
+        run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.package_write_token || github.token }}
+          username: ${{ steps.registry.outputs.login }}
+          password: ${{ secrets.package_write_token }}
 
       - name: Build and push architecture image
         uses: docker/build-push-action@v6
         with:
           context: backend
-          file: backend/${{ needs.plan.outputs.backend_dockerfile }}
+          file: backend/${{ inputs.workflow_name == 'one-user' && 'deploy/docker/Dockerfile' || 'Dockerfile' }}
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}
+          tags: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || 'ghcr.io/voiceofhu/node-server' }}:build-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           labels: |
-            org.opencontainers.image.created=${{ needs.plan.outputs.created_at }}
-            org.opencontainers.image.source=https://github.com/${{ inputs.backend_repository }}
+            org.opencontainers.image.created=${{ inputs.created_at }}
+            org.opencontainers.image.source=https://github.com/${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || 'voiceofhu/one-node-server' }}
             org.opencontainers.image.revision=${{ inputs.backend_sha }}
             org.opencontainers.image.version=${{ inputs.version }}
             one.action.revision=${{ inputs.action_sha }}
             one.action.repository=${{ github.repository }}
             one.web.revision=${{ inputs.web_sha }}
-            one.environment=${{ inputs.environment }}
+            one.environment=prod
           provenance: false
           sbom: false
-          cache-from: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }}
-          cache-to: type=registry,ref=${{ needs.plan.outputs.registry_image }}:buildcache-${{ matrix.suffix }},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
           build-args: |
             VERSION=${{ inputs.version }}
             COMMIT=${{ inputs.backend_sha }}
 
-      - name: Verify pushed architecture image
-        if: inputs.workflow_name != 'one-node-server' && inputs.workflow_name != 'one-user'
-        shell: bash
-        env:
-          IMAGE_REF: ${{ needs.plan.outputs.registry_image }}:${{ needs.plan.outputs.publish_tag }}-${{ matrix.suffix }}
-          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
-          ACTION_SHA: ${{ inputs.action_sha }}
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-          WEB_SHA: ${{ inputs.web_sha }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -Eeuo pipefail
-          image_json="$(docker buildx imagetools inspect "$IMAGE_REF" --format '{{json .Image}}')"
-          jq -e \
-            --arg architecture "$EXPECTED_ARCHITECTURE" \
-            --arg action_sha "$ACTION_SHA" \
-            --arg backend_sha "$BACKEND_SHA" \
-            --arg web_sha "$WEB_SHA" \
-            --arg version "$VERSION" '
-              .os == "linux" and
-              .architecture == $architecture and
-              .config.Labels["one.action.revision"] == $action_sha and
-              .config.Labels["org.opencontainers.image.revision"] == $backend_sha and
-              .config.Labels["one.web.revision"] == $web_sha and
-              .config.Labels["org.opencontainers.image.version"] == $version
-            ' <<<"$image_json" >/dev/null || {
-              echo "Architecture image platform or provenance labels are invalid." >&2
-              exit 1
-            }
-          image_user="$(jq -er '.config.User | select(type == "string")' <<<"$image_json")"
-          image_principal="${image_user%%:*}"
-          if [ -z "$image_user" ] || [ "${image_principal,,}" = root ] \
-            || [[ "$image_principal" =~ ^0+$ ]]; then
-            echo "Final image Config.User must be non-empty and non-root." >&2
-            exit 1
-          fi
-
   manifest:
-    name: Publish multi-platform OCI index
-    if: >-
-      ${{ always() && needs.plan.result == 'success' && needs.build.result == 'success' &&
-          (needs.verify_backend.result == 'success' || needs.verify_backend.result == 'skipped') }}
-    needs:
-      - plan
-      - verify_backend
-      - build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: write
-    environment: ghcr-publish
+    name: Publish multi-platform image
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
     outputs:
-      digest: ${{ steps.publish_fast.outputs.digest || steps.publish_verified.outputs.digest }}
-      image_ref: ${{ steps.publish_fast.outputs.image_ref || steps.publish_verified.outputs.image_ref }}
+      digest: ${{ steps.publish.outputs.digest }}
+      image_ref: ${{ steps.publish.outputs.image_ref }}
     steps:
-      - name: Checkout exact publication tooling
-        if: inputs.workflow_name == 'one-amz'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.action_sha }}
-          path: action
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Verify exact multi-platform publisher
-        if: inputs.workflow_name == 'one-amz'
-        shell: bash
-        env:
-          ACTION_SHA: ${{ inputs.action_sha }}
-        run: |
-          set -Eeuo pipefail
-          [ "$(git -C action rev-parse HEAD)" = "$ACTION_SHA" ] || {
-            echo "Action checkout HEAD does not match action_sha." >&2
-            exit 1
-          }
-          expected_blob="$(GIT_NO_REPLACE_OBJECTS=1 git -C action rev-parse "$ACTION_SHA:scripts/release/publish-ghcr-multiarch.sh")"
-          actual_blob="$(git hash-object action/scripts/release/publish-ghcr-multiarch.sh)"
-          [ "$actual_blob" = "$expected_blob" ] || {
-            echo "Central multi-platform publisher changed after exact Action checkout." >&2
-            exit 1
-          }
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Resolve registry token owner
+        id: registry
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.package_write_token }}
+        run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.package_write_token || github.token }}
+          username: ${{ steps.registry.outputs.login }}
+          password: ${{ secrets.package_write_token }}
 
       - name: Publish OCI index
-        if: inputs.workflow_name == 'one-node-server' || inputs.workflow_name == 'one-user'
-        id: publish_fast
+        id: publish
         shell: bash
         env:
-          PUBLISH_IMAGE: ${{ needs.plan.outputs.registry_image }}
-          PUBLISH_TAG: ${{ needs.plan.outputs.publish_tag }}
+          ACTION_SHA: ${{ inputs.action_sha }}
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          IMAGE: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || 'ghcr.io/voiceofhu/node-server' }}
+          VERSION: ${{ inputs.version }}
+          WEB_SHA: ${{ inputs.web_sha }}
         run: |
           set -Eeuo pipefail
-          image="$PUBLISH_IMAGE:$PUBLISH_TAG"
+          image="$IMAGE:$VERSION"
+          candidate="$IMAGE:build-$BACKEND_SHA-$WEB_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          fingerprint() {
+            docker buildx imagetools inspect --raw "$1" |
+              jq -er '[.manifests[] | select(.platform.os == "linux" and (.platform.architecture == "amd64" or .platform.architecture == "arm64")) | "\(.platform.architecture)=\(.digest)"] | sort | if length == 2 then join(",") else error("expected two Linux architectures") end'
+          }
+
           docker buildx imagetools create \
-            --tag "$image" \
-            "$image-amd64" \
-            "$image-arm64"
+            --tag "$candidate" \
+            "$candidate-amd64" \
+            "$candidate-arm64"
+          candidate_fingerprint="$(fingerprint "$candidate")"
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            docker buildx imagetools inspect --raw "$image" |
+              jq -e \
+                --arg action "$ACTION_SHA" \
+                --arg backend "$BACKEND_SHA" \
+                --arg version "$VERSION" \
+                --arg web "$WEB_SHA" '
+                  .annotations["one.action.revision"] == $action and
+                  .annotations["org.opencontainers.image.revision"] == $backend and
+                  .annotations["org.opencontainers.image.version"] == $version and
+                  .annotations["one.web.revision"] == $web
+                ' >/dev/null
+          else
+            docker buildx imagetools create \
+              --annotation "index:one.action.revision=$ACTION_SHA" \
+              --annotation "index:org.opencontainers.image.revision=$BACKEND_SHA" \
+              --annotation "index:org.opencontainers.image.version=$VERSION" \
+              --annotation "index:one.web.revision=$WEB_SHA" \
+              --tag "$image" \
+              "$candidate"
+            [[ "$(fingerprint "$image")" == "$candidate_fingerprint" ]]
+          fi
           digest="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -r '.digest')"
           printf 'digest=%s\n' "$digest" >>"$GITHUB_OUTPUT"
           printf 'image_ref=%s@%s\n' "$image" "$digest" >>"$GITHUB_OUTPUT"
-
-      - name: Publish and verify OCI index
-        if: inputs.workflow_name == 'one-amz'
-        id: publish_verified
-        shell: bash
-        env:
-          WORKFLOW_NAME: ${{ inputs.workflow_name }}
-          PUBLISH_IMAGE: ${{ needs.plan.outputs.registry_image }}
-          PUBLISH_TAG: ${{ needs.plan.outputs.publish_tag }}
-          ACTION_SHA: ${{ inputs.action_sha }}
-          ACTION_REPOSITORY: ${{ github.repository }}
-          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
-          BACKEND_SHA: ${{ inputs.backend_sha }}
-          WEB_REPOSITORY: ${{ inputs.web_repository }}
-          WEB_SHA: ${{ inputs.web_sha }}
-          VERSION: ${{ inputs.version }}
-          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GITHUB_TOKEN: ${{ secrets.package_write_token || github.token }}
-          PUBLISHED_IMAGE_PATH: publication/published-image.json
-        run: exec bash action/scripts/release/publish-ghcr-multiarch.sh

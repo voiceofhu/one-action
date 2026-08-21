@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-CALLER="$PROJECT_ROOT/.github/workflows/node.yml"
-BUILD="$PROJECT_ROOT/.github/workflows/reusable-build-node.yml"
-DISPATCHER="$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+WORKFLOW="$PROJECT_ROOT/.github/workflows/node.yml"
+RELEASE_SCRIPT="$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
+VALIDATE_SCRIPT="$PROJECT_ROOT/scripts/validate.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -13,7 +13,24 @@ fail() {
 
 require_text() {
   local file=$1 text=$2
-  grep -Fq -- "$text" "$file" || fail "missing One Node contract in ${file##*/}: $text"
+  grep -Fq -- "$text" "$file" || fail "missing contract in ${file##*/}: $text"
+}
+
+line_number() {
+  local file=$1 text=$2 matches count
+  matches="$(grep -nF -- "$text" "$file")" || fail "missing ordered contract: $text"
+  count="$(printf '%s\n' "$matches" | wc -l | tr -d '[:space:]')"
+  [[ "$count" == 1 ]] || fail "ordered contract must occur once: $text"
+  printf '%s\n' "${matches%%:*}"
+}
+
+job_timeout() {
+  local job=$1
+  awk -v job="$job" '
+    $0 == "  " job ":" { inside = 1; next }
+    inside && /^  [[:alnum:]_-]+:/ { exit }
+    inside && /timeout-minutes:/ { print $2; exit }
+  ' "$WORKFLOW"
 }
 
 for entrypoint in install.sh upgrade.sh uninstall.sh; do
@@ -23,66 +40,61 @@ for entrypoint in install.sh upgrade.sh uninstall.sh; do
     fail "ambiguous root lifecycle entrypoint must not exist: $entrypoint"
 done
 
-require_text "$CALLER" "'on':"
-require_text "$CALLER" 'workflow_dispatch:'
-require_text "$CALLER" 'expected_action_sha:'
-require_text "$CALLER" 'node_repository:'
-require_text "$CALLER" 'node_ref:'
-require_text "$CALLER" 'uses: ./.github/workflows/reusable-build-node.yml'
-require_text "$CALLER" 'source_sha: ${{ needs.normalize.outputs.node_ref }}'
-require_text "$CALLER" 'node_ref="$(gh api "repos/$node_repository/commits/v$version" --jq .sha)"'
-require_text "$CALLER" 'source_read_token: ${{ secrets.GH_TOKEN }}'
-require_text "$CALLER" 'token: ${{ secrets.GH_TOKEN }}'
-require_text "$CALLER" "if: needs.normalize.outputs.publish == 'true'"
-require_text "$DISPATCHER" 'require_repository node_repository voiceofhu/one-node-node'
-require_text "$DISPATCHER" 'publish_supported=true'
+require_text "$WORKFLOW" "'on':"
+require_text "$WORKFLOW" 'push:'
+require_text "$WORKFLOW" "- 'one-node-v*'"
+for forbidden in workflow_dispatch reusable-build-node node-check 'go test' 'make test' lint; do
+  if grep -Fqi -- "$forbidden" "$WORKFLOW"; then
+    fail "One Node Action retains non-build work: $forbidden"
+  fi
+done
 
-require_text "$BUILD" 'runs-on: ubuntu-24.04'
-require_text "$BUILD" '[ "$ACTION_REPOSITORY" = voiceofhu/one-action ]'
-require_text "$BUILD" '[ "$SOURCE_REPOSITORY" = voiceofhu/one-node-node ]'
-require_text "$BUILD" 'Action and One Node revisions must be exact commit SHAs.'
-require_text "$BUILD" 'git -C action rev-parse --verify HEAD'
-require_text "$BUILD" 'git -C source rev-parse --verify HEAD'
-require_text "$BUILD" 'go mod verify'
-require_text "$BUILD" 'make test'
-require_text "$BUILD" 'go test -race ./one/access ./one/binding ./one/control ./one/runtime ./one/session ./one/state'
-require_text "$BUILD" 'make test-e2e'
-require_text "$BUILD" 'working-directory: action'
-require_text "$BUILD" 'run: make node-check'
-require_text "$BUILD" 'make build-linux-amd64'
-require_text "$BUILD" 'make build-linux-arm64'
-require_text "$BUILD" 'action/scripts/release/write-checksums.sh'
-require_text "$BUILD" 'cd source/dist'
-require_text "$BUILD" 'one-node-linux-amd64'
-require_text "$BUILD" 'one-node-linux-arm64'
-require_text "$BUILD" 'sha256sum -c ../../provenance/SHA256SUMS'
-require_text "$BUILD" 'published: false, deployed: false'
-require_text "$BUILD" 'Artifact upload/GHCR/Release/deploy: not run'
-require_text "$BUILD" 'name: node-release-${{ inputs.source_sha }}'
-require_text "$CALLER" 'name: Publish immutable One Node image and release'
-require_text "$CALLER" 'ghcr.io/voiceofhu/one-node'
-require_text "$CALLER" 'one-node-v${{ needs.build.outputs.source_version }}'
-require_text "$CALLER" 'action/scripts/release/publish-node-image.sh'
-require_text "$CALLER" 'mkdir -p node/dist'
-require_text "$CALLER" 'id: github_identity'
-require_text "$CALLER" 'run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"'
-require_text "$CALLER" 'username: ${{ steps.github_identity.outputs.login }}'
-require_text "$CALLER" 'password: ${{ secrets.GH_TOKEN }}'
-require_text "$CALLER" 'RELEASE_REPOSITORY: voiceofhu/one-action'
-if [ "$(grep -Fc -- '--repo "$RELEASE_REPOSITORY"' "$CALLER")" -ne 3 ]; then
-  fail 'Every One Node Release operation must explicitly target voiceofhu/one-action'
-fi
+[[ "$(job_timeout build)" == 15 ]] || fail 'One Node architecture builds must time out at 15 minutes'
+[[ "$(job_timeout publish-image)" == 5 ]] || fail 'One Node image publication must time out at 5 minutes'
+upload_timeout="$(job_timeout upload-release)"
+[[ "$upload_timeout" =~ ^[0-9]+$ ]] && ((upload_timeout <= 8)) ||
+  fail 'One Node draft upload must time out within 8 minutes'
+release_timeout="$(job_timeout publish-release)"
+[[ "$release_timeout" == 2 ]] || fail 'One Node Release finalizer must time out at 2 minutes'
 
-if grep -Eq 'needs\.prepare|publish_authorized|secrets\.SOURCE_READ_TOKEN' "$CALLER"; then
-  fail 'One Node direct build workflow retains a redundant validation gate or obsolete source token'
-fi
+[[ "$(grep -Ec '^[[:space:]]+- arch: (amd64|arm64)$' "$WORKFLOW")" == 2 ]] ||
+  fail 'One Node build matrix must contain exactly amd64 and arm64'
+[[ "$(grep -Fc -- '- arch: amd64' "$WORKFLOW")" == 1 ]] || fail 'amd64 build is missing or duplicated'
+[[ "$(grep -Fc -- '- arch: arm64' "$WORKFLOW")" == 1 ]] || fail 'arm64 build is missing or duplicated'
+require_text "$WORKFLOW" 'runner: ubuntu-24.04-arm'
+require_text "$WORKFLOW" 'make --no-print-directory "build-linux-$ARCH"'
+require_text "$WORKFLOW" 'uses: actions/upload-artifact@v4'
+require_text "$WORKFLOW" 'name: one-node-linux-${{ matrix.arch }}'
+require_text "$WORKFLOW" 'uses: docker/build-push-action@v6'
+require_text "$WORKFLOW" 'platforms: linux/${{ matrix.arch }}'
+require_text "$WORKFLOW" 'push: true'
+require_text "$WORKFLOW" 'ghcr.io/voiceofhu/one-node:build-${{ needs.prepare.outputs.node_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}'
 
-if grep -Fq 'action/scripts/github/resolve-ref.sh' "$CALLER"; then
-  fail 'One Node normalization must not apply custom token-shape validation to GitHub runtime tokens'
-fi
+require_text "$WORKFLOW" 'sha256sum one-node-linux-amd64 one-node-linux-arm64 >SHA256SUMS'
+require_text "$WORKFLOW" 'docker buildx imagetools create'
+require_text "$WORKFLOW" 'candidate_fingerprint="$(fingerprint "$candidate")"'
+require_text "$WORKFLOW" 'version_ref="$image:$VERSION"'
+require_text "$WORKFLOW" 'revision_ref="$image:sha-$NODE_SHA"'
+require_text "$WORKFLOW" 'verify_final "$version_ref"'
+require_text "$WORKFLOW" 'verify_final "$revision_ref"'
+require_text "$WORKFLOW" 'index:org.opencontainers.image.revision=$NODE_SHA'
+require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
+require_text "$WORKFLOW" 'gh release upload "$RELEASE_TAG"'
+require_text "$WORKFLOW" 'gh release edit "$RELEASE_TAG"'
+require_text "$WORKFLOW" '- publish-image'
+require_text "$WORKFLOW" '- upload-release'
+require_text "$WORKFLOW" 'dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64'
+require_text "$WORKFLOW" '--repo voiceofhu/one-action'
+require_text "$WORKFLOW" 'login=$(gh api user --jq .login)'
 
-if grep -Fq 'voiceofhu/one-node-action' "$CALLER" "$BUILD" "$DISPATCHER"; then
-  fail 'One Node workflow still trusts the legacy Action repository'
-fi
+require_text "$RELEASE_SCRIPT" 'release_tag="one-node-v$VERSION"'
+require_text "$RELEASE_SCRIPT" '"refs/tags/$release_tag:refs/tags/$release_tag"'
+require_text "$RELEASE_SCRIPT" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
+require_text "$VALIDATE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" node-check'
+validate_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" validate')"
+upgrade_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade')"
+action_push_line="$(line_number "$RELEASE_SCRIPT" 'git -C "$PROJECT_ROOT" push origin')"
+((validate_line < upgrade_line && upgrade_line < action_push_line)) ||
+  fail 'Action validate and verify-upgrade must finish before the Action tag push'
 
-printf '%s\n' 'One Node exact-SHA build and publication workflow contract tests passed.'
+printf '%s\n' 'One Node tag-triggered compile/upload contract tests passed.'

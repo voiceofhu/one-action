@@ -3,51 +3,64 @@ set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-bash -n \
-  "$PROJECT_ROOT/browser/egress/install.sh" \
-  "$PROJECT_ROOT/browser/egress/uninstall.sh" \
-  "$PROJECT_ROOT/node/install.sh" \
-  "$PROJECT_ROOT/node/upgrade.sh" \
-  "$PROJECT_ROOT/node/uninstall.sh" \
-  "$PROJECT_ROOT/browser/egress/tests/egress-installers_test.sh" \
-  "$PROJECT_ROOT/browser/egress/tests/fakes/"* \
-  "$PROJECT_ROOT"/scripts/github/*.sh \
-  "$PROJECT_ROOT"/scripts/deploy/*.sh \
-  "$PROJECT_ROOT"/scripts/release/*.sh \
-  "$PROJECT_ROOT"/tests/*.sh \
-  "$PROJECT_ROOT"/tests/fakes/* \
+active_tests=(
+  "$PROJECT_ROOT/tests/checksum-helper_test.sh"
+  "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
+  "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+  "$PROJECT_ROOT/tests/user-release-version_test.sh"
+)
+shell_files=(
+  "$PROJECT_ROOT/node/install.sh"
+  "$PROJECT_ROOT/node/upgrade.sh"
+  "$PROJECT_ROOT/node/uninstall.sh"
+  "$PROJECT_ROOT/scripts/github/check-token.sh"
+  "$PROJECT_ROOT/scripts/github/common.sh"
+  "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
+  "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
+  "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
+  "$PROJECT_ROOT/scripts/release/write-checksums.sh"
+  "${active_tests[@]}"
+  "$PROJECT_ROOT/tests/fakes/curl"
   "$PROJECT_ROOT/scripts/validate.sh"
+)
 
-shellcheck --severity=warning \
-  "$PROJECT_ROOT/browser/egress/install.sh" \
-  "$PROJECT_ROOT/browser/egress/uninstall.sh" \
-  "$PROJECT_ROOT/node/install.sh" \
-  "$PROJECT_ROOT/node/upgrade.sh" \
-  "$PROJECT_ROOT/node/uninstall.sh" \
-  "$PROJECT_ROOT/browser/egress/tests/egress-installers_test.sh" \
-  "$PROJECT_ROOT/browser/egress/tests/fakes/"* \
-  "$PROJECT_ROOT/scripts/github/"*.sh \
-  "$PROJECT_ROOT/scripts/deploy/"*.sh \
-  "$PROJECT_ROOT/scripts/release/"*.sh \
-  "$PROJECT_ROOT/tests/"*.sh \
-  "$PROJECT_ROOT/tests/fakes/"*
+for file in "${shell_files[@]}"; do
+  [[ -f "$file" ]] || {
+    printf 'Missing active shell file: %s\n' "$file" >&2
+    exit 1
+  }
+done
 
-ruby -ryaml -e '
-  required = %w[name on jobs]
-  Dir[File.join(ARGV.fetch(0), ".github/workflows/*.yml")].sort.each do |file|
-    document = YAML.safe_load(File.read(file), aliases: true)
-    abort("#{file}: workflow must be a mapping") unless document.is_a?(Hash)
-    missing = required.reject { |key| document.key?(key) }
-    abort("#{file}: missing keys: #{missing.join(", ")}") unless missing.empty?
-  end
-' "$PROJECT_ROOT"
+bash -n "${shell_files[@]}"
+shellcheck --severity=warning "${shell_files[@]}"
 
-for workflow in user.yml one-browser-backend.yml app.yml app-debug.yml egress.yml browser-runtime.yml one-amz.yml node.yml node-server.yml; do
+active_workflows=(
+  user.yml
+  node-server.yml
+  node.yml
+  reusable-publish-web-backend.yml
+)
+for workflow in "${active_workflows[@]}"; do
   [[ -f "$PROJECT_ROOT/.github/workflows/$workflow" ]] || {
     printf 'Missing required workflow: %s\n' "$workflow" >&2
     exit 1
   }
 done
+
+ruby -ryaml -e '
+  required = %w[name on jobs]
+  ARGV.each do |file|
+    document = YAML.safe_load(File.read(file), aliases: true)
+    abort("#{file}: workflow must be a mapping") unless document.is_a?(Hash)
+    missing = required.reject { |key| document.key?(key) }
+    abort("#{file}: missing keys: #{missing.join(", ")}") unless missing.empty?
+    abort("#{file}: name must be a non-empty string") unless
+      document["name"].is_a?(String) && !document["name"].empty?
+    abort("#{file}: on must be a mapping") unless document["on"].is_a?(Hash)
+    abort("#{file}: jobs must be a non-empty mapping") unless
+      document["jobs"].is_a?(Hash) && !document["jobs"].empty?
+  end
+' "${active_workflows[@]/#/$PROJECT_ROOT/.github/workflows/}"
 
 legacy_name='aic''be'
 if grep -RniE "$legacy_name" \
@@ -61,15 +74,6 @@ if grep -RniE "$legacy_name" \
   exit 1
 fi
 
-for reusable in reusable-prepare.yml reusable-build-web-backend.yml reusable-build-rust-docker.yml reusable-build-node.yml \
-  reusable-build-app.yml reusable-build-app-debug.yml reusable-publish-web-backend.yml \
-  reusable-publish-rust-docker.yml reusable-publish-egress.yml; do
-  [[ -f "$PROJECT_ROOT/.github/workflows/$reusable" ]] || {
-    printf 'Missing required reusable workflow: %s\n' "$reusable" >&2
-    exit 1
-  }
-done
-
 while IFS= read -r workflow; do
   line_count="$(wc -l < "$workflow")"
   if ((line_count >= 500)); then
@@ -79,17 +83,9 @@ while IFS= read -r workflow; do
   fi
 done < <(find "$PROJECT_ROOT/.github/workflows" -type f -name '*.yml' | LC_ALL=C sort)
 
-bash "$PROJECT_ROOT/tests/checksum-helper_test.sh"
-bash "$PROJECT_ROOT/tests/dispatch-dry-run_test.sh"
-bash "$PROJECT_ROOT/tests/combined-build-workflows_test.sh"
-bash "$PROJECT_ROOT/tests/rust-docker-workflows_test.sh"
-bash "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
-bash "$PROJECT_ROOT/tests/deploy-user_test.sh"
-bash "$PROJECT_ROOT/tests/user-release-version_test.sh"
-bash "$PROJECT_ROOT/tests/app-build-workflows_test.sh"
-bash "$PROJECT_ROOT/browser/egress/tests/egress-installers_test.sh"
-bash "$PROJECT_ROOT/tests/egress-release-workflow_test.sh"
-bash "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+for test_script in "${active_tests[@]}"; do
+  bash "$test_script"
+done
 make --no-print-directory -C "$PROJECT_ROOT" node-check
 
 printf '%s\n' 'Shell syntax and workflow YAML structure are valid.'

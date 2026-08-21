@@ -5,7 +5,35 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
-export PATH="$PROJECT_ROOT/tests/fakes:$PATH"
+fake_bin="$test_dir/bin"
+mkdir -p "$fake_bin"
+export LOCAL_GATE_LOG="$test_dir/local-gates.log"
+cat >"$fake_bin/make" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
+printf 'make' >>"$LOCAL_GATE_LOG"
+printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
+printf '\n' >>"$LOCAL_GATE_LOG"
+EOF
+cat >"$fake_bin/cargo" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
+printf 'cargo' >>"$LOCAL_GATE_LOG"
+printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
+printf '\n' >>"$LOCAL_GATE_LOG"
+EOF
+cat >"$fake_bin/pnpm" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
+printf 'pnpm' >>"$LOCAL_GATE_LOG"
+printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
+printf '\n' >>"$LOCAL_GATE_LOG"
+EOF
+chmod 0755 "$fake_bin/make" "$fake_bin/cargo" "$fake_bin/pnpm"
+export PATH="$fake_bin:$PROJECT_ROOT/tests/fakes:$PATH"
 export FAKE_CURL_LOG="$test_dir/curl.log"
 export DRY_RUN=false
 export VERSION=26.815.1234
@@ -15,6 +43,7 @@ export ONE_USER_BACKEND_DIR="$test_dir/backend"
 export ONE_USER_WEB_DIR="$test_dir/web"
 unset GH_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION FAKE_EXPECTED_AUTH FAKE_CURL_ALLOW_POST
 : >"$FAKE_CURL_LOG"
+: >"$LOCAL_GATE_LOG"
 
 backend_bare="$test_dir/backend-origin.git"
 web_bare="$test_dir/web-origin.git"
@@ -70,8 +99,8 @@ git -C "$ONE_USER_WEB_DIR" config \
   https://github.com/voiceofhu/one-user-web.git
 git -C "$ONE_USER_WEB_DIR" push -q -u origin main
 
-# Run from a temporary canonical One Action repository so the control tag cannot
-# touch the developer's real checkout.
+# Run from a temporary canonical One Action repository so the control tag and
+# Action validation gate cannot touch the developer's real checkout.
 mkdir -p "$action_dir/scripts/release"
 cp "$PROJECT_ROOT/scripts/release/deploy-user-release.sh" \
   "$action_dir/scripts/release/deploy-user-release.sh"
@@ -84,7 +113,9 @@ git -C "$action_dir" config \
   https://github.com/voiceofhu/one-action.git
 git -C "$action_dir" push -q -u origin main
 
-bash "$action_dir/scripts/release/deploy-user-release.sh" >"$test_dir/output"
+GH_TOKEN=local-token-must-not-reach-gates \
+GITHUB_TOKEN=runtime-token-must-not-reach-gates \
+  bash "$action_dir/scripts/release/deploy-user-release.sh" >"$test_dir/output"
 
 grep -Fq 'version = "26.815.1234"' "$ONE_USER_BACKEND_DIR/Cargo.toml"
 grep -Fq 'version = "26.815.1234"' "$ONE_USER_BACKEND_DIR/Cargo.lock"
@@ -108,9 +139,27 @@ control_sha="$(
   exit 1
 }
 
+require_gate() {
+  grep -Fxq "$1" "$LOCAL_GATE_LOG" || {
+    printf 'Missing local release gate: %s\n' "$1" >&2
+    exit 1
+  }
+}
+require_gate "make --no-print-directory -C $action_dir validate"
+require_gate 'cargo fmt --all -- --check'
+require_gate "make --no-print-directory -C $ONE_USER_BACKEND_DIR check"
+require_gate "make --no-print-directory -C $ONE_USER_BACKEND_DIR test"
+require_gate "make --no-print-directory -C $ONE_USER_BACKEND_DIR build"
+require_gate "pnpm --dir $ONE_USER_WEB_DIR install --frozen-lockfile"
+require_gate "pnpm --dir $ONE_USER_WEB_DIR format:check"
+require_gate "pnpm --dir $ONE_USER_WEB_DIR lint"
+require_gate "pnpm --dir $ONE_USER_WEB_DIR test"
+require_gate "pnpm --dir $ONE_USER_WEB_DIR build"
+
 if [ -s "$FAKE_CURL_LOG" ]; then
   printf '%s\n' 'Local One User release unexpectedly called the GitHub API.' >&2
   exit 1
 fi
 
-printf '%s\n' 'One User source and control-tag release test passed without a local token.'
+[[ -z "${GH_TOKEN:-}" ]]
+printf '%s\n' 'One User source and control-tag release passed all local gates without a local token.'

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTION_REPOSITORY=voiceofhu/one-action
@@ -91,8 +92,8 @@ printf '%s\n' \
 
 if [[ "$dry_run" == true ]]; then
   printf '%s\n' \
-    'DRY_RUN=true: source tags, pushes, image publication, and deployment are unchanged.' \
-    'The real run pushes both source tags, then pushes the Action control tag.'
+    'DRY_RUN=true: checks, source tags, pushes, image publication, and uploads are unchanged.' \
+    'The real run checks both sources, pushes their tags, then pushes the Action control tag.'
   exit 0
 fi
 
@@ -116,6 +117,11 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
   printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
   exit 1
 }
+make --no-print-directory -C "$PROJECT_ROOT" validate
+[[ "$(validate_action_repository)" == "$action_head" ]] || {
+  printf '%s\n' 'Action source changed during local validation.' >&2
+  exit 1
+}
 
 preflight_source() {
   local label=$1 directory=$2 branch=$3
@@ -132,6 +138,47 @@ preflight_source() {
 
 preflight_source Server "$ONE_NODE_SERVER_DIR" "$server_branch"
 preflight_source Web "$ONE_NODE_WEB_DIR" "$web_branch"
+
+make --no-print-directory -C "$ONE_NODE_WEB_DIR" install check build
+make --no-print-directory -C "$ONE_NODE_SERVER_DIR" test
+(
+  cd "$ONE_NODE_SERVER_DIR"
+  go vet ./...
+)
+make --no-print-directory -C "$ONE_NODE_SERVER_DIR" build \
+  VERSION="$VERSION" COMMIT="$server_head"
+
+[[ "$(git -C "$ONE_NODE_SERVER_DIR" rev-parse HEAD)" == "$server_head" \
+  && -z "$(git -C "$ONE_NODE_SERVER_DIR" status --porcelain --untracked-files=all)" ]] || {
+  printf '%s\n' 'Server source changed during local validation.' >&2
+  exit 1
+}
+[[ "$(git -C "$ONE_NODE_WEB_DIR" rev-parse HEAD)" == "$web_head" \
+  && -z "$(git -C "$ONE_NODE_WEB_DIR" status --porcelain --untracked-files=all)" ]] || {
+  printf '%s\n' 'Web source changed during local validation.' >&2
+  exit 1
+}
+
+VERSION="$VERSION" node - <<'NODE' "$ONE_NODE_WEB_DIR/package.json"
+const fs = require('node:fs');
+const file = process.argv[2];
+const document = JSON.parse(fs.readFileSync(file, 'utf8'));
+if (document.name !== 'one-node-web-vite' || typeof document.version !== 'string') {
+  throw new Error('package.json does not describe one-node-web-vite');
+}
+document.version = process.env.VERSION;
+fs.writeFileSync(file, `${JSON.stringify(document, null, 2)}\n`);
+NODE
+web_version_change="$(git -C "$ONE_NODE_WEB_DIR" diff --name-only)"
+case "$web_version_change" in
+  '') ;;
+  package.json)
+    git -C "$ONE_NODE_WEB_DIR" add -- package.json
+    git -C "$ONE_NODE_WEB_DIR" commit -m "chore: bump one-node-web version to $release_tag"
+    ;;
+  *) printf 'Web version update changed unexpected paths: %s\n' "$web_version_change" >&2; exit 1 ;;
+esac
+web_head="$(git -C "$ONE_NODE_WEB_DIR" rev-parse HEAD)"
 
 git -C "$ONE_NODE_SERVER_DIR" tag "$release_tag" "$server_head"
 git -C "$ONE_NODE_WEB_DIR" tag "$release_tag" "$web_head"
@@ -152,5 +199,5 @@ if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$control_tag:refs/tags/$contr
     "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
   exit 1
 fi
-printf 'Triggered One Node Server publication with Action control tag: %s@%s\n' \
+printf 'Triggered One Node Server image compilation and upload with Action control tag: %s@%s\n' \
   "$control_tag" "$action_head"

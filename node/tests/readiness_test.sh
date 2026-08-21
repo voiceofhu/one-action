@@ -45,6 +45,7 @@ grep -F -- '--since -135 seconds' "$TEST_TEMP_DIR/journalctl.log" >/dev/null
 
 ONE_NODE_READINESS_RETURN_ONLY=true
 ONE_NODE_ENROLL_TIMEOUT=0
+ONE_NODE_ID=41
 ONE_NODE_SERVER='grpcs://control.example.test:443'
 print_runtime_logs() {
 	:

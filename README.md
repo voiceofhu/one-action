@@ -21,12 +21,12 @@ SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不�
 1. 确认 `one-action` 和源码仓库位于干净分支，origin 指向固定仓库；
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
 3. 本地运行 Action 契约检查以及对应产品的格式、lint、测试和构建；
-4. 所有检查通过后，创建并推送源码 `v<version>` 标签；
-5. 推送当前 Action commit 上的产品触发标签；
+4. One Node Server 要求本地 Backend/Web HEAD 已经与远端分支完全一致，把两个精确 SHA 写入 annotated Action 控制标签；其他产品仍按各自发布合同准备源码标签；
+5. 推送当前 Action commit 上的产品触发标签；One Node Server 不再创建 Backend/Web `v*` 标签；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One Node Server 在镜像成功合并后，将 digest-qualified 镜像部署到 `one-node-prod`。
 
-本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；三条链路都使用 Action tag。
+本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；三条链路都使用 Action tag。One Node Server 的控制标签同时携带本地检查过的 Backend/Web SHA，Action 不读取可变的源码分支头。
 
 ## 使用
 
@@ -38,7 +38,7 @@ make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 ```
 
-三个目标默认执行真实本地检查和标签推送。只查看计划时显式启用 dry-run；dry-run 不运行
+三个目标默认执行真实本地检查和 Action 标签推送；One Node Server 不再修改 Web 版本或推送源码标签。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash

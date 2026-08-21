@@ -75,14 +75,12 @@ server_branch=${server_state%%|*}
 server_head=${server_state#*|}
 web_branch=${web_state%%|*}
 web_head=${web_state#*|}
-release_tag="v$VERSION"
 control_tag="node-server-v$VERSION"
 action_head="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
 
 printf '%s\n' \
   'One Node Server release plan:' \
   "  version:       $VERSION" \
-  "  source tag:    $release_tag" \
   "  server:        $ONE_NODE_SERVER_REPOSITORY@$server_head" \
   "  web:           $ONE_NODE_WEB_REPOSITORY@$web_head" \
   "  server branch: $server_branch" \
@@ -92,8 +90,8 @@ printf '%s\n' \
 
 if [[ "$dry_run" == true ]]; then
   printf '%s\n' \
-    'DRY_RUN=true: checks, source tags, pushes, image publication, and deployment are unchanged.' \
-    'The real run checks both sources, pushes their tags, then triggers image publication and server deployment.'
+    'DRY_RUN=true: checks, the Action control tag, image publication, and deployment are unchanged.' \
+    'The real run checks the already-published source commits, then pushes only the Action control tag.'
   exit 0
 fi
 
@@ -125,13 +123,9 @@ make --no-print-directory -C "$PROJECT_ROOT" validate
 
 preflight_source() {
   local label=$1 directory=$2 branch=$3
-  git -C "$directory" fetch --tags origin "refs/heads/$branch:refs/remotes/origin/$branch"
-  git -C "$directory" merge-base --is-ancestor "origin/$branch" HEAD || {
-    printf '%s branch is behind or diverged from origin/%s\n' "$label" "$branch" >&2
-    exit 1
-  }
-  ! git -C "$directory" rev-parse -q --verify "refs/tags/$release_tag" >/dev/null || {
-    printf '%s tag already exists: %s\n' "$label" "$release_tag" >&2
+  git -C "$directory" fetch --no-tags origin "refs/heads/$branch:refs/remotes/origin/$branch"
+  [[ "$(git -C "$directory" rev-parse HEAD)" == "$(git -C "$directory" rev-parse "origin/$branch")" ]] || {
+    printf '%s HEAD must exactly match published origin/%s before triggering One Action.\n' "$label" "$branch" >&2
     exit 1
   }
 }
@@ -158,44 +152,18 @@ make --no-print-directory -C "$ONE_NODE_SERVER_DIR" build \
   printf '%s\n' 'Web source changed during local validation.' >&2
   exit 1
 }
+preflight_source Server "$ONE_NODE_SERVER_DIR" "$server_branch"
+preflight_source Web "$ONE_NODE_WEB_DIR" "$web_branch"
 
-VERSION="$VERSION" node - <<'NODE' "$ONE_NODE_WEB_DIR/package.json"
-const fs = require('node:fs');
-const file = process.argv[2];
-const document = JSON.parse(fs.readFileSync(file, 'utf8'));
-if (document.name !== 'one-node-web-vite' || typeof document.version !== 'string') {
-  throw new Error('package.json does not describe one-node-web-vite');
-}
-document.version = process.env.VERSION;
-fs.writeFileSync(file, `${JSON.stringify(document, null, 2)}\n`);
-NODE
-web_version_change="$(git -C "$ONE_NODE_WEB_DIR" diff --name-only)"
-case "$web_version_change" in
-  '') ;;
-  package.json)
-    git -C "$ONE_NODE_WEB_DIR" add -- package.json
-    git -C "$ONE_NODE_WEB_DIR" commit -m "chore: bump one-node-web version to $release_tag"
-    ;;
-  *) printf 'Web version update changed unexpected paths: %s\n' "$web_version_change" >&2; exit 1 ;;
-esac
-web_head="$(git -C "$ONE_NODE_WEB_DIR" rev-parse HEAD)"
-
-git -C "$ONE_NODE_SERVER_DIR" tag "$release_tag" "$server_head"
-git -C "$ONE_NODE_WEB_DIR" tag "$release_tag" "$web_head"
-git -C "$ONE_NODE_SERVER_DIR" push --atomic origin \
-  "HEAD:refs/heads/$server_branch" "refs/tags/$release_tag:refs/tags/$release_tag"
-if ! git -C "$ONE_NODE_WEB_DIR" push --atomic origin \
-  "HEAD:refs/heads/$web_branch" "refs/tags/$release_tag:refs/tags/$release_tag"; then
-  printf '%s\n' \
-    "Web push failed; local tag $release_tag was kept." \
-    'Server may already be published; the Action control tag was not created.' >&2
-  exit 1
-fi
-
-git -C "$PROJECT_ROOT" tag "$control_tag" "$action_head"
+control_manifest="$(printf '%s\n' \
+  'format=one-node-server-release-v1' \
+  "version=$VERSION" \
+  "backend_sha=$server_head" \
+  "web_sha=$web_head")"
+git -C "$PROJECT_ROOT" tag -a "$control_tag" "$action_head" -m "$control_manifest"
 if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$control_tag:refs/tags/$control_tag"; then
   printf '%s\n' \
-    "Source tags were published and local control tag $control_tag was kept." \
+    "Local annotated control tag $control_tag was kept." \
     "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
   exit 1
 fi

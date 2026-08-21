@@ -7,6 +7,7 @@ active_tests=(
   "$PROJECT_ROOT/tests/checksum-helper_test.sh"
   "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
   "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+  "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
   "$PROJECT_ROOT/tests/user-release-version_test.sh"
 )
 shell_files=(

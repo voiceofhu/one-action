@@ -1,15 +1,15 @@
 # One Action
 
 One Action 集中编译和上传发布产物。代码校验、格式、lint、测试和本地构建都在
-`make deploy-*` 推送触发标签之前完成；One Node Server 镜像发布成功后继续部署生产服务器。
+`make deploy-*` 触发远端工作流之前完成；One Node Server 镜像发布成功后继续部署生产服务器。
 
 当前只保留三条发布链：
 
-| 本地入口 | Action 触发标签 | 发布结果 |
+| 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
 | `make deploy-user` | `user-v<version>` | `ghcr.io/voiceofhu/one-user:<version>` |
 | `make deploy-node-server` | `node-server-v<version>` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
-| `make deploy-node` | `one-node-v<version>` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和 GitHub Release |
+| `make deploy-node` | `node.yml` workflow dispatch | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和 `one-node-node@v<version>` Release |
 
 `deploy-user` 和 `deploy-node` 只触发编译上传；`deploy-node-server` 额外执行原有的
 SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
@@ -22,12 +22,12 @@ SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不�
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
 3. 本地运行 Action 契约检查以及对应产品的格式、lint、测试和构建；
 4. 所有检查通过后，创建并推送源码 `v<version>` 标签；
-5. 最后推送当前 Action commit 上的产品触发标签；
+5. User/Server 推送当前 Action commit 上的产品触发标签；Node 使用固定 Action SHA 调度 `node.yml`，不在 Action 仓库创建 tag；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One Node Server 在镜像成功合并后，将 digest-qualified 镜像部署到 `one-node-prod`。
 
-本地 Git 凭据只用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`，也不调用
-workflow dispatch API。
+本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；`deploy-node`
+使用 `gh` 已登录身份调用 workflow dispatch API，其他两条链路仍使用 Action tag。
 
 ## 使用
 
@@ -67,7 +67,7 @@ make node-bundle-installers
 - One Node Server：Web frozen install/check/build；Backend model/test、vet、release build；
 - One Node Runtime：安装器生命周期检查和完整 `verify-upgrade`。
 
-任何一步失败都会发生在源码标签和 Action 触发标签之前。
+任何本地门禁失败都会发生在源码 tag 和远程触发之前。
 
 ## Action 结构与时间上限
 
@@ -75,7 +75,7 @@ make node-bundle-installers
   每个最多 20 分钟；OCI index 合并最多 3 分钟。
 - One Node Server 部署：镜像发布成功后运行，最多 20 分钟，同一时间只允许一个生产部署。
 - One Node Runtime：2 分钟源码解析；两个架构并行编译和推送，每个最多 15 分钟；
-  OCI index、checksum 和 GitHub Release 上传最多 8 分钟。
+  OCI index、checksum 和 `one-node-node` GitHub Release 上传最多 8 分钟。
 
 Action 中没有 fmt、lint、test、race、e2e、installer lifecycle 或缓存上传。只有
 One Node Server 保留 SSH/Compose 部署步骤。
@@ -86,9 +86,10 @@ One Node Server 保留 SSH/Compose 部署步骤。
 `one-action` 仓库需要配置 Repository Secret `GH_TOKEN`，用于：
 
 - 读取固定的私有源码仓库；
-- 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index。
+- 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index；
+- 在 `voiceofhu/one-node-node@v<version>` 创建并上传 One Node Release。
 
-One Node 的 GitHub Release 使用当前 workflow 的最小 `contents: write` 权限。
+One Node workflow 自身只保留 `contents: read`；跨仓库 Release 写入使用 `GH_TOKEN`。
 
 One Node Server 部署使用受保护的 `one-node-prod` environment，并需要：
 
@@ -110,7 +111,7 @@ node/upgrade.sh
 node/uninstall.sh
 ```
 
-安装器未指定 `ONE_NODE_VERSION` 时会选择最新的 `one-node-v<version>` Release；显式设置版本
+安装器未指定 `ONE_NODE_VERSION` 时会选择 `one-node-node` 仓库最新的 `v<version>` Release；显式设置版本
 可固定安装或回滚。完整参数和生命周期约束见 [node/README.md](node/README.md)。
 
 ## 目录

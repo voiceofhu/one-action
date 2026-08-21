@@ -132,9 +132,7 @@ case "$workflow" in
     publish_supported=true
     ;;
   node.yml)
-    require_inputs node_repository node_ref version publish deploy
-    require_repository node_repository voiceofhu/one-node-node
-    publish_supported=true
+    require_inputs version
     ;;
 esac
 

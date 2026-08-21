@@ -41,9 +41,13 @@ for entrypoint in install.sh upgrade.sh uninstall.sh; do
 done
 
 require_text "$WORKFLOW" "'on':"
-require_text "$WORKFLOW" 'push:'
-require_text "$WORKFLOW" "- 'one-node-v*'"
-for forbidden in workflow_dispatch reusable-build-node node-check 'go test' 'make test' lint; do
+require_text "$WORKFLOW" 'workflow_dispatch:'
+require_text "$WORKFLOW" 'expected_action_sha:'
+require_text "$WORKFLOW" 'release_tag="v$VERSION"'
+if grep -Fq -- "- 'one-node-v*'" "$WORKFLOW"; then
+  fail 'One Node workflow must not use an Action repository tag trigger'
+fi
+for forbidden in reusable-build-node node-check 'go test' 'make test' lint; do
   if grep -Fqi -- "$forbidden" "$WORKFLOW"; then
     fail "One Node Action retains non-build work: $forbidden"
   fi
@@ -84,17 +88,22 @@ require_text "$WORKFLOW" 'gh release edit "$RELEASE_TAG"'
 require_text "$WORKFLOW" '- publish-image'
 require_text "$WORKFLOW" '- upload-release'
 require_text "$WORKFLOW" 'dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64'
-require_text "$WORKFLOW" '--repo voiceofhu/one-action'
+require_text "$WORKFLOW" '--repo voiceofhu/one-node-node'
 require_text "$WORKFLOW" 'login=$(gh api user --jq .login)'
 
-require_text "$RELEASE_SCRIPT" 'release_tag="one-node-v$VERSION"'
-require_text "$RELEASE_SCRIPT" '"refs/tags/$release_tag:refs/tags/$release_tag"'
+require_text "$RELEASE_SCRIPT" 'gh workflow run node.yml'
+require_text "$RELEASE_SCRIPT" '--ref "$action_head"'
+require_text "$RELEASE_SCRIPT" '--field "version=$VERSION"'
+if grep -Fq -- 'git -C "$PROJECT_ROOT" tag' "$RELEASE_SCRIPT" ||
+  grep -Fq -- 'refs/tags/$release_tag' "$RELEASE_SCRIPT"; then
+  fail 'deploy-node must not create or push an Action repository tag'
+fi
 require_text "$RELEASE_SCRIPT" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
 require_text "$VALIDATE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" node-check'
 validate_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" validate')"
 upgrade_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade')"
-action_push_line="$(line_number "$RELEASE_SCRIPT" 'git -C "$PROJECT_ROOT" push origin')"
-((validate_line < upgrade_line && upgrade_line < action_push_line)) ||
-  fail 'Action validate and verify-upgrade must finish before the Action tag push'
+dispatch_line="$(line_number "$RELEASE_SCRIPT" 'if ! gh workflow run node.yml')"
+((validate_line < upgrade_line && upgrade_line < dispatch_line)) ||
+  fail 'Action validate and verify-upgrade must finish before workflow dispatch'
 
-printf '%s\n' 'One Node tag-triggered compile/upload contract tests passed.'
+printf '%s\n' 'One Node workflow-dispatch compile/upload contract tests passed.'

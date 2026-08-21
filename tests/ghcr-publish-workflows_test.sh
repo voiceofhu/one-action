@@ -7,6 +7,7 @@ node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
 publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-web-backend.yml"
 user_release="$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
 node_server_release="$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
+node_server_deployer="$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
 
 require_text() {
   local file=$1 text=$2
@@ -70,7 +71,7 @@ assert_native_matrix() {
   ' "$file"
 }
 
-for file in "$user" "$node_server" "$publisher" "$user_release" "$node_server_release"; do
+for file in "$user" "$node_server" "$publisher" "$user_release" "$node_server_release" "$node_server_deployer"; do
   [[ -f "$file" ]] || {
     printf 'Required publication contract file is missing: %s\n' "$file" >&2
     exit 1
@@ -80,10 +81,25 @@ done
 assert_tag_only "$user" 'user-v*'
 assert_tag_only "$node_server" 'node-server-v*'
 assert_jobs "$user" 'prepare,publish'
-assert_jobs "$node_server" 'prepare,publish'
+assert_jobs "$node_server" 'deploy,prepare,publish'
 assert_jobs "$publisher" 'build,manifest'
+ruby -ryaml -e '
+  workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
+  deploy = workflow.fetch("jobs").fetch("deploy")
+  abort("Node Server deploy must wait for prepare and publish") unless
+    deploy.fetch("needs") == ["prepare", "publish"]
+  abort("Node Server deploy permissions changed") unless
+    deploy.fetch("permissions") == {"contents" => "read", "packages" => "read"}
+  abort("Node Server deploy environment changed") unless
+    deploy.fetch("environment").fetch("name") == "one-node-prod"
+  abort("Node Server deploy concurrency changed") unless
+    deploy.fetch("concurrency") == {
+      "group" => "one-node-server-prod-deploy", "cancel-in-progress" => false
+    }
+' "$node_server"
 assert_timeout_at_most "$user" prepare 2
 assert_timeout_at_most "$node_server" prepare 2
+assert_timeout_at_most "$node_server" deploy 20
 assert_timeout_at_most "$publisher" build 20
 assert_timeout_at_most "$publisher" manifest 3
 assert_native_matrix "$publisher"
@@ -101,6 +117,25 @@ require_text "$node_server" 'gh api "repos/voiceofhu/one-node-server/commits/$so
 require_text "$node_server" 'gh api "repos/voiceofhu/one-node-web/commits/$source_tag"'
 require_text "$node_server" 'backend_sha: ${{ needs.prepare.outputs.backend_sha }}'
 require_text "$node_server" 'web_sha: ${{ needs.prepare.outputs.web_sha }}'
+require_text "$node_server" 'name: Deploy One Node Server image'
+require_text "$node_server" 'name: one-node-prod'
+require_text "$node_server" 'group: one-node-server-prod-deploy'
+require_text "$node_server" 'ref: ${{ github.sha }}'
+require_text "$node_server" 'ref: ${{ needs.prepare.outputs.backend_sha }}'
+require_text "$node_server" 'SSH_ALIAS: one-node-deploy'
+require_text "$node_server" 'DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}'
+require_text "$node_server" "DEPLOY_PORT: \${{ secrets.DEPLOY_PORT || '22' }}"
+require_text "$node_server" 'DEPLOY_USER: ${{ secrets.DEPLOY_USER }}'
+require_text "$node_server" 'DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}'
+require_text "$node_server" 'DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}'
+require_text "$node_server" "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-node' }}"
+require_text "$node_server" 'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}'
+require_text "$node_server" 'COMPOSE_FILE: server/deployments/docker-compose.yml'
+require_text "$node_server" "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}"
+require_text "$node_server" 'run: exec bash action/scripts/deploy/configure-ssh.sh'
+require_text "$node_server" 'run: exec bash action/scripts/deploy/registry-auth.sh'
+require_text "$node_server" 'run: exec bash action/scripts/deploy/deploy-node-server.sh'
+require_text "$node_server" "if: \${{ always() && steps.registry_login.outcome == 'success' }}"
 
 for caller in "$user" "$node_server"; do
   require_text "$caller" 'timeout-minutes: 2'
@@ -158,11 +193,14 @@ require_text "$publisher" 'value: ${{ jobs.manifest.outputs.image_ref }}'
 require_text "$publisher" 'login=$(gh api user --jq .login)'
 reject_text "$publisher" 'username: ${{ github.actor }}'
 
-for workflow in "$user" "$node_server" "$publisher"; do
-  reject_text "$workflow" 'workflow_dispatch:'
+for workflow in "$user" "$publisher"; do
   reject_text "$workflow" '  deploy:'
   reject_text "$workflow" 'scripts/deploy/'
   reject_text "$workflow" 'ssh'
+done
+
+for workflow in "$user" "$node_server" "$publisher"; do
+  reject_text "$workflow" 'workflow_dispatch:'
   reject_text "$workflow" 'cargo test'
   reject_text "$workflow" 'go test'
   reject_text "$workflow" 'make test'
@@ -198,5 +236,13 @@ require_text "$node_server_release" 'document.version = process.env.VERSION;'
 require_text "$node_server_release" 'chore: bump one-node-web version to $release_tag'
 require_text "$node_server_release" 'control_tag="node-server-v$VERSION"'
 require_text "$node_server_release" '"refs/tags/$control_tag:refs/tags/$control_tag"'
+require_text "$node_server_release" 'triggers image publication and server deployment'
+
+require_text "$node_server_deployer" '^ghcr\.io/voiceofhu/node-server:'
+require_text "$node_server_deployer" 'docker-compose.yml.next'
+require_text "$node_server_deployer" '"http://127.0.0.1:$published_port/api/healthz"'
+require_text "$node_server_deployer" '"$public_url/api/healthz"'
+require_text "$node_server_deployer" '"$public_url/"'
+require_text "$node_server_deployer" 'attempting to restore the previous container'
 
 printf '%s\n' 'Active GHCR publication workflow contracts passed.'

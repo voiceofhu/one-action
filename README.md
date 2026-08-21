@@ -1,19 +1,18 @@
 # One Action
 
-One Action 只负责集中编译和上传发布产物。代码校验、格式、lint、测试和本地构建都在
-`make deploy-*` 推送触发标签之前完成；GitHub Actions 不连接服务器，也不执行部署。
+One Action 集中编译和上传发布产物。代码校验、格式、lint、测试和本地构建都在
+`make deploy-*` 推送触发标签之前完成；One Node Server 镜像发布成功后继续部署生产服务器。
 
 当前只保留三条发布链：
 
-| 本地入口 | Action 触发标签 | 上传结果 |
+| 本地入口 | Action 触发标签 | 发布结果 |
 |---|---|---|
 | `make deploy-user` | `user-v<version>` | `ghcr.io/voiceofhu/one-user:<version>` |
-| `make deploy-node-server` | `node-server-v<version>` | `ghcr.io/voiceofhu/node-server:<version>` |
+| `make deploy-node-server` | `node-server-v<version>` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node` | `one-node-v<version>` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和 GitHub Release |
 
-`deploy-*` 名称为现有本地接口，当前语义仅是“本地检查、发布源码标签、触发编译上传”，
-不包含 SSH、Compose 或其他远端部署。Browser、AMZ、Egress 和 App 的旧工作流不在活跃
-发布清单中。
+`deploy-user` 和 `deploy-node` 只触发编译上传；`deploy-node-server` 额外执行原有的
+SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
 
 ## 发布边界
 
@@ -24,7 +23,8 @@ One Action 只负责集中编译和上传发布产物。代码校验、格式、
 3. 本地运行 Action 契约检查以及对应产品的格式、lint、测试和构建；
 4. 所有检查通过后，创建并推送源码 `v<version>` 标签；
 5. 最后推送当前 Action commit 上的产品触发标签；
-6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物。
+6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
+7. One Node Server 在镜像成功合并后，将 digest-qualified 镜像部署到 `one-node-prod`。
 
 本地 Git 凭据只用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`，也不调用
 workflow dispatch API。
@@ -73,10 +73,12 @@ make node-bundle-installers
 
 - One User / One Node Server：2 分钟源码解析；amd64 和 arm64 原生 runner 并行构建，
   每个最多 20 分钟；OCI index 合并最多 3 分钟。
+- One Node Server 部署：镜像发布成功后运行，最多 20 分钟，同一时间只允许一个生产部署。
 - One Node Runtime：2 分钟源码解析；两个架构并行编译和推送，每个最多 15 分钟；
   OCI index、checksum 和 GitHub Release 上传最多 8 分钟。
 
-Action 中没有 fmt、lint、test、race、e2e、installer lifecycle、缓存上传或 SSH 部署步骤。
+Action 中没有 fmt、lint、test、race、e2e、installer lifecycle 或缓存上传。只有
+One Node Server 保留 SSH/Compose 部署步骤。
 不同版本可并行；相同产品、相同版本的重复触发由 concurrency group 串行保护。
 
 ## GitHub 配置
@@ -86,8 +88,17 @@ Action 中没有 fmt、lint、test、race、e2e、installer lifecycle、缓存�
 - 读取固定的私有源码仓库；
 - 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index。
 
-One Node 的 GitHub Release 使用当前 workflow 的最小 `contents: write` 权限。当前工作流不需要
-部署主机、SSH key、Compose 目录或生产环境 Secrets。
+One Node 的 GitHub Release 使用当前 workflow 的最小 `contents: write` 权限。
+
+One Node Server 部署使用受保护的 `one-node-prod` environment，并需要：
+
+- Secrets：`DEPLOY_HOST`、`DEPLOY_PORT`（可选，默认 `22`）、`DEPLOY_USER`、
+  `DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`；
+- Variables：`DEPLOY_REMOTE_DIR`（默认 `/opt/one-node`）、`DEPLOY_URL`
+  （默认 `https://marseo.eu.org`）。
+
+部署 job 使用 `GH_TOKEN` 让服务器临时登录 GHCR，部署后始终尝试退出 Registry；服务器
+Compose 文件来自同一 Server 源码 commit，部署脚本同时检查 `/api/healthz` 和首页。
 
 ## One Node 生命周期入口
 
@@ -108,10 +119,11 @@ node/uninstall.sh
 .github/workflows/   三个产品入口和一个 Web+Backend 复用发布工作流
 node/                One Node 安装、升级、卸载和本地 fixture
 scripts/release/     本地发布入口与上传辅助脚本
+scripts/deploy/      One Node Server SSH、Registry 和 Compose 部署脚本
 scripts/github/      GitHub 只读检查和历史调度辅助代码
 tests/               当前三条发布链的本地契约测试
 make/                Makefile 子模块
 ```
 
 本地 YAML、shell 和测试通过只能证明提交内容满足当前发布契约；GHCR Package 权限、Runner
-可用性和真实远端上传仍需由首次 GitHub Actions 运行证明。
+可用性、真实远端上传和服务器部署仍需由首次 GitHub Actions 运行证明。

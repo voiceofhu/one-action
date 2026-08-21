@@ -18,7 +18,7 @@ help:
 		"  make node-bundle-installers Build local One Node installer snapshots" \
 		"  make check-token            Check read-only access to active workflows" \
 		"" \
-		"Tag-triggered compile/upload (no deployment):" \
+		"Tag-triggered releases:" \
 		"  make deploy-user            Tag One User sources for compile and upload" \
-		"  make deploy-node-server     Tag Node Server sources for compile and upload" \
+		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
 		"  make deploy-node            Tag One Node source for compile and upload"

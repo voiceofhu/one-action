@@ -92,8 +92,8 @@ printf '%s\n' \
 
 if [[ "$dry_run" == true ]]; then
   printf '%s\n' \
-    'DRY_RUN=true: checks, source tags, pushes, image publication, and uploads are unchanged.' \
-    'The real run checks both sources, pushes their tags, then pushes the Action control tag.'
+    'DRY_RUN=true: checks, source tags, pushes, image publication, and deployment are unchanged.' \
+    'The real run checks both sources, pushes their tags, then triggers image publication and server deployment.'
   exit 0
 fi
 
@@ -199,5 +199,5 @@ if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$control_tag:refs/tags/$contr
     "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
   exit 1
 fi
-printf 'Triggered One Node Server image compilation and upload with Action control tag: %s@%s\n' \
+printf 'Triggered One Node Server image publication and server deployment with Action control tag: %s@%s\n' \
   "$control_tag" "$action_head"

@@ -17,8 +17,14 @@ for entrypoint in install.sh uninstall.sh upgrade.sh; do
 		"$ROOT_DIR/$entrypoint" >/dev/null
 	grep -F 'Accept: application/vnd.github.sha' "$ROOT_DIR/$entrypoint" >/dev/null
 done
-grep -F 'https://github.com/voiceofhu/one-node-node/releases/download/v${ONE_NODE_VERSION}' \
+grep -F 'https://github.com/voiceofhu/one-action/releases/download/one-node-v${ONE_NODE_VERSION}' \
 	"$ROOT_DIR/scripts/install/config.sh" >/dev/null
+grep -F 'https://api.github.com/repos/voiceofhu/one-action/releases?per_page=100' \
+	"$ROOT_DIR/scripts/install/config.sh" >/dev/null
+if grep -R -F 'voiceofhu/one-node-node/releases' "$ROOT_DIR/scripts" >/dev/null; then
+	printf '%s\n' "Node lifecycle points public downloads at the private source repository" >&2
+	exit 1
+fi
 grep -F 'https://raw.githubusercontent.com/voiceofhu/one-action/${action_commit}/node/uninstall.sh' \
 	"$ROOT_DIR/scripts/install/host.sh" >/dev/null
 if grep -R -F 'voiceofhu/one-node-action' \

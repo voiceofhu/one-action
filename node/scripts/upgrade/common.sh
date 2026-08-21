@@ -133,7 +133,7 @@ validate_upgrade_target() {
 		resolve_host_architecture
 		ONE_NODE_BINARY_SHA256=$(normalize_sha256 "$ONE_NODE_BINARY_SHA256")
 		validate_sha256 "$ONE_NODE_BINARY_SHA256" || die "selected binary checksum must be a pinned SHA-256"
-		immutable_release_base="https://github.com/voiceofhu/one-node-node/releases/download/v${ONE_NODE_VERSION}"
+		immutable_release_base="https://github.com/voiceofhu/one-action/releases/download/one-node-v${ONE_NODE_VERSION}"
 		case "$ONE_NODE_RELEASE_BASE_URL" in
 		"$immutable_release_base") ;;
 		http://*) [ "$ONE_NODE_ALLOW_INSECURE" = true ] || die "HTTP release assets require ONE_NODE_ALLOW_INSECURE=true" ;;
@@ -142,7 +142,7 @@ validate_upgrade_target() {
 		release_tag=${ONE_NODE_RELEASE_BASE_URL%/}
 		release_tag=${release_tag##*/}
 		case "$release_tag" in
-		v"$ONE_NODE_VERSION") ;;
+		one-node-v"$ONE_NODE_VERSION") ;;
 		*) die "ONE_NODE_RELEASE_BASE_URL must pin the requested immutable One Node release" ;;
 		esac
 		ONE_NODE_BINARY_URL="${ONE_NODE_RELEASE_BASE_URL%/}/${ONE_NODE_BINARY_NAME}"

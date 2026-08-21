@@ -22,7 +22,7 @@ curl() {
 }
 
 initialize_install_config
-ONE_NODE_TEST_RELEASE_RESPONSE='[{"tag_name":"node-server-v9.9.9"},{"tag_name":"v26.821.1200"},{"tag_name":"v26.820.1506"}]'
+ONE_NODE_TEST_RELEASE_RESPONSE='[{"tag_name":"node-server-v9.9.9"},{"tag_name":"one-node-v26.821.1200"},{"tag_name":"one-node-v26.820.1506"}]'
 resolve_latest_node_version
 [ "$ONE_NODE_VERSION" = 26.821.1200 ] || fail "latest One Node release was not selected"
 
@@ -55,7 +55,7 @@ INSTALL_MODE=docker
 ONE_NODE_SERVER='grpcs://control.example.test:443'
 ONE_NODE_ID=41
 ONE_NODE_BOOTSTRAP_TOKEN=bootstrap-fixture
-ONE_NODE_TEST_RELEASE_RESPONSE='[{"tag_name":"v26.821.1200"}]'
+ONE_NODE_TEST_RELEASE_RESPONSE='[{"tag_name":"one-node-v26.821.1200"}]'
 validate_install_config
 [ "$ONE_NODE_VERSION" = 26.821.1200 ] ||
 	fail "Docker install did not resolve the latest One Node version"

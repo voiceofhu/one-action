@@ -20,7 +20,7 @@ and Docker installation, registration reconfiguration, manifest-owned cleanup,
 readiness checks, immutable-version upgrade, automatic failed-upgrade recovery,
 explicit rollback, and uninstall remain separate from Browser Egress lifecycle
 code. When `ONE_NODE_VERSION` is omitted, installation resolves the newest
-published `voiceofhu/one-node-node@v<version>` Release. Native then downloads that
+published `voiceofhu/one-action@one-node-v<version>` Release. Native then downloads that
 exact Release, while Docker pulls its matching version tag and records the
 resolved immutable digest. Explicit version and digest inputs remain available
 for rollback or fixed-version installation.

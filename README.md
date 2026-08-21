@@ -9,7 +9,7 @@ One Action 集中编译和上传发布产物。代码校验、格式、lint、�
 |---|---|---|
 | `make deploy-user` | `user-v<version>` | `ghcr.io/voiceofhu/one-user:<version>` |
 | `make deploy-node-server` | `node-server-v<version>` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
-| `make deploy-node` | `node.yml` workflow dispatch | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和 `one-node-node@v<version>` Release |
+| `make deploy-node` | `one-node-v<version>` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
 
 `deploy-user` 和 `deploy-node` 只触发编译上传；`deploy-node-server` 额外执行原有的
 SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
@@ -22,12 +22,11 @@ SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不�
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
 3. 本地运行 Action 契约检查以及对应产品的格式、lint、测试和构建；
 4. 所有检查通过后，创建并推送源码 `v<version>` 标签；
-5. User/Server 推送当前 Action commit 上的产品触发标签；Node 使用固定 Action SHA 调度 `node.yml`，不在 Action 仓库创建 tag；
+5. 推送当前 Action commit 上的产品触发标签；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One Node Server 在镜像成功合并后，将 digest-qualified 镜像部署到 `one-node-prod`。
 
-本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；`deploy-node`
-使用 `gh` 已登录身份调用 workflow dispatch API，其他两条链路仍使用 Action tag。
+本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；三条链路都使用 Action tag。
 
 ## 使用
 
@@ -75,7 +74,7 @@ make node-bundle-installers
   每个最多 20 分钟；OCI index 合并最多 3 分钟。
 - One Node Server 部署：镜像发布成功后运行，最多 20 分钟，同一时间只允许一个生产部署。
 - One Node Runtime：2 分钟源码解析；两个架构并行编译和推送，每个最多 15 分钟；
-  OCI index、checksum 和 `one-node-node` GitHub Release 上传最多 8 分钟。
+  OCI index、checksum 和公开 One Action GitHub Release 上传最多 8 分钟。
 
 Action 中没有 fmt、lint、test、race、e2e、installer lifecycle 或缓存上传。只有
 One Node Server 保留 SSH/Compose 部署步骤。
@@ -87,9 +86,9 @@ One Node Server 保留 SSH/Compose 部署步骤。
 
 - 读取固定的私有源码仓库；
 - 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index；
-- 在 `voiceofhu/one-node-node@v<version>` 创建并上传 One Node Release。
+- 在 `voiceofhu/one-action@one-node-v<version>` 创建并上传公开 One Node Release。
 
-One Node workflow 自身只保留 `contents: read`；跨仓库 Release 写入使用 `GH_TOKEN`。
+One Node 的构建使用 `contents: read`；Release job 使用仓库 `GITHUB_TOKEN` 的 `contents: write`。
 
 One Node Server 部署使用受保护的 `one-node-prod` environment，并需要：
 
@@ -111,7 +110,7 @@ node/upgrade.sh
 node/uninstall.sh
 ```
 
-安装器未指定 `ONE_NODE_VERSION` 时会选择 `one-node-node` 仓库最新的 `v<version>` Release；显式设置版本
+安装器未指定 `ONE_NODE_VERSION` 时会选择 `one-action` 仓库最新的 `one-node-v<version>` Release；显式设置版本
 可固定安装或回滚。完整参数和生命周期约束见 [node/README.md](node/README.md)。
 
 ## 目录

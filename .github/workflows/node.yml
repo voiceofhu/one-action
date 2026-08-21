@@ -264,7 +264,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Download Linux binaries
         uses: actions/download-artifact@v4
@@ -356,7 +356,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Publish verified draft
         shell: bash

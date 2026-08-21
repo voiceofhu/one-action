@@ -206,7 +206,7 @@ if [[ "$dry_run" == false ]]; then
 fi
 
 payload="$(jq -cn \
-  --arg ref "$action_sha" \
+  --arg ref "$action_ref" \
   --arg expected_action_sha "$action_sha" \
   '{ref: $ref, inputs: {expected_action_sha: $expected_action_sha}}')"
 for index in "${!input_keys[@]}"; do

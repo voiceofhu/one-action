@@ -92,7 +92,7 @@ require_text "$WORKFLOW" '--repo voiceofhu/one-node-node'
 require_text "$WORKFLOW" 'login=$(gh api user --jq .login)'
 
 require_text "$RELEASE_SCRIPT" 'gh workflow run node.yml'
-require_text "$RELEASE_SCRIPT" '--ref "$action_head"'
+require_text "$RELEASE_SCRIPT" '--ref main'
 require_text "$RELEASE_SCRIPT" '--field "version=$VERSION"'
 if grep -Fq -- 'git -C "$PROJECT_ROOT" tag' "$RELEASE_SCRIPT" ||
   grep -Fq -- 'refs/tags/$release_tag' "$RELEASE_SCRIPT"; then

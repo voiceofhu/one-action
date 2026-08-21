@@ -151,14 +151,18 @@ fi
   exit 1
 }
 
+command -v gh >/dev/null 2>&1 || {
+  printf '%s\n' 'gh is required to dispatch the One Node workflow' >&2
+  exit 1
+}
 if ! gh workflow run node.yml \
   --repo "$ACTION_REPOSITORY" \
-  --ref "$action_head" \
+  --ref main \
   --field "version=$VERSION" \
   --field "expected_action_sha=$action_head"; then
   printf '%s\n' \
     "Node source tag $source_tag was published, but workflow dispatch failed." \
-    "Retry with: gh workflow run node.yml --repo $ACTION_REPOSITORY --ref $action_head --field version=$VERSION --field expected_action_sha=$action_head" >&2
+    "Retry with: gh workflow run node.yml --repo $ACTION_REPOSITORY --ref main --field version=$VERSION --field expected_action_sha=$action_head" >&2
   exit 1
 fi
 printf 'Triggered One Node image and Node-repository Release upload: %s@%s -> %s@%s\n' \

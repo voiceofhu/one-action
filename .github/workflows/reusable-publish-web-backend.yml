@@ -90,14 +90,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           case "$WORKFLOW_NAME" in
-            one-user) web_output_dir=dist ;;
-            one-node-server) web_output_dir=out ;;
+            one-user|one-node-server) ;;
             *) echo "Unsupported workflow: $WORKFLOW_NAME" >&2; exit 1 ;;
           esac
           pnpm --dir web install --frozen-lockfile
           VITE_BUILD_TIME="$BUILD_TIME" pnpm --dir web build
           mkdir backend/web-dist
-          cp -R "web/$web_output_dir/." backend/web-dist/
+          cp -R web/dist/. backend/web-dist/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -1,15 +1,22 @@
 name: One Node
 
 'on':
-  push:
-    tags:
-      - 'one-node-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: One Node version without the v prefix
+        required: true
+        type: string
+      expected_action_sha:
+        description: Exact published One Action commit selected by the dispatcher
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: one-node-${{ github.ref_name }}
+  group: one-node-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -19,6 +26,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       version: ${{ steps.source.outputs.version }}
+      release_tag: ${{ steps.source.outputs.release_tag }}
       node_sha: ${{ steps.source.outputs.node_sha }}
       upstream_version: ${{ steps.source.outputs.upstream_version }}
       upstream_commit: ${{ steps.source.outputs.upstream_commit }}
@@ -28,28 +36,32 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action ]]
           [[ -n "$GH_TOKEN" ]]
-          [[ "$RELEASE_TAG" =~ ^one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_ACTION_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_ACTION_SHA" ]]
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
 
-          version=${RELEASE_TAG#one-node-v}
-          node_sha="$(gh api "repos/voiceofhu/one-node-node/commits/v$version" --jq .sha)"
+          release_tag="v$VERSION"
+          node_sha="$(gh api "repos/voiceofhu/one-node-node/commits/$release_tag" --jq .sha)"
           [[ "$node_sha" =~ ^[0-9a-f]{40}$ ]]
 
           read_source_file() {
             gh api "repos/voiceofhu/one-node-node/contents/$1?ref=$node_sha" --jq .content |
               base64 --decode | tr -d '\r\n'
           }
-          [[ "$(read_source_file VERSION)" == "$version" ]]
+          [[ "$(read_source_file VERSION)" == "$VERSION" ]]
           upstream_version="$(read_source_file one/version/UPSTREAM_VERSION)"
           upstream_commit="$(read_source_file one/version/UPSTREAM_COMMIT)"
           [[ "$upstream_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$upstream_commit" =~ ^[0-9a-f]{40}$ ]]
 
-          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
+          printf 'release_tag=%s\n' "$release_tag" >>"$GITHUB_OUTPUT"
           printf 'node_sha=%s\n' "$node_sha" >>"$GITHUB_OUTPUT"
           printf 'upstream_version=%s\n' "$upstream_version" >>"$GITHUB_OUTPUT"
           printf 'upstream_commit=%s\n' "$upstream_commit" >>"$GITHUB_OUTPUT"
@@ -271,9 +283,9 @@ jobs:
       - name: Create or resume GitHub Release
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -290,7 +302,7 @@ jobs:
             done
           }
 
-          if release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+          if release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-node-node \
             --json body,assets,isDraft,isPrerelease 2>/dev/null)"; then
             jq -e --arg body "$notes" '.body == $body and .isPrerelease == false' \
               <<<"$release_json" >/dev/null
@@ -299,7 +311,7 @@ jobs:
               [[ "$actual_assets" == "$expected_assets" ]]
               existing_dir="$(mktemp -d)"
               trap 'rm -rf "$existing_dir"' EXIT
-              gh release download "$RELEASE_TAG" --repo voiceofhu/one-action --dir "$existing_dir"
+              gh release download "$RELEASE_TAG" --repo voiceofhu/one-node-node --dir "$existing_dir"
               verify_assets "$existing_dir"
               exit 0
             fi
@@ -311,7 +323,7 @@ jobs:
             done <<<"$actual_assets"
           else
             gh release create "$RELEASE_TAG" \
-              --repo voiceofhu/one-action \
+              --repo voiceofhu/one-node-node \
               --verify-tag \
               --draft \
               --title one-node \
@@ -321,13 +333,13 @@ jobs:
 
           gh release upload "$RELEASE_TAG" \
             dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 \
-            --repo voiceofhu/one-action \
+            --repo voiceofhu/one-node-node \
             --clobber
           readback_dir="$(mktemp -d)"
           trap 'rm -rf "$readback_dir"' EXIT
-          gh release download "$RELEASE_TAG" --repo voiceofhu/one-action --dir "$readback_dir"
+          gh release download "$RELEASE_TAG" --repo voiceofhu/one-node-node --dir "$readback_dir"
           verify_assets "$readback_dir"
-          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-node-node \
             --json body,assets,isDraft,isPrerelease)"
           actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
           jq -e --arg body "$notes" \
@@ -349,9 +361,9 @@ jobs:
       - name: Publish verified draft
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -361,10 +373,10 @@ jobs:
           notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
             "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION")"
           gh release edit "$RELEASE_TAG" \
-            --repo voiceofhu/one-action \
+            --repo voiceofhu/one-node-node \
             --draft=false \
             --latest=false
-          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-node-node \
             --json body,assets,isDraft,isPrerelease)"
           actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
           jq -e --arg body "$notes" \

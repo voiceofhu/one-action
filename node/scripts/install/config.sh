@@ -77,11 +77,11 @@ resolve_latest_node_version() {
 		--header 'Accept: application/vnd.github+json' \
 		--header 'X-GitHub-Api-Version: 2022-11-28' \
 		--user-agent 'one-node-installer' \
-		'https://api.github.com/repos/voiceofhu/one-action/releases?per_page=100') ||
+		'https://api.github.com/repos/voiceofhu/one-node-node/releases?per_page=100') ||
 		die "unable to resolve the latest One Node release"
 	release_tag=$(printf '%s' "$releases" |
-		grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"' |
-		sed -n '1s/^.*"one-node-v\([^"]*\)"$/\1/p')
+		grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"' |
+		sed -n '1s/^.*"v\([^"]*\)"$/\1/p')
 	manifest_validate_version "$release_tag" ||
 		die "latest One Node release response did not contain a valid version"
 	ONE_NODE_VERSION=$release_tag
@@ -142,7 +142,7 @@ validate_install_config() {
 	esac
 
 	if [ "$INSTALL_MODE" = "native" ]; then
-		immutable_release_base="https://github.com/voiceofhu/one-action/releases/download/one-node-v${ONE_NODE_VERSION}"
+		immutable_release_base="https://github.com/voiceofhu/one-node-node/releases/download/v${ONE_NODE_VERSION}"
 		ONE_NODE_RELEASE_BASE_URL=${ONE_NODE_RELEASE_BASE_URL:-$immutable_release_base}
 		require_value "ONE_NODE_RELEASE_BASE_URL" "$ONE_NODE_RELEASE_BASE_URL"
 		case "$ONE_NODE_RELEASE_BASE_URL" in

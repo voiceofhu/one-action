@@ -18,13 +18,13 @@ ACTION_REPOSITORY=voiceofhu/one-action
 }
 
 source_tag="v$VERSION"
-release_tag="one-node-v$VERSION"
 printf '%s\n' \
   'One Node release plan:' \
   "  version:    $VERSION" \
   "  source:     $ONE_NODE_REPOSITORY" \
   "  source tag: $source_tag" \
-  "  release:    $release_tag" \
+  "  release:    $ONE_NODE_REPOSITORY@$source_tag" \
+  "  trigger:    $ACTION_REPOSITORY/.github/workflows/node.yml (workflow_dispatch)" \
   '  image:      ghcr.io/voiceofhu/one-node:<version>'
 
 case "${DRY_RUN:-true}" in
@@ -58,18 +58,6 @@ validate_action_repository() {
 }
 
 action_head="$(validate_action_repository)"
-! git -C "$PROJECT_ROOT" rev-parse -q --verify "refs/tags/$release_tag" >/dev/null || {
-  printf 'Action release tag already exists locally: %s\n' "$release_tag" >&2
-  exit 1
-}
-remote_action_tag_status=0
-git -C "$PROJECT_ROOT" ls-remote --exit-code --tags origin \
-  "refs/tags/$release_tag" "refs/tags/$release_tag^{}" >/dev/null || remote_action_tag_status=$?
-case "$remote_action_tag_status" in
-  0) printf 'Action release tag already exists remotely: %s\n' "$release_tag" >&2; exit 1 ;;
-  2) ;;
-  *) printf 'Could not check remote Action release tag %s.\n' "$release_tag" >&2; exit 1 ;;
-esac
 git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
 [[ "$action_head" == "$(git -C "$PROJECT_ROOT" rev-parse refs/remotes/origin/main)" ]] || {
   printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
@@ -163,12 +151,15 @@ fi
   exit 1
 }
 
-git -C "$PROJECT_ROOT" tag "$release_tag" "$action_head"
-if ! git -C "$PROJECT_ROOT" push origin "refs/tags/$release_tag:refs/tags/$release_tag"; then
+if ! gh workflow run node.yml \
+  --repo "$ACTION_REPOSITORY" \
+  --ref "$action_head" \
+  --field "version=$VERSION" \
+  --field "expected_action_sha=$action_head"; then
   printf '%s\n' \
-    "Node source was published and local Action tag $release_tag was kept." \
-    "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$release_tag:refs/tags/$release_tag" >&2
+    "Node source tag $source_tag was published, but workflow dispatch failed." \
+    "Retry with: gh workflow run node.yml --repo $ACTION_REPOSITORY --ref $action_head --field version=$VERSION --field expected_action_sha=$action_head" >&2
   exit 1
 fi
-printf 'Triggered One Node image and Release upload with Action tag: %s@%s\n' \
-  "$release_tag" "$action_head"
+printf 'Triggered One Node image and Node-repository Release upload: %s@%s -> %s@%s\n' \
+  "$ACTION_REPOSITORY" "$action_head" "$ONE_NODE_REPOSITORY" "$source_tag"

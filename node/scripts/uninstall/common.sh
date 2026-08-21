@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# The uninstaller removes only canonical manifest-owned paths. Pre-existing
-# credential state is never claimed by a later installation.
+# The uninstaller removes canonical installation paths and the complete state
+# directory recorded by the installation manifest.
 
 initialize_uninstall_config() {
 	INSTALL_DIR="/opt/one-node"
@@ -11,7 +11,6 @@ initialize_uninstall_config() {
 	CONTAINER_NAME="one-node"
 	REQUESTED_MODE=""
 	installed_mode=""
-	state_dir=""
 }
 
 log() {
@@ -29,7 +28,7 @@ show_help() {
 		"" \
 		"Usage: uninstall.sh [--mode <native|docker>]" \
 		"" \
-		"Pre-existing credential and runtime state are retained."
+		"Node credentials, runtime state, and pending telemetry are removed."
 }
 
 parse_uninstall_arguments() {
@@ -61,7 +60,6 @@ load_installation() {
 	fi
 	manifest_load "$INSTALL_RECORD" || die "refusing unknown or unsafe installation manifest"
 	installed_mode=$MANIFEST_MODE
-	state_dir=$MANIFEST_STATE_DIR
 	if [ -n "$REQUESTED_MODE" ] && [ "$REQUESTED_MODE" != "$installed_mode" ]; then
 		die "One Node is installed in ${installed_mode} mode, not ${REQUESTED_MODE}"
 	fi

@@ -1,7 +1,8 @@
 #!/bin/sh
 
-# Canonical sing-box uninstaller entrypoint. It removes only manifest-owned
-# One Node paths and never manages host proxy software or the Docker engine.
+# Canonical sing-box uninstaller entrypoint. It removes the installed One Node
+# runtime and its complete state directory, but never manages host proxy
+# software or the Docker engine.
 
 set -eu
 umask 077

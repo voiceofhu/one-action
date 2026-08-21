@@ -201,6 +201,44 @@ if (
 fi
 grep -F 'rm -rf -- "$MANIFEST_STATE_DIR"' \
 	"$ROOT_DIR/scripts/uninstall/paths.sh" >/dev/null
+if grep -R -F 'pre-existing state retained' \
+	"$ROOT_DIR/uninstall.sh" "$ROOT_DIR/scripts/uninstall" >/dev/null; then
+	printf '%s\n' "uninstaller still retains pre-existing One Node state" >&2
+	exit 1
+fi
+(
+	# A state directory that predates the installation is absent from the
+	# owned-path list, but uninstall must still validate and remove it.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/shared/manifest.sh"
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/uninstall/paths.sh"
+	MANIFEST_INSTALL_DIR="$TEST_TEMP_DIR/uninstall-all/opt/one-node"
+	MANIFEST_PREVIOUS_DIR="$MANIFEST_INSTALL_DIR/previous"
+	MANIFEST_BINARY_PATH="$MANIFEST_INSTALL_DIR/one-node"
+	MANIFEST_PREVIOUS_BINARY_PATH_FIXED="$MANIFEST_PREVIOUS_DIR/one-node"
+	MANIFEST_ENV_PATH="$MANIFEST_INSTALL_DIR/.env"
+	MANIFEST_COMPOSE_PATH="$MANIFEST_INSTALL_DIR/docker-compose.yml"
+	MANIFEST_RECORD_PATH="$MANIFEST_INSTALL_DIR/.installation"
+	MANIFEST_UNIT_PATH="$TEST_TEMP_DIR/uninstall-all/one-node.service"
+	MANIFEST_STATE_DIR="$TEST_TEMP_DIR/uninstall-all/var/lib/one-node"
+	MANIFEST_OWNED_PATHS="${MANIFEST_INSTALL_DIR}
+${MANIFEST_ENV_PATH}
+${MANIFEST_RECORD_PATH}
+${MANIFEST_BINARY_PATH}
+${MANIFEST_UNIT_PATH}"
+	install -d -m 0755 "$MANIFEST_INSTALL_DIR"
+	install -d -m 0700 "$MANIFEST_STATE_DIR/traffic-spool"
+	: >"$MANIFEST_ENV_PATH"
+	: >"$MANIFEST_RECORD_PATH"
+	: >"$MANIFEST_BINARY_PATH"
+	: >"$MANIFEST_UNIT_PATH"
+	: >"$MANIFEST_STATE_DIR/node-secret"
+	: >"$MANIFEST_STATE_DIR/traffic-spool/pending.jsonl"
+	preflight_owned_paths
+	remove_owned_files
+	[ ! -e "$MANIFEST_STATE_DIR" ]
+)
 if grep -R -E 'apt-get purge|docker system prune|docker (rm|rmi).*(xray|Xray)' \
 	"$ROOT_DIR/scripts/uninstall" >/dev/null; then
 	printf '%s\n' "uninstaller manages software outside its manifest" >&2

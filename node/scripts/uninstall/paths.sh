@@ -3,10 +3,7 @@
 uninstall_path_kind() {
 	case "$1" in
 	"$MANIFEST_INSTALL_DIR"|"$MANIFEST_PREVIOUS_DIR") printf '%s\n' directory ;;
-	"$MANIFEST_STATE_DIR")
-		manifest_has_owned_path "$MANIFEST_STATE_DIR" || return 1
-		printf '%s\n' state
-		;;
+	"$MANIFEST_STATE_DIR") printf '%s\n' state ;;
 	"$MANIFEST_BINARY_PATH"|"$MANIFEST_PREVIOUS_BINARY_PATH_FIXED"|"$MANIFEST_ENV_PATH"|"$MANIFEST_COMPOSE_PATH"|"$MANIFEST_RECORD_PATH"|"$MANIFEST_UNIT_PATH")
 		printf '%s\n' file
 		;;
@@ -30,6 +27,10 @@ preflight_owned_path() {
 }
 
 preflight_owned_paths() {
+	# The state directory is always an uninstall target, including when it
+	# existed before the current installation and was therefore not claimed as
+	# a manifest-owned path.
+	preflight_owned_path "$MANIFEST_STATE_DIR"
 	uninstall_old_ifs=$IFS
 	IFS='
 '
@@ -49,9 +50,7 @@ remove_owned_files() {
 		rm -f -- "$owned_path"
 	done
 	IFS=$uninstall_old_ifs
-	if manifest_has_owned_path "$MANIFEST_STATE_DIR"; then
-		rm -rf -- "$MANIFEST_STATE_DIR"
-	fi
+	rm -rf -- "$MANIFEST_STATE_DIR"
 	rm -f -- "$MANIFEST_RECORD_PATH"
 	if manifest_has_owned_path "$MANIFEST_PREVIOUS_DIR"; then
 		rmdir -- "$MANIFEST_PREVIOUS_DIR" 2>/dev/null || true

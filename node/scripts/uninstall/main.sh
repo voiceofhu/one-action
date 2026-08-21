@@ -24,9 +24,5 @@ main() {
 		uninstall_docker
 	fi
 	remove_owned_files
-	if manifest_has_owned_path "$state_dir"; then
-		log "One Node sing-box runtime and installer-owned state were removed"
-	else
-		log "One Node sing-box runtime was uninstalled; pre-existing state retained at ${state_dir}"
-	fi
+	log "One Node sing-box runtime and all runtime state were removed"
 }

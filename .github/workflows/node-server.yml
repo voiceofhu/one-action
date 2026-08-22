@@ -174,7 +174,7 @@ jobs:
           SSH_HOST: one-node-deploy
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-node' }}
           DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
-          COMPOSE_FILE: server/deployments/docker-compose.yml
+          COMPOSE_FILE: server/deploy/docker-compose.yml
           PUBLIC_URL: ${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}
         run: exec bash action/scripts/deploy/deploy-node-server.sh
 

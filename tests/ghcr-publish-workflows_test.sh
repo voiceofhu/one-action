@@ -136,7 +136,7 @@ require_text "$node_server" 'DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}'
 require_text "$node_server" 'DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}'
 require_text "$node_server" "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-node' }}"
 require_text "$node_server" 'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}'
-require_text "$node_server" 'COMPOSE_FILE: server/deployments/docker-compose.yml'
+require_text "$node_server" 'COMPOSE_FILE: server/deploy/docker-compose.yml'
 require_text "$node_server" "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}"
 require_text "$node_server" 'run: exec bash action/scripts/deploy/configure-ssh.sh'
 require_text "$node_server" 'run: exec bash action/scripts/deploy/registry-auth.sh'

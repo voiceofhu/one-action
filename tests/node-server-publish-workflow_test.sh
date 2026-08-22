@@ -113,7 +113,7 @@ done
 
 for text in \
   'make --no-print-directory -C "$PROJECT_ROOT" validate-node-server' \
-  'make --no-print-directory -C "$ONE_NODE_WEB_DIR" install check build' \
+  'make --no-print-directory -C "$ONE_NODE_WEB_DIR" install lint' \
   'make --no-print-directory -C "$ONE_NODE_SERVER_DIR" test' \
   'go vet ./...' \
   'format=one-node-server-release-v1' \

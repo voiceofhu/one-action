@@ -66,7 +66,8 @@ make node-bundle-installers
 真实 `deploy-*` 还会执行产品门禁：
 
 - One User：Backend fmt/check/test/release build；Web frozen install、format、lint、test、build；
-- One Node Server：Web frozen install/check/build；Backend model/test、vet、release build；
+- One Node Server：Web frozen install/lint；Backend model/test、vet、release build，
+  release build 通过 Server 的 `build: frontend` 唯一执行一次 Web typecheck/Vite build 并暂存 `web-dist`；
 - One Node Runtime：安装器生命周期检查和完整 `verify-upgrade`。
 
 任何本地门禁失败都会发生在源码 tag 和远程触发之前。

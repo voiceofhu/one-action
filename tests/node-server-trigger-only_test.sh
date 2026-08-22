@@ -104,7 +104,7 @@ require_gate() {
   }
 }
 require_gate "make --no-print-directory -C $action_dir validate-node-server"
-require_gate "make --no-print-directory -C $ONE_NODE_WEB_DIR install check build"
+require_gate "make --no-print-directory -C $ONE_NODE_WEB_DIR install lint"
 require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR test"
 require_gate 'go vet ./...'
 require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR build VERSION=26.815.1234 COMMIT=$server_sha"

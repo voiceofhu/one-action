@@ -14,6 +14,7 @@ help:
 		"" \
 		"Local checks:" \
 		"  make validate               Validate active shell and workflow contracts locally" \
+		"  make validate-node-server   Validate only One Node Server release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \
 		"  make check-token            Check read-only access to active workflows" \

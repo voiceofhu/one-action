@@ -115,7 +115,7 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
   printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
   exit 1
 }
-make --no-print-directory -C "$PROJECT_ROOT" validate
+make --no-print-directory -C "$PROJECT_ROOT" validate-node-server
 [[ "$(validate_action_repository)" == "$action_head" ]] || {
   printf '%s\n' 'Action source changed during local validation.' >&2
   exit 1

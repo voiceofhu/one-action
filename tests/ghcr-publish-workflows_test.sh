@@ -236,7 +236,7 @@ require_text "$user_release" '"refs/tags/$control_tag:refs/tags/$control_tag"'
 
 require_text "$node_server_release" 'status --porcelain --untracked-files=all'
 require_text "$node_server_release" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
-require_text "$node_server_release" 'make --no-print-directory -C "$PROJECT_ROOT" validate'
+require_text "$node_server_release" 'make --no-print-directory -C "$PROJECT_ROOT" validate-node-server'
 require_text "$node_server_release" 'make --no-print-directory -C "$ONE_NODE_WEB_DIR" install check build'
 require_text "$node_server_release" 'make --no-print-directory -C "$ONE_NODE_SERVER_DIR" test'
 require_text "$node_server_release" 'go vet ./...'

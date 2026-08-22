@@ -55,11 +55,14 @@ make deploy-node DRY_RUN=true
 
 ```bash
 make validate
+make validate-node-server
 make node-check
 make node-bundle-installers
 ```
 
-`make validate` 检查活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
+`make validate` 检查全部活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
+`make validate-node-server` 只检查 One Node Server 的发布、镜像与部署契约；
+`deploy-node-server` 使用这一范围，不运行 One User 模拟发布或 One Node Runtime 生命周期 fixture。
 真实 `deploy-*` 还会执行产品门禁：
 
 - One User：Backend fmt/check/test/release build；Web frozen install、format、lint、test、build；

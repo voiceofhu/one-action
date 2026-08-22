@@ -2,31 +2,67 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+scope=${1:-all}
 
-active_tests=(
-  "$PROJECT_ROOT/tests/checksum-helper_test.sh"
-  "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
-  "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
-  "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
-  "$PROJECT_ROOT/tests/user-release-version_test.sh"
-)
-shell_files=(
-  "$PROJECT_ROOT/node/install.sh"
-  "$PROJECT_ROOT/node/upgrade.sh"
-  "$PROJECT_ROOT/node/uninstall.sh"
-  "$PROJECT_ROOT/scripts/github/check-token.sh"
-  "$PROJECT_ROOT/scripts/github/common.sh"
-  "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-  "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
-  "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-  "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
-  "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
-  "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
-  "$PROJECT_ROOT/scripts/release/write-checksums.sh"
-  "${active_tests[@]}"
-  "$PROJECT_ROOT/tests/fakes/curl"
-  "$PROJECT_ROOT/scripts/validate.sh"
-)
+case "$scope" in
+  all)
+    active_tests=(
+      "$PROJECT_ROOT/tests/checksum-helper_test.sh"
+      "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
+      "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+      "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/user-release-version_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/node/install.sh"
+      "$PROJECT_ROOT/node/upgrade.sh"
+      "$PROJECT_ROOT/node/uninstall.sh"
+      "$PROJECT_ROOT/scripts/github/check-token.sh"
+      "$PROJECT_ROOT/scripts/github/common.sh"
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
+      "$PROJECT_ROOT/scripts/release/write-checksums.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/tests/fakes/curl"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      user.yml
+      node-server.yml
+      node.yml
+      reusable-publish-web-backend.yml
+    )
+    run_node_check=true
+    ;;
+  node-server)
+    active_tests=(
+      "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      node-server.yml
+      reusable-publish-web-backend.yml
+    )
+    run_node_check=false
+    ;;
+  *)
+    printf 'Unknown validation scope: %s\n' "$scope" >&2
+    exit 1
+    ;;
+esac
 
 for file in "${shell_files[@]}"; do
   [[ -f "$file" ]] || {
@@ -38,12 +74,6 @@ done
 bash -n "${shell_files[@]}"
 shellcheck --severity=warning "${shell_files[@]}"
 
-active_workflows=(
-  user.yml
-  node-server.yml
-  node.yml
-  reusable-publish-web-backend.yml
-)
 for workflow in "${active_workflows[@]}"; do
   [[ -f "$PROJECT_ROOT/.github/workflows/$workflow" ]] || {
     printf 'Missing required workflow: %s\n' "$workflow" >&2
@@ -85,11 +115,13 @@ while IFS= read -r workflow; do
       "$workflow" "$line_count" >&2
     exit 1
   fi
-done < <(find "$PROJECT_ROOT/.github/workflows" -type f -name '*.yml' | LC_ALL=C sort)
+done < <(printf '%s\n' "${active_workflows[@]/#/$PROJECT_ROOT/.github/workflows/}")
 
 for test_script in "${active_tests[@]}"; do
   bash "$test_script"
 done
-make --no-print-directory -C "$PROJECT_ROOT" node-check
+if [[ "$run_node_check" == true ]]; then
+  make --no-print-directory -C "$PROJECT_ROOT" node-check
+fi
 
-printf '%s\n' 'Shell syntax and workflow YAML structure are valid.'
+printf 'Shell syntax and %s workflow contracts are valid.\n' "$scope"

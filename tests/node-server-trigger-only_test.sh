@@ -103,7 +103,7 @@ require_gate() {
     exit 1
   }
 }
-require_gate "make --no-print-directory -C $action_dir validate"
+require_gate "make --no-print-directory -C $action_dir validate-node-server"
 require_gate "make --no-print-directory -C $ONE_NODE_WEB_DIR install check build"
 require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR test"
 require_gate 'go vet ./...'

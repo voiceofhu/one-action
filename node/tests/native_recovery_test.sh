@@ -14,6 +14,9 @@ fail() {
 # shellcheck disable=SC1090
 . "$ROOT_DIR/scripts/install/common.sh"
 . "$ROOT_DIR/scripts/shared/manifest.sh"
+. "$ROOT_DIR/scripts/uninstall/paths.sh"
+. "$ROOT_DIR/scripts/uninstall/native.sh"
+. "$ROOT_DIR/scripts/uninstall/docker.sh"
 . "$ROOT_DIR/scripts/install/config.sh"
 . "$ROOT_DIR/scripts/install/host.sh"
 . "$ROOT_DIR/scripts/install/files.sh"

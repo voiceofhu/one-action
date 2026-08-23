@@ -21,6 +21,6 @@ help:
 		"  make check-token            Check read-only access to active workflows" \
 		"" \
 		"Tag-triggered releases:" \
-		"  make deploy-user            Tag One User sources for compile and upload" \
+		"  make deploy-user            Compile, upload, and deploy One User" \
 		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
 		"  make deploy-node            Tag One Node source for compile and upload"

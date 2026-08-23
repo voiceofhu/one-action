@@ -5,6 +5,7 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 user_workflow="$PROJECT_ROOT/.github/workflows/user.yml"
 publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-web-backend.yml"
 release="$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
+deployer="$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
 
 require_text() {
   local file=$1 text=$2
@@ -22,7 +23,7 @@ reject_text() {
   fi
 }
 
-for file in "$user_workflow" "$publisher" "$release"; do
+for file in "$user_workflow" "$publisher" "$release" "$deployer"; do
   [[ -f "$file" ]] || {
     printf 'Missing One User publication file: %s\n' "$file" >&2
     exit 1
@@ -33,9 +34,18 @@ ruby -ryaml -e '
   user = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
   abort("One User workflow must be tag-only") unless
     user.fetch("on") == {"push" => {"tags" => ["user-v*"]}}
-  abort("unexpected One User jobs") unless user.fetch("jobs").keys.sort == %w[prepare publish]
+  abort("unexpected One User jobs") unless user.fetch("jobs").keys.sort == %w[deploy prepare publish]
   abort("One User prepare timeout changed") unless
     user.fetch("jobs").fetch("prepare").fetch("timeout-minutes") <= 2
+  deploy = user.fetch("jobs").fetch("deploy")
+  abort("One User deploy must wait for prepare and publish") unless
+    deploy.fetch("needs") == ["prepare", "publish"]
+  abort("One User deploy environment changed") unless
+    deploy.fetch("environment").fetch("name") == "one-user-prod"
+  abort("One User deploy concurrency changed") unless
+    deploy.fetch("concurrency") == {
+      "group" => "one-user-prod-deploy", "cancel-in-progress" => false
+    }
 
   publisher = YAML.safe_load(File.read(ARGV.fetch(1)), aliases: true)
   matrix = publisher.fetch("jobs").fetch("build").fetch("strategy").fetch("matrix").fetch("include")
@@ -49,8 +59,26 @@ ruby -ryaml -e '
 for text in \
   'workflow_name: one-user' \
   'backend_sha: ${{ needs.prepare.outputs.backend_sha }}' \
-  'web_sha: ${{ needs.prepare.outputs.web_sha }}'; do
+  'web_sha: ${{ needs.prepare.outputs.web_sha }}' \
+  'name: Deploy One User image' \
+  'name: one-user-prod' \
+  'group: one-user-prod-deploy' \
+  "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}" \
+  'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}' \
+  'COMPOSE_FILE: backend/deploy/docker/docker-compose.yml' \
+  "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://one-user-web.marseo.eu.org' }}" \
+  'run: exec bash action/scripts/deploy/deploy-user.sh'; do
   require_text "$user_workflow" "$text"
+done
+
+for text in \
+  '^ghcr\.io/voiceofhu/one-user:' \
+  'docker-compose.yml.next' \
+  '"http://127.0.0.1:$published_port/readyz"' \
+  '"$public_url/readyz"' \
+  '"$public_url/"' \
+  'attempting to restore the previous container'; do
+  require_text "$deployer" "$text"
 done
 
 for text in \

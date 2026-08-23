@@ -23,6 +23,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/common.sh"
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
@@ -45,6 +46,9 @@ case "$scope" in
       "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
     )
     shell_files=(
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/scripts/validate.sh"

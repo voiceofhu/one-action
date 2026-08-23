@@ -81,3 +81,76 @@ jobs:
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
       package_write_token: ${{ secrets.GH_TOKEN }}
+
+  deploy:
+    name: Deploy One User image
+    needs:
+      - prepare
+      - publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: one-user-prod
+      url: ${{ vars.DEPLOY_URL || 'https://one-user-web.marseo.eu.org' }}
+    concurrency:
+      group: one-user-prod-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact deployment tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact Backend deployment file
+        uses: actions/checkout@v4
+        with:
+          repository: voiceofhu/one-user-backend
+          ref: ${{ needs.prepare.outputs.backend_sha }}
+          path: backend
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_ALIAS: one-user-deploy
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: exec bash action/scripts/deploy/configure-ssh.sh
+
+      - name: Log server in to GitHub Container Registry
+        id: registry_login
+        shell: bash
+        env:
+          SSH_HOST: one-user-deploy
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: exec bash action/scripts/deploy/registry-auth.sh
+
+      - name: Deploy versioned image
+        shell: bash
+        env:
+          SSH_HOST: one-user-deploy
+          REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}
+          DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
+          COMPOSE_FILE: backend/deploy/docker/docker-compose.yml
+          PUBLIC_URL: ${{ vars.DEPLOY_URL || 'https://one-user-web.marseo.eu.org' }}
+        run: exec bash action/scripts/deploy/deploy-user.sh
+
+      - name: Log server out of GitHub Container Registry
+        if: ${{ always() && steps.registry_login.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          SSH_HOST: one-user-deploy
+          REGISTRY_ACTION: logout
+        run: exec bash action/scripts/deploy/registry-auth.sh

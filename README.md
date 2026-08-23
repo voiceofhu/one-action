@@ -1,18 +1,18 @@
 # One Action
 
 One Action 集中编译和上传发布产物。格式、lint、测试和必要的本地编译门禁在
-`make deploy-*` 触发远端工作流之前完成；发布镜像由 Action 统一构建，One Node Server 镜像发布成功后继续部署生产服务器。
+`make deploy-*` 触发远端工作流之前完成；发布镜像由 Action 统一构建，One User 和 One Node Server 镜像发布成功后继续部署生产服务器。
 
 当前只保留三条发布链：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
-| `make deploy-user` | `user-v<version>` | `ghcr.io/voiceofhu/one-user:<version>` |
+| `make deploy-user` | `user-v<version>` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-server` | `node-server-v<version>` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node` | `one-node-v<version>` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
 
-`deploy-user` 和 `deploy-node` 只触发编译上传；`deploy-node-server` 额外执行原有的
-SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
+`deploy-user` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
+`deploy-node` 只触发 Runtime 编译上传。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
 
 ## 发布边界
 
@@ -24,7 +24,7 @@ SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不�
 4. One Node Server 要求本地 Backend/Web HEAD 已经与远端分支完全一致，把两个精确 SHA 写入 annotated Action 控制标签；其他产品仍按各自发布合同准备源码标签；
 5. 推送当前 Action commit 上的产品触发标签；One Node Server 不再创建 Backend/Web `v*` 标签；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
-7. One Node Server 在镜像成功合并后，将 digest-qualified 镜像部署到 `one-node-prod`。
+7. One User 与 One Node Server 在镜像成功合并后，将 digest-qualified 镜像分别部署到受保护的生产 environment。
 
 本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；三条链路都使用 Action tag。One Node Server 的控制标签同时携带本地检查过的 Backend/Web SHA，Action 不读取可变的源码分支头。
 
@@ -46,7 +46,8 @@ flowchart TD
     resolve --> arm64[arm64 原生构建<br/>复用独立 GHA layer cache]
     amd64 --> index[校验并发布 OCI 多架构 index]
     arm64 --> index
-    index --> result[ghcr.io/voiceofhu/one-user:version]
+    index --> deploy[SSH + Compose 部署精确 digest]
+    deploy --> result[one-user-prod 健康检查通过]
 ```
 
 `validate-user` 只检查 One User 发布脚本、`user.yml` 和共享镜像发布合同，不运行
@@ -105,13 +106,13 @@ make node-bundle-installers
 
 - One User / One Node Server：2 分钟源码解析；amd64 和 arm64 原生 runner 并行构建，
   每个最多 20 分钟；OCI index 合并最多 3 分钟。
-- One Node Server 部署：镜像发布成功后运行，最多 20 分钟，同一时间只允许一个生产部署。
+- One User / One Node Server 部署：镜像发布成功后运行，各自最多 20 分钟，同一产品同一时间只允许一个生产部署。
 - One Node Runtime：2 分钟源码解析；两个架构并行编译和推送，每个最多 15 分钟；
   OCI index、checksum 和公开 One Action GitHub Release 上传最多 8 分钟。
 
 Action 中没有 fmt、lint、test、race、e2e 或 installer lifecycle；双架构 Docker 构建使用
-按产品和架构隔离的 GHA layer cache。只有
-One Node Server 保留 SSH/Compose 部署步骤。
+按产品和架构隔离的 GHA layer cache。One User 与 One Node Server 保留各自隔离的
+SSH/Compose 部署步骤。
 不同版本可并行；相同产品、相同版本的重复触发由 concurrency group 串行保护。
 
 ## GitHub 配置
@@ -124,15 +125,17 @@ One Node Server 保留 SSH/Compose 部署步骤。
 
 One Node 的构建使用 `contents: read`；Release job 使用仓库 `GITHUB_TOKEN` 的 `contents: write`。
 
-One Node Server 部署使用受保护的 `one-node-prod` environment，并需要：
+One User 和 One Node Server 分别使用受保护的 `one-user-prod`、`one-node-prod` environment，并需要：
 
 - Secrets：`DEPLOY_HOST`、`DEPLOY_PORT`（可选，默认 `22`）、`DEPLOY_USER`、
   `DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`；
-- Variables：`DEPLOY_REMOTE_DIR`（默认 `/opt/one-node`）、`DEPLOY_URL`
-  （默认 `https://marseo.eu.org`）。
+- Variables：`DEPLOY_REMOTE_DIR`、`DEPLOY_URL`。One User 默认 `/opt/one-user` 与
+  `https://one-user-web.marseo.eu.org`；One Node Server 默认 `/opt/one-node` 与
+  `https://marseo.eu.org`。
 
 部署 job 使用 `GH_TOKEN` 让服务器临时登录 GHCR，部署后始终尝试退出 Registry；服务器
-Compose 文件来自同一 Server 源码 commit，部署脚本同时检查 `/api/healthz` 和首页。
+Compose 文件来自同一 Backend/Server 源码 commit；One User 检查 `/readyz` 和首页，
+One Node Server 检查 `/api/healthz` 和首页。
 
 ## One Node 生命周期入口
 
@@ -153,7 +156,7 @@ node/uninstall.sh
 .github/workflows/   三个产品入口和一个 Web+Backend 复用发布工作流
 node/                One Node 安装、升级、卸载和本地 fixture
 scripts/release/     本地发布入口与上传辅助脚本
-scripts/deploy/      One Node Server SSH、Registry 和 Compose 部署脚本
+scripts/deploy/      One User / One Node Server SSH、Registry 和 Compose 部署脚本
 scripts/github/      GitHub 只读检查和历史调度辅助代码
 tests/               当前三条发布链的本地契约测试
 make/                Makefile 子模块

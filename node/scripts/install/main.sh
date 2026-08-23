@@ -34,6 +34,9 @@ main() {
 		prepare_docker_image
 		write_docker_source
 	fi
+	if [ "$INSTALL_OPERATION" = "replace" ]; then
+		replace_existing_installation
+	fi
 	prepare_install_directories
 	write_common_sources
 	install_common_files

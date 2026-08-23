@@ -69,6 +69,7 @@ show_help() {
 		"" \
 		"  native  Install one one-node systemd service." \
 		"  docker  Install one complete immutable One Node image." \
+		"  Existing managed installations are removed before the new command is applied." \
 		"  --reset Remove the existing One Node development installation first."
 }
 

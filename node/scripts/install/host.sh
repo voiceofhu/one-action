@@ -56,11 +56,8 @@ validate_install_target() {
 		manifest_load "$INSTALL_RECORD" || die "refusing unknown or unsafe installation manifest"
 		INSTALL_MANIFEST_KIND="current"
 		UNINSTALL_MODE=$MANIFEST_MODE
-		[ "$MANIFEST_MODE" = "$INSTALL_MODE" ] ||
-			die "existing installation mode is $MANIFEST_MODE; requested mode is $INSTALL_MODE"
-		ONE_NODE_STATE_DIR=$MANIFEST_STATE_DIR
-		INSTALL_OPERATION="reconfigure"
-		validate_reconfiguration_target
+		preflight_owned_paths
+		INSTALL_OPERATION="replace"
 		return
 	fi
 	if [ -e "$UNIT_FILE" ]; then
@@ -75,16 +72,42 @@ validate_install_target() {
 		MANIFEST_MODE="native"
 		MANIFEST_STATE_DIR=$ONE_NODE_STATE_DIR
 		INSTALL_MANIFEST_KIND="missing"
-		INSTALL_OPERATION="reconfigure"
 		validate_reconfiguration_target
+		INSTALL_OPERATION="replace"
 		return
 	fi
 	if command -v docker >/dev/null 2>&1 &&
 		docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
 		SHOW_UNINSTALL_ON_ERROR="true"
 		UNINSTALL_MODE="docker"
-		die "one-node container already exists"
+		MANIFEST_MODE="docker"
+		MANIFEST_STATE_DIR=$ONE_NODE_STATE_DIR
+		INSTALL_MANIFEST_KIND="missing"
+		validate_reconfiguration_target
+		INSTALL_OPERATION="replace"
+		return
 	fi
+}
+
+replace_existing_installation() {
+	[ "$INSTALL_OPERATION" = "replace" ] || return 0
+	log "removing the existing ${MANIFEST_MODE} installation before applying the new installation command"
+	if [ "$INSTALL_MANIFEST_KIND" = "current" ]; then
+		preflight_owned_paths
+		case "$MANIFEST_MODE" in
+		native) uninstall_native ;;
+		docker) uninstall_docker ;;
+		*) die "existing installation mode is invalid" ;;
+		esac
+		remove_owned_files
+	else
+		reset_existing_installation
+	fi
+	manifest_reset
+	INSTALL_MANIFEST_KIND=""
+	INSTALL_OPERATION="fresh"
+	SHOW_UNINSTALL_ON_ERROR="false"
+	log "previous One Node program, identity, runtime state, and pending telemetry were removed"
 }
 
 print_installation_uninstall_command() {
@@ -126,7 +149,7 @@ validate_managed_native_unit() {
 }
 
 reset_existing_installation() {
-	log "resetting the existing One Node development installation"
+	log "removing the existing One Node installation and runtime state"
 	if command -v systemctl >/dev/null 2>&1; then
 		systemctl disable --now one-node.service >/dev/null 2>&1 || true
 	fi

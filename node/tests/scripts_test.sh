@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEST_TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
 
-INSTALL_MODULES="install/common.sh shared/manifest.sh install/config.sh install/host.sh install/files.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
+INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
 UNINSTALL_MODULES="install/common.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
 UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
 

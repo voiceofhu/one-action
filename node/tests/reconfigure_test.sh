@@ -13,6 +13,9 @@ fail() {
 # shellcheck disable=SC1090
 . "$ROOT_DIR/scripts/install/common.sh"
 . "$ROOT_DIR/scripts/shared/manifest.sh"
+. "$ROOT_DIR/scripts/uninstall/paths.sh"
+. "$ROOT_DIR/scripts/uninstall/native.sh"
+. "$ROOT_DIR/scripts/uninstall/docker.sh"
 . "$ROOT_DIR/scripts/install/config.sh"
 . "$ROOT_DIR/scripts/install/host.sh"
 . "$ROOT_DIR/scripts/install/files.sh"
@@ -100,17 +103,11 @@ MANIFEST_OWNED_COUNT=6
 manifest_write "$INSTALL_RECORD"
 
 validate_install_target
-[ "$INSTALL_OPERATION" = reconfigure ] || fail "existing installation did not select reconfiguration"
+[ "$INSTALL_OPERATION" = replace ] || fail "existing managed installation did not select replacement"
 [ "$MANIFEST_FORMAT" = "$MANIFEST_FORMAT_NAME" ] || fail "installation manifest format changed"
 
-if (INSTALL_MODE=docker; validate_install_target) >"$TEST_TEMP_DIR/mode.log" 2>&1; then
-	fail "reconfiguration accepted a different installation mode"
-fi
-grep -F 'existing installation mode is native' "$TEST_TEMP_DIR/mode.log" >/dev/null
-grep -F 'run the commit-pinned node/uninstall.sh from voiceofhu/one-action, then retry' \
-	"$TEST_TEMP_DIR/mode.log" >/dev/null
-if grep -F 'Segmentation fault' "$TEST_TEMP_DIR/mode.log" >/dev/null; then
-	fail "uninstall hint recursed after an installation error"
+if ! (INSTALL_MODE=docker; validate_install_target); then
+	fail "replacement rejected a new installation mode"
 fi
 
 mv "$ENV_FILE" "$ENV_FILE.real"

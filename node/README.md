@@ -16,7 +16,7 @@ commit. Resolution or validation failure stops before module loading.
 `ONE_NODE_SCRIPT_BASE_URL` is restricted to explicitly enabled local HTTP
 development fixtures and cannot redirect production loading to another HTTPS
 repository. Native
-and Docker installation, registration reconfiguration, manifest-owned cleanup,
+and Docker installation, install-command replacement with manifest-owned cleanup,
 readiness checks, immutable-version upgrade, automatic failed-upgrade recovery,
 explicit rollback, and uninstall remain separate from Browser Egress lifecycle
 code. When `ONE_NODE_VERSION` is omitted, installation resolves the newest
@@ -24,6 +24,11 @@ published `voiceofhu/one-action@one-node-v<version>` Release. Native then downlo
 exact Release, while Docker pulls its matching version tag and records the
 resolved immutable digest. Explicit version and digest inputs remain available
 for rollback or fixed-version installation.
+
+`install.sh` treats the new installation command as authoritative. After the
+new artifact is downloaded and verified, any existing manifest-managed One Node
+installation and its complete runtime state are removed before a fresh install.
+Use `upgrade.sh` when the existing node identity and runtime state must be kept.
 
 ## Migration record
 

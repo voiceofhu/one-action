@@ -1,7 +1,7 @@
 # One Action
 
-One Action 集中编译和上传发布产物。代码校验、格式、lint、测试和本地构建都在
-`make deploy-*` 触发远端工作流之前完成；One Node Server 镜像发布成功后继续部署生产服务器。
+One Action 集中编译和上传发布产物。格式、lint、测试和必要的本地编译门禁在
+`make deploy-*` 触发远端工作流之前完成；发布镜像由 Action 统一构建，One Node Server 镜像发布成功后继续部署生产服务器。
 
 当前只保留三条发布链：
 
@@ -27,6 +27,32 @@ SSH/Compose 服务器部署。Browser、AMZ、Egress 和 App 的旧工作流不�
 7. One Node Server 在镜像成功合并后，将 digest-qualified 镜像部署到 `one-node-prod`。
 
 本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；三条链路都使用 Action tag。One Node Server 的控制标签同时携带本地检查过的 Backend/Web SHA，Action 不读取可变的源码分支头。
+
+## One User 发布流程
+
+```mermaid
+flowchart TD
+    start[make deploy-user] --> plan[生成版本并检查三个仓库]
+    plan --> action[确认 one-action HEAD 等于 origin/main]
+    action --> contract[validate-user]
+    contract --> backend[Backend: fmt + test]
+    backend --> web[Web: frozen install + format + lint + test + build]
+    web --> stable[再次确认源码 HEAD 和工作区未变化]
+    stable --> version[更新 Backend 和 Web 版本]
+    version --> source[提交并原子推送两个源码 tag]
+    source --> control[推送 user-v 控制 tag]
+    control --> resolve[Action 并行解析两个精确源码 SHA]
+    resolve --> amd64[amd64 原生构建<br/>复用独立 GHA layer cache]
+    resolve --> arm64[arm64 原生构建<br/>复用独立 GHA layer cache]
+    amd64 --> index[校验并发布 OCI 多架构 index]
+    arm64 --> index
+    index --> result[ghcr.io/voiceofhu/one-user:version]
+```
+
+`validate-user` 只检查 One User 发布脚本、`user.yml` 和共享镜像发布合同，不运行
+One Node/Node Server 合同、临时 tag 模拟发布或 One Node 安装生命周期 fixture。
+本地 `cargo test` 已编译 Backend 的库和二进制测试目标；release 二进制只在最终 Docker
+镜像中构建，避免触发前后重复执行 `cargo check` 和 `cargo build --release`。
 
 ## 使用
 
@@ -55,17 +81,20 @@ make deploy-node DRY_RUN=true
 
 ```bash
 make validate
+make validate-user
 make validate-node-server
 make node-check
 make node-bundle-installers
 ```
 
 `make validate` 检查全部活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
+`make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user` 使用这一范围，
+不运行其他产品的模拟发布和生命周期 fixture。
 `make validate-node-server` 只检查 One Node Server 的发布、镜像与部署契约；
 `deploy-node-server` 使用这一范围，不运行 One User 模拟发布或 One Node Runtime 生命周期 fixture。
 真实 `deploy-*` 还会执行产品门禁：
 
-- One User：Backend fmt/check/test/release build；Web frozen install、format、lint、test、build；
+- One User：Backend fmt/test；Web frozen install、format、lint、test、build；
 - One Node Server：Web frozen install/lint；Backend model/test、vet、release build，
   release build 通过 Server 的 `build: frontend` 唯一执行一次 Web typecheck/Vite build 并暂存 `web-dist`；
 - One Node Runtime：安装器生命周期检查和完整 `verify-upgrade`。
@@ -80,7 +109,8 @@ make node-bundle-installers
 - One Node Runtime：2 分钟源码解析；两个架构并行编译和推送，每个最多 15 分钟；
   OCI index、checksum 和公开 One Action GitHub Release 上传最多 8 分钟。
 
-Action 中没有 fmt、lint、test、race、e2e、installer lifecycle 或缓存上传。只有
+Action 中没有 fmt、lint、test、race、e2e 或 installer lifecycle；双架构 Docker 构建使用
+按产品和架构隔离的 GHA layer cache。只有
 One Node Server 保留 SSH/Compose 部署步骤。
 不同版本可并行；相同产品、相同版本的重复触发由 concurrency group 串行保护。
 

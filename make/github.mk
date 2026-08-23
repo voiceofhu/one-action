@@ -1,7 +1,10 @@
-.PHONY: validate validate-node-server check-token
+.PHONY: validate validate-user validate-node-server check-token
 
 validate:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh
+
+validate-user:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh user
 
 validate-node-server:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh node-server

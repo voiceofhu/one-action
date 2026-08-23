@@ -166,7 +166,7 @@ action_remote_head="$(git -C "$PROJECT_ROOT" rev-parse --verify refs/remotes/ori
     'Push or synchronize the Action main branch, then retry; no source repositories were changed.' >&2
   exit 1
 }
-make --no-print-directory -C "$PROJECT_ROOT" validate
+make --no-print-directory -C "$PROJECT_ROOT" validate-user
 [[ "$(validate_action_repository)" == "$action_head" ]] || {
   printf '%s\n' 'Action source changed during local validation.' >&2
   exit 1
@@ -200,9 +200,7 @@ preflight_release_repository Web "$ONE_USER_WEB_DIR" "$web_branch"
   cd "$ONE_USER_BACKEND_DIR"
   cargo fmt --all -- --check
 )
-make --no-print-directory -C "$ONE_USER_BACKEND_DIR" check
 make --no-print-directory -C "$ONE_USER_BACKEND_DIR" test
-make --no-print-directory -C "$ONE_USER_BACKEND_DIR" build
 pnpm --dir "$ONE_USER_WEB_DIR" install --frozen-lockfile
 pnpm --dir "$ONE_USER_WEB_DIR" format:check
 pnpm --dir "$ONE_USER_WEB_DIR" lint

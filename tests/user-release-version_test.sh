@@ -145,11 +145,9 @@ require_gate() {
     exit 1
   }
 }
-require_gate "make --no-print-directory -C $action_dir validate"
+require_gate "make --no-print-directory -C $action_dir validate-user"
 require_gate 'cargo fmt --all -- --check'
-require_gate "make --no-print-directory -C $ONE_USER_BACKEND_DIR check"
 require_gate "make --no-print-directory -C $ONE_USER_BACKEND_DIR test"
-require_gate "make --no-print-directory -C $ONE_USER_BACKEND_DIR build"
 require_gate "pnpm --dir $ONE_USER_WEB_DIR install --frozen-lockfile"
 require_gate "pnpm --dir $ONE_USER_WEB_DIR format:check"
 require_gate "pnpm --dir $ONE_USER_WEB_DIR lint"

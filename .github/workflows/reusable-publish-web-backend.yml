@@ -134,6 +134,8 @@ jobs:
             one.environment=prod
           provenance: false
           sbom: false
+          cache-from: type=gha,scope=${{ inputs.workflow_name }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.workflow_name }}-${{ matrix.arch }}
           build-args: |
             VERSION=${{ inputs.version }}
             COMMIT=${{ inputs.backend_sha }}

@@ -12,6 +12,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
     shell_files=(
@@ -38,6 +39,21 @@ case "$scope" in
       reusable-publish-web-backend.yml
     )
     run_node_check=true
+    ;;
+  user)
+    active_tests=(
+      "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      user.yml
+      reusable-publish-web-backend.yml
+    )
+    run_node_check=false
     ;;
   node-server)
     active_tests=(

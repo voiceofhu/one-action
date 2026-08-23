@@ -117,14 +117,25 @@ ruby -ryaml -e '
 ' "${active_workflows[@]/#/$PROJECT_ROOT/.github/workflows/}"
 
 legacy_name='aic''be'
-if grep -RniE "$legacy_name" \
-  "$PROJECT_ROOT/.github" \
-  "$PROJECT_ROOT/make" \
-  "$PROJECT_ROOT/scripts" \
-  "$PROJECT_ROOT/tests" \
-  "$PROJECT_ROOT/Makefile" \
-  "$PROJECT_ROOT/README.md"; then
-  printf '%s\n' 'Legacy product naming is allowed only in MIGRATION-SOURCES.md.' >&2
+canonical_user_origin="https://oa.${legacy_name}.com"
+legacy_matches="$(
+  grep -RniE "$legacy_name" \
+    "$PROJECT_ROOT/.github" \
+    "$PROJECT_ROOT/make" \
+    "$PROJECT_ROOT/scripts" \
+    "$PROJECT_ROOT/tests" \
+    "$PROJECT_ROOT/Makefile" \
+    "$PROJECT_ROOT/README.md" || true
+)"
+unexpected_legacy_matches="$(
+  printf '%s\n' "$legacy_matches" \
+    | sed "s#${canonical_user_origin}##g" \
+    | grep -iE "$legacy_name" || true
+)"
+if [[ -n "$unexpected_legacy_matches" ]]; then
+  printf '%s\n' "$unexpected_legacy_matches"
+  printf '%s\n' \
+    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User origin.' >&2
   exit 1
 fi
 

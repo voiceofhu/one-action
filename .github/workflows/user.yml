@@ -94,7 +94,7 @@ jobs:
       packages: read
     environment:
       name: one-user-prod
-      url: ${{ vars.DEPLOY_URL || 'https://one-user-web.marseo.eu.org' }}
+      url: ${{ vars.DEPLOY_URL || 'https://oa.aicbe.com' }}
     concurrency:
       group: one-user-prod-deploy
       cancel-in-progress: false

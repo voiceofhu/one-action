@@ -140,7 +140,7 @@ require_text "$user" 'DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}'
 require_text "$user" "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}"
 require_text "$user" 'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}'
 require_text "$user" 'COMPOSE_FILE: backend/deploy/docker/docker-compose.yml'
-require_text "$user" "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://one-user-web.marseo.eu.org' }}"
+require_text "$user" "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://oa.aicbe.com' }}"
 require_text "$user" 'run: exec bash action/scripts/deploy/configure-ssh.sh'
 require_text "$user" 'run: exec bash action/scripts/deploy/registry-auth.sh'
 require_text "$user" 'run: exec bash action/scripts/deploy/deploy-user.sh'

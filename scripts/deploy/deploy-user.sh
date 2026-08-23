@@ -5,7 +5,7 @@ set -Eeuo pipefail
 : "${REMOTE_DIR:?REMOTE_DIR is required}"
 : "${DOCKER_IMAGE:?DOCKER_IMAGE is required}"
 : "${COMPOSE_FILE:?COMPOSE_FILE is required}"
-PUBLIC_URL=${PUBLIC_URL:-https://one-user-web.marseo.eu.org}
+PUBLIC_URL=${PUBLIC_URL:-https://oa.aicbe.com}
 
 [[ "$SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || {
   printf '%s\n' 'SSH_HOST is invalid' >&2

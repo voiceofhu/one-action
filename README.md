@@ -130,7 +130,7 @@ One User 和 One Node Server 分别使用受保护的 `one-user-prod`、`one-nod
 - Secrets：`DEPLOY_HOST`、`DEPLOY_PORT`（可选，默认 `22`）、`DEPLOY_USER`、
   `DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`；
 - Variables：`DEPLOY_REMOTE_DIR`、`DEPLOY_URL`。One User 默认 `/opt/one-user` 与
-  `https://one-user-web.marseo.eu.org`；One Node Server 默认 `/opt/one-node` 与
+  `https://oa.aicbe.com`；One Node Server 默认 `/opt/one-node` 与
   `https://marseo.eu.org`。
 
 部署 job 使用 `GH_TOKEN` 让服务器临时登录 GHCR，部署后始终尝试退出 Registry；服务器

@@ -129,7 +129,6 @@ validate_upgrade_target() {
 	esac
 	case "$INSTALL_MODE" in
 	native)
-		command -v dpkg >/dev/null 2>&1 || die "dpkg is required"
 		resolve_host_architecture
 		ONE_NODE_BINARY_SHA256=$(normalize_sha256 "$ONE_NODE_BINARY_SHA256")
 		validate_sha256 "$ONE_NODE_BINARY_SHA256" || die "selected binary checksum must be a pinned SHA-256"

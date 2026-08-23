@@ -47,7 +47,7 @@ local state/build output, belong to central workflow integration, or validate a
 Server/Node source contract rather than the installer lifecycle.
 
 This is source and local-shell evidence only. It does not prove a published
-One Action release, GHCR image, Debian/systemd installation, Docker lifecycle,
+One Action release, GHCR image, Linux/systemd installation, Docker lifecycle,
 real control-plane enrollment, multi-architecture behavior, or production
 cutover.
 

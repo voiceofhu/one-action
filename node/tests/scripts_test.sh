@@ -63,6 +63,73 @@ for unsafe_path in relative/path "$TEST_TEMP_DIR//child" "$TEST_TEMP_DIR/../chil
 	fi
 done
 
+check_host_architecture() (
+	machine_architecture=$1
+	expected_architecture=$2
+	expected_checksum=$3
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/install/host.sh"
+	uname() {
+		case "${1:-}" in
+		-s) printf '%s\n' Linux ;;
+		-m) printf '%s\n' "$machine_architecture" ;;
+		*) return 1 ;;
+		esac
+	}
+	ONE_NODE_BINARY_SHA256_AMD64=amd64-checksum
+	ONE_NODE_BINARY_SHA256_ARM64=arm64-checksum
+	resolve_host_architecture
+	[ "$ONE_NODE_ARCH" = "$expected_architecture" ]
+	[ "$ONE_NODE_BINARY_SHA256" = "$expected_checksum" ]
+	[ "$ONE_NODE_BINARY_NAME" = "one-node-linux-${expected_architecture}" ]
+)
+
+check_host_architecture x86_64 amd64 amd64-checksum
+check_host_architecture amd64 amd64 amd64-checksum
+check_host_architecture aarch64 arm64 arm64-checksum
+check_host_architecture arm64 arm64 arm64-checksum
+if check_host_architecture ppc64le unsupported unused >"$TEST_TEMP_DIR/unsupported-architecture.log" 2>&1; then
+	printf '%s\n' "installer accepted an unsupported Linux architecture" >&2
+	exit 1
+fi
+grep -F 'only Linux amd64 and arm64 are supported' \
+	"$TEST_TEMP_DIR/unsupported-architecture.log" >/dev/null
+
+check_linux_host() (
+	host_os=$1
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/install/host.sh"
+	id() {
+		[ "${1:-}" = -u ] || return 1
+		printf '%s\n' 0
+	}
+	uname() {
+		case "${1:-}" in
+		-s) printf '%s\n' "$host_os" ;;
+		-m) printf '%s\n' x86_64 ;;
+		*) return 1 ;;
+		esac
+	}
+	systemctl() { :; }
+	sha256sum() { :; }
+	INSTALL_MODE=native
+	ONE_NODE_BINARY_SHA256_AMD64=amd64-checksum
+	ONE_NODE_BINARY_SHA256_ARM64=arm64-checksum
+	validate_install_host
+)
+
+check_linux_host Linux
+if check_linux_host Darwin >"$TEST_TEMP_DIR/unsupported-os.log" 2>&1; then
+	printf '%s\n' "installer accepted a non-Linux host" >&2
+	exit 1
+fi
+grep -F 'only Linux is supported' "$TEST_TEMP_DIR/unsupported-os.log" >/dev/null
+if grep -R -E '/etc/os-release|only Debian|dpkg' \
+	"$ROOT_DIR/scripts/install/host.sh" "$ROOT_DIR/scripts/upgrade/common.sh" >/dev/null; then
+	printf '%s\n' "installer lifecycle still depends on a Debian host" >&2
+	exit 1
+fi
+
 "$ROOT_DIR/install.sh" --help | grep -F "native" >/dev/null
 "$ROOT_DIR/install.sh" --help | grep -F "docker" >/dev/null
 "$ROOT_DIR/uninstall.sh" --help | grep -F "native" >/dev/null

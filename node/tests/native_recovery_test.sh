@@ -52,6 +52,7 @@ configure_case() {
 	MANIFEST_RECORD_PATH=$INSTALL_RECORD
 	MANIFEST_UNIT_PATH=$UNIT_FILE
 	MANIFEST_COMPOSE_PATH=$COMPOSE_FILE
+	PROGRAM="one-node"
 	INSTALL_MODE="native"
 	INSTALL_OPERATION="fresh"
 	INSTALL_MANIFEST_KIND="none"
@@ -135,22 +136,31 @@ run_stale_unit_recovery() (
 	write_managed_unit
 
 	validate_install_target
-	[ "$INSTALL_OPERATION:$INSTALL_MANIFEST_KIND" = "reconfigure:missing" ] ||
-		fail "stale managed unit did not select native recovery"
+	[ "$INSTALL_OPERATION:$INSTALL_MANIFEST_KIND" = "replace:missing" ] ||
+		fail "stale managed unit did not select replacement"
+	initialize_install_workspace
 	prepare_desired_native
-	reconfigure_native_installation
+	replace_existing_installation
+	[ ! -e "$UNIT_FILE" ] || fail "replacement retained the stale managed unit"
+	[ ! -e "$ONE_NODE_STATE_DIR" ] || fail "replacement retained the stale runtime state"
+	prepare_install_directories
+	write_common_sources
+	install_common_files
+	install_native_runtime
+	wait_for_ready_heartbeat
+	INSTALL_COMMITTED="true"
 
-	[ -x "$MANIFEST_BINARY_PATH" ] || fail "stale installation binary was not restored"
+	[ -x "$MANIFEST_BINARY_PATH" ] || fail "replacement binary was not installed"
 	grep -F '"node_id":"41"' "$ONE_NODE_STATE_DIR/node-secret" >/dev/null ||
-		fail "stale installation recovery retained the previous node identity"
+		fail "replacement retained the previous node identity"
 	grep -F '"config":"fresh"' "$ONE_NODE_STATE_DIR/runtime-active.json" >/dev/null ||
-		fail "stale installation recovery retained the previous runtime state"
+		fail "replacement retained the previous runtime state"
 	manifest_load "$INSTALL_RECORD"
 	[ "$MANIFEST_CURRENT_VERSION" = "26.809.2200" ] || fail "stale installation product version is wrong"
 	[ "$("$MANIFEST_BINARY_PATH" version --name)" = "1.13.18" ] ||
-		fail "stale installation sing-box core version is wrong"
-	grep -F 'enable one-node.service' "$SYSTEMCTL_LOG" >/dev/null ||
-		fail "recovered service was not enabled"
+		fail "replacement sing-box core version is wrong"
+	grep -F 'enable --now one-node.service' "$SYSTEMCTL_LOG" >/dev/null ||
+		fail "replacement service was not enabled"
 )
 
 run_upgrade_rollback() (

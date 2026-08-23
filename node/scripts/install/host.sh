@@ -57,6 +57,7 @@ validate_install_target() {
 		INSTALL_MANIFEST_KIND="current"
 		UNINSTALL_MODE=$MANIFEST_MODE
 		preflight_owned_paths
+		validate_node_state_files "$MANIFEST_STATE_DIR"
 		INSTALL_OPERATION="replace"
 		return
 	fi
@@ -163,6 +164,19 @@ reset_existing_installation() {
 	fi
 }
 
+validate_node_state_files() {
+	IDENTITY_FILE="${1}/node-secret"
+	RUNTIME_STATE_FILE="${1}/runtime-active.json"
+	for state_file in "$IDENTITY_FILE" "$RUNTIME_STATE_FILE"; do
+		if [ -e "$state_file" ] || [ -L "$state_file" ]; then
+			[ -f "$state_file" ] && [ ! -L "$state_file" ] ||
+				die "existing node state file is unsafe: $state_file"
+			[ "$(file_mode "$state_file")" = "600" ] ||
+				die "existing node state file permissions must be 0600: $state_file"
+		fi
+	done
+}
+
 validate_reconfiguration_target() {
 	if [ "$INSTALL_MANIFEST_KIND" = "missing" ]; then
 		if [ -e "$ENV_FILE" ]; then
@@ -188,16 +202,7 @@ validate_reconfiguration_target() {
 			die "One Node state directory permissions must be 0700"
 	fi
 
-	IDENTITY_FILE="${ONE_NODE_STATE_DIR}/node-secret"
-	RUNTIME_STATE_FILE="${ONE_NODE_STATE_DIR}/runtime-active.json"
-	for state_file in "$IDENTITY_FILE" "$RUNTIME_STATE_FILE"; do
-		if [ -e "$state_file" ]; then
-			[ -f "$state_file" ] && [ ! -L "$state_file" ] ||
-				die "existing node state file is unsafe: $state_file"
-			[ "$(file_mode "$state_file")" = "600" ] ||
-				die "existing node state file permissions must be 0600: $state_file"
-		fi
-	done
+	validate_node_state_files "$ONE_NODE_STATE_DIR"
 
 	case "$INSTALL_MODE" in
 	native)

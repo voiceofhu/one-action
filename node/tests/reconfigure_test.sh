@@ -71,6 +71,14 @@ chmod 0600 "$ENV_FILE"
 printf '%s\n' '{"node_id":"40","state":"active"}' >"$ONE_NODE_STATE_DIR/node-secret"
 printf '%s\n' '{"config":"old"}' >"$ONE_NODE_STATE_DIR/runtime-active.json"
 chmod 0600 "$ONE_NODE_STATE_DIR/node-secret" "$ONE_NODE_STATE_DIR/runtime-active.json"
+install -d -m 0700 \
+	"$ONE_NODE_STATE_DIR/traffic-spool" \
+	"$ONE_NODE_STATE_DIR/access-event-spool"
+printf '%s\n' old-traffic >"$ONE_NODE_STATE_DIR/traffic-spool/pending.jsonl"
+printf '%s\n' old-access >"$ONE_NODE_STATE_DIR/access-event-spool/pending.jsonl"
+chmod 0600 \
+	"$ONE_NODE_STATE_DIR/traffic-spool/pending.jsonl" \
+	"$ONE_NODE_STATE_DIR/access-event-spool/pending.jsonl"
 
 binary_sha256=$(sha256sum "$MANIFEST_BINARY_PATH" | awk '{ print $1 }')
 manifest_reset
@@ -173,6 +181,10 @@ grep -F '"node_id":"41"' "$IDENTITY_FILE" >/dev/null ||
 	fail "successful enrollment retained the previous node identity"
 grep -F '"config":"fresh"' "$RUNTIME_STATE_FILE" >/dev/null ||
 	fail "successful enrollment retained the previous runtime state"
+[ ! -e "$ONE_NODE_STATE_DIR/traffic-spool" ] ||
+	fail "successful enrollment retained the previous node traffic spool"
+[ ! -e "$ONE_NODE_STATE_DIR/access-event-spool" ] ||
+	fail "successful enrollment retained the previous node access-event spool"
 [ "$(sha256sum "$MANIFEST_BINARY_PATH" | awk '{ print $1 }')" = "$binary_sha256" ] ||
 	fail "reconfiguration replaced the installed binary"
 manifest_load "$INSTALL_RECORD"

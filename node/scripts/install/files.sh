@@ -182,6 +182,35 @@ restart_reconfigured_runtime() {
 }
 
 reset_registration_state_for_reenrollment() {
+	previous_node_id=""
+	if [ -f "$RECONFIGURE_ENV_BACKUP" ] && [ ! -L "$RECONFIGURE_ENV_BACKUP" ]; then
+		previous_node_id=$(sed -n 's/^NODE_NODE_ID="\([1-9][0-9]*\)"$/\1/p' \
+			"$RECONFIGURE_ENV_BACKUP")
+	fi
+	discarded_spools=""
+	for spool_name in traffic-spool access-event-spool; do
+		spool_dir="${ONE_NODE_STATE_DIR}/${spool_name}"
+		[ -e "$spool_dir" ] || continue
+		[ -d "$spool_dir" ] && [ ! -L "$spool_dir" ] ||
+			die "existing ${spool_name} directory is unsafe"
+		spool_node_id=""
+		pending_file="${spool_dir}/pending.jsonl"
+		if [ -e "$pending_file" ]; then
+			[ -f "$pending_file" ] && [ ! -L "$pending_file" ] ||
+				die "existing ${spool_name} pending file is unsafe"
+			spool_node_id=$(sed -n \
+				's/^.*"report_key":"\([1-9][0-9]*\):[^\"]*".*$/\1/p' \
+				"$pending_file" | sed -n '1p')
+		fi
+		if { [ -n "$previous_node_id" ] && [ "$previous_node_id" != "$ONE_NODE_ID" ]; } ||
+			{ [ -n "$spool_node_id" ] && [ "$spool_node_id" != "$ONE_NODE_ID" ]; }; then
+			rm -rf -- "$spool_dir"
+			discarded_spools="${discarded_spools} ${spool_name}"
+		fi
+	done
+	if [ -n "$discarded_spools" ]; then
+		log "discarded telemetry spool(s)${discarded_spools} before reconnecting as node $ONE_NODE_ID"
+	fi
 	rm -f -- "$IDENTITY_FILE" "$RUNTIME_STATE_FILE" ||
 		die "unable to reset the previous node registration state"
 	log "reset previous registration state; reconnecting as node $ONE_NODE_ID"

@@ -1,9 +1,16 @@
 # One Action
 
-One Action 集中编译和上传发布产物。格式、lint、测试和必要的本地编译门禁在
-`make deploy-*` 触发远端工作流之前完成；发布镜像由 Action 统一构建，One User 和 One Node Server 镜像发布成功后继续部署生产服务器。
+One Action 是 One 平台唯一的公共仓库，也是所有产品统一的分发与部署中心。One User、
+AMZ、Browser、Node、Notify、Pay、Object 等产品源码仓库均保持私有；私有仓库不自行发布
+Release、镜像、安装器或生产部署，也不把私有源码复制到本仓库。
 
-当前只保留三条发布链：
+One Action 集中维护 GitHub Actions workflow、发布脚本、公开安装器和产物合同。格式、
+lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工作流之前完成；Action 使用
+受保护凭据读取精确的私有源码 commit/tag，再统一构建、分发，并按产品合同部署。公共日志
+和产物不得包含私有源码、Token、环境文件或生产凭据。
+
+所有产品最终都必须接入 One Action。当前已实现并保留三条活跃发布链；其他产品在这里
+补齐发布合同前，不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|

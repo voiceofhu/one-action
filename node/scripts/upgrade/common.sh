@@ -15,6 +15,8 @@ initialize_upgrade() {
 	UPGRADE_OLD_BINARY_SHA256=""
 	UPGRADE_TEMP_DIR=$(mktemp -d "/tmp/one-node-upgrade.XXXXXX")
 	chmod 0700 "$UPGRADE_TEMP_DIR"
+	# Shared artifact download helpers use the install workspace name.
+	TEMP_DIR=$UPGRADE_TEMP_DIR
 	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
 		die "installer source is missing or unsafe"
 	install -m 0700 "$ONE_NODE_INSTALLER_SOURCE" "${UPGRADE_TEMP_DIR}/install.sh"

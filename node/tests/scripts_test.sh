@@ -83,6 +83,18 @@ if grep -q '^desired_bindings_revision=' "$historical_manifest"; then
 	exit 1
 fi
 
+upgrade_installer="$TEST_TEMP_DIR/upgrade-install.sh"
+: >"$upgrade_installer"
+chmod 0700 "$upgrade_installer"
+(
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/upgrade/common.sh"
+	ONE_NODE_INSTALLER_SOURCE=$upgrade_installer
+	initialize_upgrade
+	[ "$TEMP_DIR" = "$UPGRADE_TEMP_DIR" ]
+	[ "$BINARY_SOURCE" = "${TEMP_DIR}/one-node.download" ]
+)
+
 canonical_fixture="$TEST_TEMP_DIR/not-created/child"
 [ "$(canonical_path "$canonical_fixture")" = "$canonical_fixture" ]
 [ "$(canonical_path "$TEST_TEMP_DIR/./child")" = "$TEST_TEMP_DIR/child" ]

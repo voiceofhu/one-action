@@ -138,4 +138,28 @@ grep -Fq '"node_ref": "3333333333333333333333333333333333333333"' <<<"$dispatch_
 grep -Fq '"confirmation": "enable:node:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' <<<"$dispatch_output" ||
   fail 'Node dispatch did not carry the fixed publication confirmation'
 
+cat >"$dispatch_fixture/git" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "$1" == credential && "$2" == fill ]]
+cat >/dev/null
+printf '%s\n' 'username=fixture' 'password=abcdefghijklmnopqrstuvwxyz123456'
+SCRIPT
+chmod 0755 "$dispatch_fixture/git"
+dispatch_output="$(
+  env -u GH_TOKEN \
+  PATH="$dispatch_fixture:$PATH" \
+  FAKE_EXPECTED_AUTH=abcdefghijklmnopqrstuvwxyz123456 \
+  FAKE_CURL_LOG="$dispatch_fixture/curl.log" \
+  DRY_RUN=true \
+  ACTION_REPOSITORY=voiceofhu/one-action \
+  ACTION_REF=main \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
+    node_repository=voiceofhu/one-node-node \
+    node_ref=main \
+    version=26.824.1501
+)"
+grep -Fq 'DRY_RUN=true: no workflow was dispatched.' <<<"$dispatch_output" ||
+  fail 'Node dispatch did not reuse the Git HTTPS credential helper'
+
 printf '%s\n' 'One Node dispatched compile/upload contract tests passed.'

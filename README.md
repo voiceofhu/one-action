@@ -33,7 +33,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One User 与 One Node Server 在镜像成功合并后，将 digest-qualified 镜像分别部署到受保护的生产 environment。
 
-本地 Git 凭据用于源码 `fetch/push`，本机 `GH_TOKEN` 只注入最终 dispatch 子进程，不进入格式、测试或构建命令。三个 workflow 都校验固定的 Action commit 和源码 commit，不读取可变的远端分支头。
+本地 Git 凭据用于源码 `fetch/push` 和 workflow dispatch；dispatch 依次复用显式 `GH_TOKEN`、`gh auth` 登录或 Git HTTPS credential helper，凭据只进入最终 dispatch 子进程，不进入格式、测试或构建命令。仓库 Secret 只在 workflow 启动后读取私有源码和发布产物。三个 workflow 都校验固定的 Action commit 和源码 commit，不读取可变的远端分支头。
 
 ## One User 发布流程
 

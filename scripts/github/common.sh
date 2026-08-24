@@ -18,8 +18,18 @@ require_tool() {
 
 normalize_github_token() {
   local token="${GH_TOKEN:-}"
+  if [[ -z "$token" ]] && command -v gh >/dev/null 2>&1; then
+    token="$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token 2>/dev/null || true)"
+  fi
+  if [[ -z "$token" ]] && command -v git >/dev/null 2>&1; then
+    token="$(
+      printf 'protocol=https\nhost=github.com\n\n' |
+        GIT_TERMINAL_PROMPT=0 git credential fill 2>/dev/null |
+        sed -n 's/^password=//p'
+    )" || true
+  fi
   [[ "$token" =~ ^[A-Za-z0-9_]{20,255}$ ]] ||
-    die 'GH_TOKEN must be an unquoted raw GitHub token'
+    die 'GitHub dispatch credential is unavailable; authenticate gh or the Git HTTPS credential helper'
   GH_TOKEN="$token"
   export -n GH_TOKEN
 }

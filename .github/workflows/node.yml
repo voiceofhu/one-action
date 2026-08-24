@@ -191,7 +191,7 @@ jobs:
           username: ${{ steps.registry.outputs.login }}
           password: ${{ secrets.GH_TOKEN }}
 
-      - name: Publish version and revision tags
+      - name: Publish immutable version tag
         shell: bash
         env:
           NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
@@ -234,54 +234,26 @@ jobs:
             "$candidate-arm64"
           candidate_fingerprint="$(fingerprint "$candidate")"
           version_ref="$image:$VERSION"
-          revision_ref="$image:sha-$NODE_SHA"
           version_exists=false
-          revision_exists=false
           docker buildx imagetools inspect "$version_ref" >/dev/null 2>&1 && version_exists=true
-          docker buildx imagetools inspect "$revision_ref" >/dev/null 2>&1 && revision_exists=true
 
           verify_final() {
             local target=$1
             inspect_raw "$target" |
-              jq -e --arg revision "$NODE_SHA" --arg version "$VERSION" '
-                .annotations["org.opencontainers.image.revision"] == $revision and
-                .annotations["org.opencontainers.image.version"] == $version
-              ' >/dev/null
+              jq -e --arg version "$VERSION" \
+                '.annotations["org.opencontainers.image.version"] == $version' >/dev/null
           }
 
-          if [[ "$version_exists" == true && "$revision_exists" == true ]]; then
+          if [[ "$version_exists" == true ]]; then
             verify_final "$version_ref"
-            verify_final "$revision_ref"
-            [[ "$(fingerprint "$version_ref")" == "$(fingerprint "$revision_ref")" ]]
-          elif [[ "$version_exists" == true || "$revision_exists" == true ]]; then
-            if [[ "$version_exists" == true ]]; then
-              existing_ref=$version_ref
-              missing_ref=$revision_ref
-            else
-              existing_ref=$revision_ref
-              missing_ref=$version_ref
-            fi
-            verify_final "$existing_ref"
-            docker buildx imagetools create \
-              --annotation "index:org.opencontainers.image.revision=$NODE_SHA" \
-              --annotation "index:org.opencontainers.image.version=$VERSION" \
-              --tag "$missing_ref" \
-              "$existing_ref"
+            printf 'Version image %s already exists; keeping it unchanged.\n' "$version_ref"
           else
             docker buildx imagetools create \
-              --annotation "index:org.opencontainers.image.revision=$NODE_SHA" \
               --annotation "index:org.opencontainers.image.version=$VERSION" \
               --tag "$version_ref" \
-              --tag "$revision_ref" \
               "$candidate"
-          fi
-
-          verify_final "$version_ref"
-          verify_final "$revision_ref"
-          final_fingerprint="$(fingerprint "$version_ref")"
-          [[ "$(fingerprint "$revision_ref")" == "$final_fingerprint" ]]
-          if [[ "$version_exists" == false && "$revision_exists" == false ]]; then
-            [[ "$final_fingerprint" == "$candidate_fingerprint" ]]
+            verify_final "$version_ref"
+            [[ "$(fingerprint "$version_ref")" == "$candidate_fingerprint" ]]
           fi
 
   upload-release:

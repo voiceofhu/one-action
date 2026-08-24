@@ -36,7 +36,7 @@ on_install_exit() {
 				docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1
 			fi
 		fi
-		rm -f -- "$BINARY_FILE" "$ENV_FILE" "$COMPOSE_FILE" "$INSTALL_RECORD"
+		rm -f -- "$BINARY_FILE" "$MANIFEST_INSTALLER_PATH" "$ENV_FILE" "$COMPOSE_FILE" "$INSTALL_RECORD"
 		if [ "$STATE_DIR_CREATED" = "true" ]; then
 			rmdir -- "$ONE_NODE_STATE_DIR" 2>/dev/null || true
 		fi
@@ -114,6 +114,7 @@ write_common_sources() {
 		MANIFEST_CURRENT_IMAGE=$ONE_NODE_DOCKER_IMAGE
 	fi
 	manifest_append_owned_path "$MANIFEST_INSTALL_DIR"
+	manifest_append_owned_path "$MANIFEST_INSTALLER_PATH"
 	manifest_append_owned_path "$MANIFEST_ENV_PATH"
 	manifest_append_owned_path "$MANIFEST_RECORD_PATH"
 	if [ "$STATE_DIR_CREATED" = "true" ]; then
@@ -143,6 +144,9 @@ prepare_install_directories() {
 
 install_common_files() {
 	INSTALL_STARTED="true"
+	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
+		die "installer source is missing or unsafe"
+	install -m 0755 "$ONE_NODE_INSTALLER_SOURCE" "$MANIFEST_INSTALLER_PATH"
 	if [ "$INSTALL_MODE" = "native" ]; then
 		install -m 0755 "$BINARY_SOURCE" "$BINARY_FILE"
 	fi

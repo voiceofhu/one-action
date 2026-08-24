@@ -83,10 +83,12 @@ require_text "$WORKFLOW" 'Could not read back OCI image %s after %s attempts:'
 require_text "$WORKFLOW" 'inspect_raw "$1" |'
 require_text "$WORKFLOW" 'candidate_fingerprint="$(fingerprint "$candidate")"'
 require_text "$WORKFLOW" 'version_ref="$image:$VERSION"'
-require_text "$WORKFLOW" 'revision_ref="$image:sha-$NODE_SHA"'
 require_text "$WORKFLOW" 'verify_final "$version_ref"'
-require_text "$WORKFLOW" 'verify_final "$revision_ref"'
-require_text "$WORKFLOW" 'index:org.opencontainers.image.revision=$NODE_SHA'
+require_text "$WORKFLOW" '[[ "$(fingerprint "$version_ref")" == "$candidate_fingerprint" ]]'
+if grep -Fq -- 'revision_ref=' "$WORKFLOW" ||
+  grep -Fq -- 'index:org.opencontainers.image.revision=' "$WORKFLOW"; then
+  fail 'One Node image publication must not restore the removed revision tag contract'
+fi
 require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
 require_text "$WORKFLOW" 'gh release upload "$RELEASE_TAG"'
 require_text "$WORKFLOW" 'gh release edit "$RELEASE_TAG"'

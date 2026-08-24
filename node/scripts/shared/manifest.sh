@@ -2,6 +2,7 @@
 
 MANIFEST_FORMAT_NAME="one-node-manifest"
 MANIFEST_INSTALL_DIR="/opt/one-node"
+MANIFEST_INSTALLER_PATH="${MANIFEST_INSTALL_DIR}/install.sh"
 MANIFEST_BINARY_PATH="${MANIFEST_INSTALL_DIR}/one-node"
 MANIFEST_PREVIOUS_DIR="${MANIFEST_INSTALL_DIR}/previous"
 MANIFEST_PREVIOUS_BINARY_PATH_FIXED="${MANIFEST_PREVIOUS_DIR}/one-node"
@@ -102,6 +103,9 @@ manifest_validate_owned_paths() {
 	manifest_require_owned_path "$MANIFEST_ENV_PATH" || return 1
 	manifest_require_owned_path "$MANIFEST_RECORD_PATH" || return 1
 	manifest_allowed_count=3
+	if manifest_has_owned_path "$MANIFEST_INSTALLER_PATH"; then
+		manifest_allowed_count=$((manifest_allowed_count + 1))
+	fi
 	if manifest_has_owned_path "$MANIFEST_STATE_DIR"; then
 		manifest_allowed_count=$((manifest_allowed_count + 1))
 	fi

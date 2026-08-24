@@ -77,6 +77,10 @@ require_text "$WORKFLOW" 'ghcr.io/voiceofhu/one-node:build-${{ needs.prepare.out
 
 require_text "$WORKFLOW" 'sha256sum one-node-linux-amd64 one-node-linux-arm64 >SHA256SUMS'
 require_text "$WORKFLOW" 'docker buildx imagetools create'
+require_text "$WORKFLOW" 'inspect_raw() {'
+require_text "$WORKFLOW" 'for attempt in 1 2 3 4 5; do'
+require_text "$WORKFLOW" 'Could not read back OCI image %s after %s attempts:'
+require_text "$WORKFLOW" 'inspect_raw "$1" |'
 require_text "$WORKFLOW" 'candidate_fingerprint="$(fingerprint "$candidate")"'
 require_text "$WORKFLOW" 'version_ref="$image:$VERSION"'
 require_text "$WORKFLOW" 'revision_ref="$image:sha-$NODE_SHA"'

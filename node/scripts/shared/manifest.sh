@@ -134,6 +134,9 @@ manifest_validate_metadata() {
 	[ "$MANIFEST_FORMAT" = "$MANIFEST_FORMAT_NAME" ] || return 1
 	manifest_validate_state_dir "$MANIFEST_STATE_DIR" || return 1
 	manifest_validate_decimal "$MANIFEST_DESIRED_CONFIG_REVISION" || return 1
+	if [ -n "$MANIFEST_HISTORICAL_BINDINGS_REVISION" ]; then
+		manifest_validate_decimal "$MANIFEST_HISTORICAL_BINDINGS_REVISION" || return 1
+	fi
 	manifest_validate_version "$MANIFEST_CURRENT_VERSION" || return 1
 	case "$MANIFEST_MODE" in
 	native)
@@ -169,6 +172,7 @@ manifest_reset() {
 	MANIFEST_MODE=""
 	MANIFEST_STATE_DIR=""
 	MANIFEST_DESIRED_CONFIG_REVISION=""
+	MANIFEST_HISTORICAL_BINDINGS_REVISION=""
 	MANIFEST_CURRENT_VERSION=""
 	MANIFEST_CURRENT_BINARY_PATH=""
 	MANIFEST_CURRENT_BINARY_SHA256=""
@@ -203,6 +207,7 @@ manifest_assign() {
 	mode) MANIFEST_MODE=$manifest_value ;;
 	state_dir) MANIFEST_STATE_DIR=$manifest_value ;;
 	desired_config_revision) MANIFEST_DESIRED_CONFIG_REVISION=$manifest_value ;;
+	desired_bindings_revision) MANIFEST_HISTORICAL_BINDINGS_REVISION=$manifest_value ;;
 	current_version) MANIFEST_CURRENT_VERSION=$manifest_value ;;
 	current_binary_path) MANIFEST_CURRENT_BINARY_PATH=$manifest_value ;;
 	current_binary_sha256) MANIFEST_CURRENT_BINARY_SHA256=$manifest_value ;;

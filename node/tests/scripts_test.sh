@@ -48,10 +48,40 @@ done
 # The permission reader supports the host's GNU or BSD stat variant.
 # shellcheck disable=SC1090
 . "$ROOT_DIR/scripts/install/common.sh"
+. "$ROOT_DIR/scripts/shared/manifest.sh"
 mode_fixture="$TEST_TEMP_DIR/mode-fixture"
 : >"$mode_fixture"
 chmod 0600 "$mode_fixture"
 [ "$(file_mode "$mode_fixture")" = "600" ]
+
+historical_manifest="$TEST_TEMP_DIR/historical-installation"
+printf '%s\n' \
+	'format=one-node-manifest' \
+	'mode=native' \
+	'state_dir=/var/lib/one-node' \
+	'desired_config_revision=3' \
+	'desired_bindings_revision=8' \
+	'current_version=26.824.1500' \
+	'current_binary_path=/opt/one-node/one-node' \
+	'current_binary_sha256=0000000000000000000000000000000000000000000000000000000000000000' \
+	'current_image=' \
+	'previous_version=' \
+	'previous_binary_path=' \
+	'previous_binary_sha256=' \
+	'previous_image=' \
+	'owned_path=/opt/one-node' \
+	'owned_path=/opt/one-node/.env' \
+	'owned_path=/opt/one-node/.installation' \
+	'owned_path=/opt/one-node/one-node' \
+	'owned_path=/etc/systemd/system/one-node.service' >"$historical_manifest"
+chmod 0600 "$historical_manifest"
+manifest_load "$historical_manifest"
+[ "$MANIFEST_HISTORICAL_BINDINGS_REVISION" = 8 ]
+manifest_write "$historical_manifest"
+if grep -q '^desired_bindings_revision=' "$historical_manifest"; then
+	printf '%s\n' 'historical bindings revision was not removed during manifest migration' >&2
+	exit 1
+fi
 
 canonical_fixture="$TEST_TEMP_DIR/not-created/child"
 [ "$(canonical_path "$canonical_fixture")" = "$canonical_fixture" ]

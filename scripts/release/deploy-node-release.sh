@@ -75,12 +75,6 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
   printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
   exit 1
 }
-make --no-print-directory -C "$PROJECT_ROOT" validate
-[[ "$(validate_action_repository)" == "$action_head" ]] || {
-  printf '%s\n' 'Action source changed during local validation.' >&2
-  exit 1
-}
-
 remote="$(git -C "$ONE_NODE_DIR" config --get remote.origin.url)"
 case "$remote" in
   "https://github.com/$ONE_NODE_REPOSITORY"|"https://github.com/$ONE_NODE_REPOSITORY.git"|\

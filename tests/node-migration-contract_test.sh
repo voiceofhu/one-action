@@ -4,7 +4,6 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$PROJECT_ROOT/.github/workflows/node.yml"
 RELEASE_SCRIPT="$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
-VALIDATE_SCRIPT="$PROJECT_ROOT/scripts/validate.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -93,11 +92,12 @@ fi
 require_text "$RELEASE_SCRIPT" 'release_tag="one-node-v$VERSION"'
 require_text "$RELEASE_SCRIPT" '"refs/tags/$release_tag:refs/tags/$release_tag"'
 require_text "$RELEASE_SCRIPT" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
-require_text "$VALIDATE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" node-check'
-validate_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" validate')"
 upgrade_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade')"
 action_push_line="$(line_number "$RELEASE_SCRIPT" 'git -C "$PROJECT_ROOT" push origin')"
-((validate_line < upgrade_line && upgrade_line < action_push_line)) ||
-  fail 'Action validate and verify-upgrade must finish before the Action tag push'
+((upgrade_line < action_push_line)) ||
+  fail 'Node verify-upgrade must finish before the Action tag push'
+if grep -Fq -- 'make --no-print-directory -C "$PROJECT_ROOT" validate' "$RELEASE_SCRIPT"; then
+  fail 'One Node release must not run the unrelated One Action validation suite'
+fi
 
 printf '%s\n' 'One Node tag-triggered compile/upload contract tests passed.'

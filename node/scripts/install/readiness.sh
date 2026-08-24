@@ -78,20 +78,13 @@ runtime_revision() {
 }
 
 runtime_revisions_are_ready() {
-	if [ "$ONE_NODE_EXPECTED_CONFIG_REVISION" = "0" ] &&
-		[ "$ONE_NODE_EXPECTED_BINDINGS_REVISION" = "0" ]; then
+	if [ "$ONE_NODE_EXPECTED_CONFIG_REVISION" = "0" ]; then
 		return 0
 	fi
-	[ "$ONE_NODE_EXPECTED_CONFIG_REVISION" != "0" ] || return 1
 	config_revision=$(runtime_revision config) || return 1
-	bindings_revision=$(runtime_revision bindings) || return 1
 	validate_decimal "$config_revision" || return 1
-	validate_decimal "$bindings_revision" || return 1
 	[ "$config_revision" != "0" ] || return 1
-	if [ "$config_revision" != "$ONE_NODE_EXPECTED_CONFIG_REVISION" ]; then
-		return 1
-	fi
-	[ "$bindings_revision" = "$ONE_NODE_EXPECTED_BINDINGS_REVISION" ]
+	[ "$config_revision" = "$ONE_NODE_EXPECTED_CONFIG_REVISION" ]
 }
 
 wait_for_ready_heartbeat() {
@@ -114,6 +107,6 @@ wait_for_ready_heartbeat() {
 	if ! identity_is_active; then
 		readiness_failure "Node registration did not complete through $ONE_NODE_SERVER; verify that the public gRPC route reaches the One Node control listener"
 	else
-		readiness_failure "One Node did not reach the expected config and binding revisions"
+		readiness_failure "One Node did not reach the expected config revision"
 	fi
 }

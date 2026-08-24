@@ -65,5 +65,5 @@ identity_is_active() {
 if wait_for_ready_heartbeat >"$TEST_TEMP_DIR/revision.log" 2>&1; then
 	fail "readiness accepted missing runtime revisions"
 fi
-grep -F 'One Node did not reach the expected config and binding revisions' \
+grep -F 'One Node did not reach the expected config revision' \
 	"$TEST_TEMP_DIR/revision.log" >/dev/null

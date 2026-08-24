@@ -89,7 +89,6 @@ MANIFEST_FORMAT=$MANIFEST_FORMAT_NAME
 MANIFEST_MODE=native
 MANIFEST_STATE_DIR=$ONE_NODE_STATE_DIR
 MANIFEST_DESIRED_CONFIG_REVISION=3
-MANIFEST_DESIRED_BINDINGS_REVISION=4
 MANIFEST_CURRENT_VERSION=26.808.2100
 MANIFEST_CURRENT_BINARY_PATH=$MANIFEST_BINARY_PATH
 MANIFEST_CURRENT_BINARY_SHA256=$binary_sha256
@@ -155,7 +154,6 @@ ONE_NODE_SERVER='grpc://new.example:27521'
 ONE_NODE_ID=41
 ONE_NODE_BOOTSTRAP_TOKEN=new-token
 ONE_NODE_EXPECTED_CONFIG_REVISION=7
-ONE_NODE_EXPECTED_BINDINGS_REVISION=8
 ONE_NODE_VERSION=26.808.2100
 ONE_NODE_BINARY_SHA256=$binary_sha256
 prepare_desired_artifacts() {
@@ -189,7 +187,6 @@ manifest_load "$INSTALL_RECORD"
 [ "$("$MANIFEST_BINARY_PATH" version --name)" = 1.13.18 ] || fail "reconfiguration changed the sing-box core version"
 [ "$MANIFEST_CURRENT_BINARY_SHA256" = "$binary_sha256" ] || fail "reconfiguration changed the binary checksum"
 [ "$MANIFEST_DESIRED_CONFIG_REVISION" = 7 ] || fail "config revision was not updated"
-[ "$MANIFEST_DESIRED_BINDINGS_REVISION" = 8 ] || fail "bindings revision was not updated"
 
 cp "$ENV_FILE" "$TEST_TEMP_DIR/env.before-failure"
 cp "$INSTALL_RECORD" "$TEST_TEMP_DIR/manifest.before-failure"
@@ -199,7 +196,6 @@ ONE_NODE_SERVER='grpc://failed.example:27521'
 ONE_NODE_ID=42
 ONE_NODE_BOOTSTRAP_TOKEN=failed-token
 ONE_NODE_EXPECTED_CONFIG_REVISION=9
-ONE_NODE_EXPECTED_BINDINGS_REVISION=10
 wait_for_ready_heartbeat() {
 	printf '%s\n' changed >"$IDENTITY_FILE"
 	printf '%s\n' changed >"$RUNTIME_STATE_FILE"

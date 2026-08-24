@@ -60,9 +60,4 @@ fi
 
 RUNTIME_STATE_FILE="$TEST_TEMP_DIR/runtime-active.json"
 ONE_NODE_EXPECTED_CONFIG_REVISION=0
-ONE_NODE_EXPECTED_BINDINGS_REVISION=0
 runtime_revisions_are_ready || fail "unconfigured development enrollment was not ready"
-ONE_NODE_EXPECTED_BINDINGS_REVISION=1
-if runtime_revisions_are_ready; then
-	fail "binding revision was accepted without an active config"
-fi

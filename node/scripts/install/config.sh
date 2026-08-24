@@ -28,7 +28,6 @@ initialize_install_config() {
 	ONE_NODE_DOCKER_IMAGE=${ONE_NODE_DOCKER_IMAGE:-}
 	ONE_NODE_STATE_DIR=${ONE_NODE_STATE_DIR:-/var/lib/one-node}
 	ONE_NODE_EXPECTED_CONFIG_REVISION=${ONE_NODE_EXPECTED_CONFIG_REVISION:-0}
-	ONE_NODE_EXPECTED_BINDINGS_REVISION=${ONE_NODE_EXPECTED_BINDINGS_REVISION:-0}
 	if [ "${ONE_NODE_ALLOW_INSECURE+x}" != x ]; then
 		case "$ONE_NODE_SERVER" in
 		https://*|grpcs://*) ONE_NODE_ALLOW_INSECURE=false ;;
@@ -93,8 +92,7 @@ validate_install_config() {
 		"ONE_NODE_SERVER|$ONE_NODE_SERVER" \
 		"ONE_NODE_ID|$ONE_NODE_ID" \
 		"ONE_NODE_BOOTSTRAP_TOKEN|$ONE_NODE_BOOTSTRAP_TOKEN" \
-		"ONE_NODE_EXPECTED_CONFIG_REVISION|$ONE_NODE_EXPECTED_CONFIG_REVISION" \
-		"ONE_NODE_EXPECTED_BINDINGS_REVISION|$ONE_NODE_EXPECTED_BINDINGS_REVISION"
+		"ONE_NODE_EXPECTED_CONFIG_REVISION|$ONE_NODE_EXPECTED_CONFIG_REVISION"
 	do
 		name=${pair%%|*}
 		value=${pair#*|}
@@ -110,8 +108,6 @@ validate_install_config() {
 		die "ONE_NODE_VERSION must be an exact three-component numeric version"
 	validate_decimal "$ONE_NODE_EXPECTED_CONFIG_REVISION" ||
 		die "ONE_NODE_EXPECTED_CONFIG_REVISION must be canonical decimal"
-	validate_decimal "$ONE_NODE_EXPECTED_BINDINGS_REVISION" ||
-		die "ONE_NODE_EXPECTED_BINDINGS_REVISION must be canonical decimal"
 	case "$ONE_NODE_ENROLL_TIMEOUT" in
 	''|*[!0-9]*|0) die "ONE_NODE_ENROLL_TIMEOUT must be a positive integer" ;;
 	esac

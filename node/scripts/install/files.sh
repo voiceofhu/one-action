@@ -106,7 +106,6 @@ write_common_sources() {
 	MANIFEST_MODE=$INSTALL_MODE
 	MANIFEST_STATE_DIR=$ONE_NODE_STATE_DIR
 	MANIFEST_DESIRED_CONFIG_REVISION=$ONE_NODE_EXPECTED_CONFIG_REVISION
-	MANIFEST_DESIRED_BINDINGS_REVISION=$ONE_NODE_EXPECTED_BINDINGS_REVISION
 	MANIFEST_CURRENT_VERSION=$ONE_NODE_VERSION
 	if [ "$INSTALL_MODE" = "native" ]; then
 		MANIFEST_CURRENT_BINARY_PATH=$MANIFEST_BINARY_PATH
@@ -282,7 +281,6 @@ reconfigure_existing_installation() {
 	replace_managed_file "$ENV_SOURCE" "$ENV_FILE" 0600 ||
 		die "unable to replace the One Node environment"
 	MANIFEST_DESIRED_CONFIG_REVISION=$ONE_NODE_EXPECTED_CONFIG_REVISION
-	MANIFEST_DESIRED_BINDINGS_REVISION=$ONE_NODE_EXPECTED_BINDINGS_REVISION
 	manifest_write "$INSTALL_RECORD" || die "unable to update the installation manifest"
 	reset_registration_state_for_reenrollment
 	restart_reconfigured_runtime || die "unable to restart the existing $INSTALL_MODE runtime"

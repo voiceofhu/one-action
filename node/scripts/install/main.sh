@@ -48,5 +48,5 @@ main() {
 	wait_for_ready_heartbeat
 
 	INSTALL_COMMITTED="true"
-	log "${INSTALL_MODE} sing-box installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION} and bindings revision ${ONE_NODE_EXPECTED_BINDINGS_REVISION}"
+	log "${INSTALL_MODE} sing-box installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION}"
 }

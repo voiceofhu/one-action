@@ -8,7 +8,8 @@ umask 077
 ONE_NODE_INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
 ONE_NODE_INSTALLER_SOURCE=""
-ONE_NODE_INSTALL_RECORD="/opt/one-node/.installation"
+ONE_NODE_INSTALL_DIR=${ONE_NODE_INSTALL_DIR:-/opt/one-node}
+ONE_NODE_INSTALL_RECORD="${ONE_NODE_INSTALL_DIR}/.installation"
 
 entrypoint_die() {
 	printf '%s\n' "[one-node] error: $*" >&2
@@ -39,7 +40,7 @@ manager_manifest_value() {
 
 manager_env_value() {
 	manager_key=$1
-	sed -n "s/^${manager_key}=\"\(.*\)\"$/\1/p" /opt/one-node/.env | sed -n '1p'
+	sed -n "s/^${manager_key}=\"\(.*\)\"$/\1/p" "${ONE_NODE_INSTALL_DIR}/.env" | sed -n '1p'
 }
 
 manager_process_details() {
@@ -116,7 +117,7 @@ manager_status() {
 manager_doctor() {
 	manager_status
 	manager_mode=$(manager_manifest_value mode)
-	[ -f /opt/one-node/.env ] && [ ! -L /opt/one-node/.env ] || manager_die "environment file is missing or unsafe"
+	[ -f "${ONE_NODE_INSTALL_DIR}/.env" ] && [ ! -L "${ONE_NODE_INSTALL_DIR}/.env" ] || manager_die "environment file is missing or unsafe"
 	case "$manager_mode" in
 	native)
 		command -v systemctl >/dev/null 2>&1 || manager_die "systemctl is unavailable"
@@ -152,9 +153,10 @@ manager_run_entrypoint() {
 	shift
 	command -v curl >/dev/null 2>&1 || manager_die "curl is required"
 	manager_temp=$(mktemp "/tmp/one-node-manager.XXXXXX") || manager_die "unable to create temporary file"
-	trap 'rm -f -- "$manager_temp"' EXIT HUP INT TERM
-	entrypoint_resolve_action_commit "${manager_temp}.sha"
-	rm -f -- "${manager_temp}.sha"
+	manager_sha_file="${manager_temp}.sha"
+	trap 'rm -f -- "$manager_temp" "$manager_sha_file"' EXIT HUP INT TERM
+	entrypoint_resolve_action_commit "$manager_sha_file"
+	rm -f -- "$manager_sha_file"
 	curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 \
 		--fail --silent --show-error --no-location \
 		--connect-timeout 10 --max-time 30 --max-filesize 1048576 \
@@ -187,7 +189,7 @@ manager_restart() {
 	manager_mode=$(manager_manifest_value mode) || manager_die "installation mode is missing"
 	case "$manager_mode" in
 	native) systemctl restart one-node.service ;;
-	docker) docker compose -f /opt/one-node/docker-compose.yml up -d --force-recreate ;;
+	docker) docker compose -f "${ONE_NODE_INSTALL_DIR}/docker-compose.yml" up -d --force-recreate ;;
 	*) manager_die "unsupported installation mode: $manager_mode" ;;
 	esac
 	manager_status
@@ -199,9 +201,9 @@ manager_logs() {
 	manager_mode=$(manager_manifest_value mode) || manager_die "installation mode is missing"
 	case "$manager_mode:$manager_follow" in
 	native:true) exec journalctl -u one-node.service -n 100 -f ;;
-	native:false) exec journalctl -u one-node.service -n 100 --no-pager ;;
+	native:false) journalctl -u one-node.service -n 100 --no-pager ;;
 	docker:true) exec docker logs --tail 100 -f one-node ;;
-	docker:false) exec docker logs --tail 100 one-node ;;
+	docker:false) docker logs --tail 100 one-node ;;
 	*) manager_die "unsupported log request" ;;
 	esac
 }
@@ -395,6 +397,17 @@ entrypoint_download_modules() {
 		/bin/sh -n "${destination}/${module}" ||
 			entrypoint_die "downloaded installer module has invalid syntax: $module"
 	done
+	installer_url="${base_url%/scripts}/install.sh"
+	curl -q --proto "$protocols" --proto-redir "$protocols" --tlsv1.2 \
+		--fail --silent --show-error --no-location \
+		--connect-timeout 10 --max-time 30 --max-filesize 1048576 \
+		"$installer_url" --output "${destination}/install.sh" ||
+		entrypoint_die "unable to download the persistent installer"
+	[ -s "${destination}/install.sh" ] || entrypoint_die "downloaded installer is empty"
+	chmod 0700 "${destination}/install.sh"
+	/bin/sh -n "${destination}/install.sh" || entrypoint_die "downloaded installer has invalid syntax"
+	ONE_NODE_INSTALLER_SOURCE="${destination}/install.sh"
+	export ONE_NODE_INSTALLER_SOURCE
 }
 
 entrypoint_load_modules() {
@@ -405,6 +418,9 @@ entrypoint_load_modules() {
 		trap entrypoint_cleanup EXIT HUP INT TERM
 		entrypoint_download_modules "$ONE_NODE_ENTRYPOINT_TEMP_DIR"
 		source_dir=$ONE_NODE_ENTRYPOINT_TEMP_DIR
+	else
+		ONE_NODE_INSTALLER_SOURCE="${source_dir%/scripts}/install.sh"
+		export ONE_NODE_INSTALLER_SOURCE
 	fi
 	for module in $ONE_NODE_INSTALL_MODULES; do
 		module_path="${source_dir}/${module}"
@@ -413,10 +429,12 @@ entrypoint_load_modules() {
 		# shellcheck disable=SC1090
 		. "$module_path"
 	done
-	entrypoint_cleanup
-	ONE_NODE_ENTRYPOINT_TEMP_DIR=""
-	trap - EXIT HUP INT TERM
 }
+
+if entrypoint_management_requested "$@"; then
+	manager_main "$@"
+	exit $?
+fi
 
 entrypoint_load_modules
 

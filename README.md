@@ -99,7 +99,7 @@ make node-bundle-installers
 `make validate` 检查全部活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
 `make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user` 使用这一范围，
 不运行其他产品的模拟发布和生命周期 fixture。
-`make validate-node` 只检查 One Node Runtime 的 dispatch、构建和 Release 合同；
+`make validate-node` 只检查 One Node Runtime 的安装生命周期、dispatch、构建和 Release 合同；
 `deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。
 `make validate-node-server` 只检查 One Node Server 的发布、镜像与部署契约；
 `deploy-node-server` 使用这一范围，不运行 One User 模拟发布或 One Node Runtime 生命周期 fixture。
@@ -159,6 +159,12 @@ node/uninstall.sh
 
 安装器未指定 `ONE_NODE_VERSION` 时会选择 `one-action` 仓库最新的 `one-node-v<version>` Release；显式设置版本
 可固定安装或回滚。完整参数和生命周期约束见 [node/README.md](node/README.md)。
+
+安装成功后会保留 `/opt/one-node/install.sh`。在节点服务器执行
+`sudo /opt/one-node/install.sh` 可进入交互菜单；也可使用 `--status`、
+`--doctor`、`--upgrade`、`--rollback`、`--restart`、`--logs` 和
+`--uninstall --yes` 直接管理 Native 或 Docker 节点。状态输出包含运行模式、版本、
+PID、内存、运行时长和服务/容器状态。
 
 ## 目录
 

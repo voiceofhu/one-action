@@ -6,6 +6,14 @@
 initialize_install_workspace() {
 	TEMP_DIR=$(mktemp -d "/tmp/one-node-install.XXXXXX")
 	chmod 0700 "$TEMP_DIR"
+	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
+		die "installer source is missing or unsafe"
+	install -m 0700 "$ONE_NODE_INSTALLER_SOURCE" "${TEMP_DIR}/install.sh"
+	ONE_NODE_INSTALLER_SOURCE="${TEMP_DIR}/install.sh"
+	if command -v entrypoint_cleanup >/dev/null 2>&1; then
+		entrypoint_cleanup
+		ONE_NODE_ENTRYPOINT_TEMP_DIR=""
+	fi
 	BINARY_SOURCE="${TEMP_DIR}/${PROGRAM}"
 	ENV_SOURCE="${TEMP_DIR}/${PROGRAM}.env"
 	UNIT_SOURCE="${TEMP_DIR}/${PROGRAM}.service"
@@ -144,14 +152,25 @@ prepare_install_directories() {
 
 install_common_files() {
 	INSTALL_STARTED="true"
-	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
-		die "installer source is missing or unsafe"
-	install -m 0755 "$ONE_NODE_INSTALLER_SOURCE" "$MANIFEST_INSTALLER_PATH"
+	install_persistent_installer
 	if [ "$INSTALL_MODE" = "native" ]; then
 		install -m 0755 "$BINARY_SOURCE" "$BINARY_FILE"
 	fi
 	install -m 0600 "$ENV_SOURCE" "$ENV_FILE"
 	install -m 0600 "$RECORD_SOURCE" "$INSTALL_RECORD"
+}
+
+install_persistent_installer() {
+	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
+		die "installer source is missing or unsafe"
+	install -m 0755 "$ONE_NODE_INSTALLER_SOURCE" "$MANIFEST_INSTALLER_PATH" ||
+		die "unable to install the persistent installer"
+	if [ -f "$INSTALL_RECORD" ] && ! manifest_has_owned_path "$MANIFEST_INSTALLER_PATH"; then
+		manifest_append_owned_path "$MANIFEST_INSTALLER_PATH" ||
+			die "unable to record the persistent installer"
+		MANIFEST_OWNED_COUNT=$((MANIFEST_OWNED_COUNT + 1))
+		manifest_write "$INSTALL_RECORD" || die "unable to update the installation manifest"
+	fi
 }
 
 replace_managed_file() {

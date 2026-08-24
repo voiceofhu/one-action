@@ -23,6 +23,11 @@ main() {
 		else
 			reconfigure_existing_installation
 		fi
+		install_persistent_installer
+		if command -v entrypoint_cleanup >/dev/null 2>&1; then
+			entrypoint_cleanup
+			ONE_NODE_ENTRYPOINT_TEMP_DIR=""
+		fi
 		return
 	fi
 	initialize_install_workspace

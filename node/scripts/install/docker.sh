@@ -2,16 +2,22 @@
 
 ensure_docker() {
 	if ! command -v docker >/dev/null 2>&1; then
-		command -v apt-get >/dev/null 2>&1 || die "Docker is required"
-		log "installing Debian Docker Engine and Compose"
-		apt-get update
-		env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
-		if ! env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2; then
-			env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin
+		if command -v apt-get >/dev/null 2>&1; then
+			log "installing Debian/Ubuntu Docker Engine and Compose"
+			apt-get update
+			env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+			if ! env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2; then
+				env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin
+			fi
+		else
+			die "Docker Engine and Docker Compose v2 must be installed before Docker mode on this Linux distribution"
 		fi
 	fi
 	if command -v systemctl >/dev/null 2>&1; then
 		systemctl enable --now docker.service
+	elif command -v rc-service >/dev/null 2>&1; then
+		rc-update add docker default >/dev/null 2>&1 || true
+		rc-service docker start >/dev/null 2>&1 || true
 	fi
 	docker info >/dev/null 2>&1 || die "Docker daemon is unavailable"
 	docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is required"

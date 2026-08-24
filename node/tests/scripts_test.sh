@@ -184,6 +184,9 @@ https://api.github.com/repos/voiceofhu/one-action/commits/main)
 	printf '%s' "${ONE_NODE_TEST_ACTION_RESPONSE:-0123456789abcdef0123456789abcdef01234567}" >"$output"
 	[ -z "$write_out" ] || printf '%s' 200
 	;;
+*/install.sh)
+	cp "${ONE_NODE_TEST_ROOT}/install.sh" "$output"
+	;;
 *)
 	relative=${url#*scripts/}
 	source_file="${ONE_NODE_TEST_ROOT}/scripts/${relative}"
@@ -229,6 +232,7 @@ grep -F 'MANIFEST_FORMAT_NAME="one-node-manifest"' \
 	"$ROOT_DIR/scripts/shared/manifest.sh" >/dev/null
 grep -F 'MANIFEST_RECORD_PATH="${MANIFEST_INSTALL_DIR}/.installation"' \
 	"$ROOT_DIR/scripts/shared/manifest.sh" >/dev/null
+grep -F 'persist_management_installer' "$ROOT_DIR/upgrade.sh" >/dev/null
 grep -F 'version --product-name' "$ROOT_DIR/scripts/install/files.sh" >/dev/null
 if grep -F 'version --name' "$ROOT_DIR/scripts/install/files.sh" >/dev/null; then
 	fail "native installer still reads the sing-box core version as its product release"
@@ -266,6 +270,45 @@ if (
 	printf '%s\n' "installer accepted the sing-box core version as the One Node product release" >&2
 	exit 1
 fi
+
+(
+	# Native management upgrades derive the immutable Release URL and checksum file from only the version.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/shared/manifest.sh"
+	. "$ROOT_DIR/scripts/install/host.sh"
+	. "$ROOT_DIR/scripts/upgrade/common.sh"
+	INSTALL_MODE=native
+	ONE_NODE_VERSION=26.824.1520
+	ONE_NODE_RELEASE_BASE_URL=""
+	ONE_NODE_BINARY_SHA256_AMD64=""
+	ONE_NODE_BINARY_SHA256_ARM64=""
+	ONE_NODE_DOCKER_IMAGE=""
+	ONE_NODE_ALLOW_INSECURE=false
+	MANIFEST_CURRENT_VERSION=26.824.1510
+	MANIFEST_CURRENT_BINARY_SHA256=$(printf '%064d' 1)
+	validate_upgrade_target
+	[ "$ONE_NODE_RELEASE_BASE_URL" = "https://github.com/voiceofhu/one-action/releases/download/one-node-v26.824.1520" ]
+	case "$(uname -m)" in x86_64|amd64) expected_arch=amd64 ;; *) expected_arch=arm64 ;; esac
+	[ "$ONE_NODE_BINARY_URL" = "${ONE_NODE_RELEASE_BASE_URL}/one-node-linux-${expected_arch}" ]
+)
+(
+	# Docker management upgrades accept the version tag and resolve its immutable digest during staging.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/shared/manifest.sh"
+	. "$ROOT_DIR/scripts/install/host.sh"
+	. "$ROOT_DIR/scripts/upgrade/common.sh"
+	INSTALL_MODE=docker
+	ONE_NODE_VERSION=26.824.1520
+	ONE_NODE_RELEASE_BASE_URL=""
+	ONE_NODE_BINARY_SHA256_AMD64=""
+	ONE_NODE_BINARY_SHA256_ARM64=""
+	ONE_NODE_DOCKER_IMAGE=""
+	ONE_NODE_ALLOW_INSECURE=false
+	MANIFEST_CURRENT_VERSION=26.824.1510
+	MANIFEST_CURRENT_IMAGE="ghcr.io/voiceofhu/one-node@sha256:$(printf '%064d' 2)"
+	validate_upgrade_target
+	[ "$ONE_NODE_DOCKER_IMAGE" = "ghcr.io/voiceofhu/one-node:26.824.1520" ]
+)
 grep -F 'rm -rf -- "$MANIFEST_STATE_DIR"' \
 	"$ROOT_DIR/scripts/uninstall/paths.sh" >/dev/null
 if grep -R -F 'pre-existing state retained' \

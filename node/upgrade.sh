@@ -7,6 +7,7 @@ umask 077
 
 ONE_NODE_UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
+ONE_NODE_INSTALLER_SOURCE=""
 
 entrypoint_die() {
 	printf '%s\n' "[one-node] error: $*" >&2
@@ -112,6 +113,17 @@ entrypoint_download_modules() {
 		chmod 0600 "${destination}/${module}"
 		/bin/sh -n "${destination}/${module}" || entrypoint_die "downloaded upgrade module has invalid syntax: $module"
 	done
+	installer_url="${base_url%/scripts}/install.sh"
+	curl -q --proto "$protocols" --proto-redir "$protocols" --tlsv1.2 \
+		--fail --silent --show-error --no-location \
+		--connect-timeout 10 --max-time 30 --max-filesize 1048576 \
+		"$installer_url" --output "${destination}/install.sh" ||
+		entrypoint_die "unable to download the persistent installer"
+	[ -s "${destination}/install.sh" ] || entrypoint_die "downloaded installer is empty"
+	chmod 0700 "${destination}/install.sh"
+	/bin/sh -n "${destination}/install.sh" || entrypoint_die "downloaded installer has invalid syntax"
+	ONE_NODE_INSTALLER_SOURCE="${destination}/install.sh"
+	export ONE_NODE_INSTALLER_SOURCE
 }
 
 entrypoint_load_modules() {
@@ -122,6 +134,9 @@ entrypoint_load_modules() {
 		trap entrypoint_cleanup EXIT HUP INT TERM
 		entrypoint_download_modules "$ONE_NODE_ENTRYPOINT_TEMP_DIR"
 		source_dir=$ONE_NODE_ENTRYPOINT_TEMP_DIR
+	else
+		ONE_NODE_INSTALLER_SOURCE="${source_dir%/scripts}/install.sh"
+		export ONE_NODE_INSTALLER_SOURCE
 	fi
 	for module in $ONE_NODE_UPGRADE_MODULES; do
 		module_path="${source_dir}/${module}"
@@ -129,13 +144,25 @@ entrypoint_load_modules() {
 		# shellcheck disable=SC1090
 		. "$module_path"
 	done
-	entrypoint_cleanup
-	ONE_NODE_ENTRYPOINT_TEMP_DIR=""
-	trap - EXIT HUP INT TERM
+}
+
+persist_management_installer() {
+	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
+		entrypoint_die "persistent installer source is missing or unsafe"
+	install -m 0755 "$ONE_NODE_INSTALLER_SOURCE" "$MANIFEST_INSTALLER_PATH" ||
+		entrypoint_die "unable to install /opt/one-node/install.sh"
+	if ! manifest_has_owned_path "$MANIFEST_INSTALLER_PATH"; then
+		manifest_append_owned_path "$MANIFEST_INSTALLER_PATH" ||
+			entrypoint_die "unable to record the persistent installer"
+		MANIFEST_OWNED_COUNT=$((MANIFEST_OWNED_COUNT + 1))
+		manifest_write "$MANIFEST_RECORD_PATH" ||
+			entrypoint_die "unable to update the installation manifest"
+	fi
 }
 
 entrypoint_load_modules
 
 if [ "${ONE_NODE_UPGRADER_LIBRARY_ONLY:-0}" != "1" ]; then
 	main "$@"
+	persist_management_installer
 fi

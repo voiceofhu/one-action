@@ -4,6 +4,7 @@ node-check:
 	@sh $(PROJECT_ROOT)/node/tests/scripts_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/latest_release_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/readiness_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/manager_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/reconfigure_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/reset_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/native_recovery_test.sh

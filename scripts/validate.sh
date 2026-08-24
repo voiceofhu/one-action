@@ -73,7 +73,7 @@ case "$scope" in
     active_workflows=(
       node.yml
     )
-    run_node_check=false
+    run_node_check=true
     ;;
   node-server)
     active_tests=(

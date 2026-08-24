@@ -30,6 +30,37 @@ new artifact is downloaded and verified, any existing manifest-managed One Node
 installation and its complete runtime state are removed before a fresh install.
 Use `upgrade.sh` when the existing node identity and runtime state must be kept.
 
+Every successful Native or Docker installation retains the exact installer at
+`/opt/one-node/install.sh`. Running it without arguments in a terminal opens the
+interactive lifecycle menu. The same file also supports non-interactive status,
+diagnostics, upgrade, rollback, restart, logs, and uninstall operations:
+
+```sh
+cd /opt/one-node
+sudo ./install.sh
+sudo ./install.sh --status
+sudo ./install.sh --doctor
+sudo ./install.sh --upgrade latest
+sudo ./install.sh --upgrade 26.824.1520
+sudo ./install.sh --rollback
+sudo ./install.sh --restart
+sudo ./install.sh --logs --follow
+sudo ./install.sh --uninstall --yes
+```
+
+Status reports the installation mode, current and previous product versions,
+Node ID, runtime state, host PID, memory use, and process uptime. Native status
+reads systemd and `/proc`; Docker status reads the container state, PID, and
+`docker stats`. The retained script never contains the enrollment bootstrap
+token. Non-TTY execution without an explicit option prints help instead of
+waiting for input.
+
+Native mode supports Linux amd64/arm64 hosts using systemd, including the major
+Debian/Ubuntu, RHEL-compatible, Fedora, Amazon Linux, SUSE, and Arch families.
+Docker mode works on any supported Linux host with Docker Engine and Compose v2;
+Debian/Ubuntu may install those packages automatically, while other families
+must provide Docker first. Docker and Native installations use the same menu.
+
 ## Migration record
 
 - Read-only source: `/Volumes/sn@root/Documents/workspaces/voh/one-node/one-node-action`

@@ -48,6 +48,7 @@ configure_case() {
 	INSTALL_RECORD="${INSTALL_DIR}/.installation"
 	ONE_NODE_STATE_DIR="${CASE_DIR}/state"
 	MANIFEST_INSTALL_DIR=$INSTALL_DIR
+	MANIFEST_INSTALLER_PATH="${INSTALL_DIR}/install.sh"
 	MANIFEST_BINARY_PATH="${INSTALL_DIR}/one-node"
 	MANIFEST_PREVIOUS_DIR="${INSTALL_DIR}/previous"
 	MANIFEST_PREVIOUS_BINARY_PATH_FIXED="${MANIFEST_PREVIOUS_DIR}/one-node"
@@ -62,6 +63,7 @@ configure_case() {
 	RESET_EXISTING="false"
 	CONTAINER_NAME="one-node"
 	ONE_NODE_ARCH="amd64"
+	ONE_NODE_INSTALLER_SOURCE="$ROOT_DIR/install.sh"
 	ONE_NODE_SERVER="grpcs://new.example:443"
 	ONE_NODE_ID="41"
 	ONE_NODE_BOOTSTRAP_TOKEN="new-token"
@@ -153,11 +155,13 @@ run_stale_unit_recovery() (
 	INSTALL_COMMITTED="true"
 
 	[ -x "$MANIFEST_BINARY_PATH" ] || fail "replacement binary was not installed"
+	[ -x "$MANIFEST_INSTALLER_PATH" ] || fail "persistent installer was not installed"
 	grep -F '"node_id":"41"' "$ONE_NODE_STATE_DIR/node-secret" >/dev/null ||
 		fail "replacement retained the previous node identity"
 	grep -F '"config":"fresh"' "$ONE_NODE_STATE_DIR/runtime-active.json" >/dev/null ||
 		fail "replacement retained the previous runtime state"
 	manifest_load "$INSTALL_RECORD"
+	manifest_has_owned_path "$MANIFEST_INSTALLER_PATH" || fail "manifest does not own the persistent installer"
 	[ "$MANIFEST_CURRENT_VERSION" = "26.809.2200" ] || fail "stale installation product version is wrong"
 	[ "$("$MANIFEST_BINARY_PATH" version --name)" = "1.13.18" ] ||
 		fail "replacement sing-box core version is wrong"

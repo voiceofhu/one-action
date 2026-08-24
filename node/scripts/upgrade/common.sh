@@ -15,6 +15,14 @@ initialize_upgrade() {
 	UPGRADE_OLD_BINARY_SHA256=""
 	UPGRADE_TEMP_DIR=$(mktemp -d "/tmp/one-node-upgrade.XXXXXX")
 	chmod 0700 "$UPGRADE_TEMP_DIR"
+	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
+		die "installer source is missing or unsafe"
+	install -m 0700 "$ONE_NODE_INSTALLER_SOURCE" "${UPGRADE_TEMP_DIR}/install.sh"
+	ONE_NODE_INSTALLER_SOURCE="${UPGRADE_TEMP_DIR}/install.sh"
+	if command -v entrypoint_cleanup >/dev/null 2>&1; then
+		entrypoint_cleanup
+		ONE_NODE_ENTRYPOINT_TEMP_DIR=""
+	fi
 	BINARY_SOURCE="${UPGRADE_TEMP_DIR}/one-node.download"
 	STAGED_BINARY="${INSTALL_DIR}/.one-node.next"
 	COMPOSE_SOURCE="${UPGRADE_TEMP_DIR}/docker-compose.yml"
@@ -129,8 +137,8 @@ validate_upgrade_target() {
 	native)
 		resolve_host_architecture
 		ONE_NODE_BINARY_SHA256=$(normalize_sha256 "$ONE_NODE_BINARY_SHA256")
-		validate_sha256 "$ONE_NODE_BINARY_SHA256" || die "selected binary checksum must be a pinned SHA-256"
 		immutable_release_base="https://github.com/voiceofhu/one-action/releases/download/one-node-v${ONE_NODE_VERSION}"
+		ONE_NODE_RELEASE_BASE_URL=${ONE_NODE_RELEASE_BASE_URL:-$immutable_release_base}
 		case "$ONE_NODE_RELEASE_BASE_URL" in
 		"$immutable_release_base") ;;
 		http://*) [ "$ONE_NODE_ALLOW_INSECURE" = true ] || die "HTTP release assets require ONE_NODE_ALLOW_INSECURE=true" ;;
@@ -143,16 +151,23 @@ validate_upgrade_target() {
 		*) die "ONE_NODE_RELEASE_BASE_URL must pin the requested immutable One Node release" ;;
 		esac
 		ONE_NODE_BINARY_URL="${ONE_NODE_RELEASE_BASE_URL%/}/${ONE_NODE_BINARY_NAME}"
+		if [ -n "$ONE_NODE_BINARY_SHA256" ]; then
+			validate_sha256 "$ONE_NODE_BINARY_SHA256" || die "selected binary checksum must be a pinned SHA-256"
+		fi
 		if [ "$ONE_NODE_VERSION" = "$MANIFEST_CURRENT_VERSION" ] &&
-			[ "$ONE_NODE_BINARY_SHA256" = "$MANIFEST_CURRENT_BINARY_SHA256" ]; then
+			{ [ -z "$ONE_NODE_BINARY_SHA256" ] || [ "$ONE_NODE_BINARY_SHA256" = "$MANIFEST_CURRENT_BINARY_SHA256" ]; }; then
 			die "native upgrade target is already current"
 		fi
 		;;
 	docker)
-		manifest_validate_image "$ONE_NODE_DOCKER_IMAGE" ||
-			die "ONE_NODE_DOCKER_IMAGE must pin ghcr.io/voiceofhu/one-node by digest"
+		version_image="ghcr.io/voiceofhu/one-node:${ONE_NODE_VERSION}"
+		ONE_NODE_DOCKER_IMAGE=${ONE_NODE_DOCKER_IMAGE:-$version_image}
+		if [ "$ONE_NODE_DOCKER_IMAGE" != "$version_image" ]; then
+			manifest_validate_image "$ONE_NODE_DOCKER_IMAGE" ||
+				die "ONE_NODE_DOCKER_IMAGE must match the requested version tag or pin a digest"
+		fi
 		if [ "$ONE_NODE_VERSION" = "$MANIFEST_CURRENT_VERSION" ] &&
-			[ "$ONE_NODE_DOCKER_IMAGE" = "$MANIFEST_CURRENT_IMAGE" ]; then
+			{ [ "$ONE_NODE_DOCKER_IMAGE" = "$version_image" ] || [ "$ONE_NODE_DOCKER_IMAGE" = "$MANIFEST_CURRENT_IMAGE" ]; }; then
 			die "Docker upgrade target is already current"
 		fi
 		;;

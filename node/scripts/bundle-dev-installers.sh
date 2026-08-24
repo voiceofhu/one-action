@@ -33,6 +33,9 @@ bundle_entrypoint() {
 			}
 			sed '1{/^#!\/bin\/sh$/d;}' "$module_path"
 		done
+		if [ "$variable" = ONE_NODE_INSTALL_MODULES ]; then
+			printf '%s\n' 'ONE_NODE_INSTALLER_SOURCE=$0' 'export ONE_NODE_INSTALLER_SOURCE'
+		fi
 		printf '%s\n' 'main "$@"'
 	} >"$temporary_path"
 	chmod 0755 "$temporary_path"

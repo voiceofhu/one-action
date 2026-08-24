@@ -237,11 +237,9 @@ require_text "$publisher" 'value: ${{ jobs.manifest.outputs.image_ref }}'
 require_text "$publisher" 'login=$(gh api user --jq .login)'
 reject_text "$publisher" 'username: ${{ github.actor }}'
 
-for workflow in "$publisher"; do
-  reject_text "$workflow" '  deploy:'
-  reject_text "$workflow" 'scripts/deploy/'
-  reject_text "$workflow" 'ssh'
-done
+reject_text "$publisher" '  deploy:'
+reject_text "$publisher" 'scripts/deploy/'
+reject_text "$publisher" 'ssh'
 
 for workflow in "$user" "$node_server" "$publisher"; do
   reject_text "$workflow" 'workflow_dispatch:'

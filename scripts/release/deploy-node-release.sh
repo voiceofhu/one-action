@@ -25,7 +25,7 @@ printf '%s\n' \
   "  source:     $ONE_NODE_REPOSITORY" \
   '  source ref: exact main commit' \
   "  release:    $release_tag" \
-  '  image:      ghcr.io/voiceofhu/one-node:<version>'
+  "  image:      ghcr.io/voiceofhu/one-node:$VERSION"
 
 case "${DRY_RUN:-true}" in
   true|1|yes)

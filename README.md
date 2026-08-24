@@ -14,9 +14,9 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
-| `make deploy-user` | `user-v<version>` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
-| `make deploy-node-server` | `node-server-v<version>` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
-| `make deploy-node` | `one-node-v<version>` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-user` | dispatch `user.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
+| `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
+| `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
 
 `deploy-user` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
 `deploy-node` 只触发 Runtime 编译上传。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
@@ -27,13 +27,13 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 1. 确认 `one-action` 和源码仓库位于干净分支，origin 指向固定仓库；
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
-3. 本地运行 Action 契约检查以及对应产品的格式、lint、测试和构建；
-4. One Node Server 要求本地 Backend/Web HEAD 已经与远端分支完全一致，把两个精确 SHA 写入 annotated Action 控制标签；其他产品仍按各自发布合同准备源码标签；
-5. 推送当前 Action commit 上的产品触发标签；One Node Server 不再创建 Backend/Web `v*` 标签；
+3. 本地仅运行对应产品的格式、lint、测试和构建；
+4. One User 推送版本文件提交；One Node Server 和 One Node Runtime 要求本地 HEAD 已与远端分支完全一致；三条链路都不创建源码发布 tag；
+5. 本地入口把精确 Action SHA、源码 SHA 和版本 dispatch 给对应 workflow；One Node Release workflow 仅为公开 Release 自动创建所需的 Action tag；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One User 与 One Node Server 在镜像成功合并后，将 digest-qualified 镜像分别部署到受保护的生产 environment。
 
-本地 Git 凭据用于 `git fetch/push`。发布入口不读取本机 `GH_TOKEN`；三条链路都使用 Action tag。One Node Server 的控制标签同时携带本地检查过的 Backend/Web SHA，Action 不读取可变的源码分支头。
+本地 Git 凭据用于源码 `fetch/push`，本机 `GH_TOKEN` 只注入最终 dispatch 子进程，不进入格式、测试或构建命令。三个 workflow 都校验固定的 Action commit 和源码 commit，不读取可变的远端分支头。
 
 ## One User 发布流程
 
@@ -46,9 +46,9 @@ flowchart TD
     backend --> web[Web: frozen install + format + lint + test + build]
     web --> stable[再次确认源码 HEAD 和工作区未变化]
     stable --> version[更新 Backend 和 Web 版本]
-    version --> source[提交并原子推送两个源码 tag]
-    source --> control[推送 user-v 控制 tag]
-    control --> resolve[Action 并行解析两个精确源码 SHA]
+    version --> source[提交并推送两个版本文件 commit]
+    source --> control[dispatch user.yml<br/>传入 Backend/Web SHA]
+    control --> resolve[Action 校验两个精确源码 SHA]
     resolve --> amd64[amd64 原生构建<br/>复用独立 GHA layer cache]
     resolve --> arm64[arm64 原生构建<br/>复用独立 GHA layer cache]
     amd64 --> index[校验并发布 OCI 多架构 index]
@@ -72,7 +72,7 @@ make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 ```
 
-三个目标默认执行真实本地检查和 Action 标签推送；One Node Server 不再修改 Web 版本或推送源码标签。只查看计划时显式启用 dry-run；dry-run 不运行
+三个目标默认执行各自产品的真实本地检查，并通过 workflow dispatch 触发对应 Action。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 也不修改源码 `VERSION`。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash
@@ -90,6 +90,7 @@ make deploy-node DRY_RUN=true
 ```bash
 make validate
 make validate-user
+make validate-node
 make validate-node-server
 make node-check
 make node-bundle-installers
@@ -98,6 +99,8 @@ make node-bundle-installers
 `make validate` 检查全部活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
 `make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user` 使用这一范围，
 不运行其他产品的模拟发布和生命周期 fixture。
+`make validate-node` 只检查 One Node Runtime 的 dispatch、构建和 Release 合同；
+`deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。
 `make validate-node-server` 只检查 One Node Server 的发布、镜像与部署契约；
 `deploy-node-server` 使用这一范围，不运行 One User 模拟发布或 One Node Runtime 生命周期 fixture。
 真实 `deploy-*` 还会执行产品门禁：
@@ -105,9 +108,9 @@ make node-bundle-installers
 - One User：Backend fmt/test；Web frozen install、format、lint、test、build；
 - One Node Server：Web frozen install/lint；Backend model/test、vet、release build，
   release build 通过 Server 的 `build: frontend` 唯一执行一次 Web typecheck/Vite build 并暂存 `web-dist`；
-- One Node Runtime：安装器生命周期检查和完整 `verify-upgrade`。
+- One Node Runtime：仅在 Node 源码仓库执行完整 `verify-upgrade`。
 
-任何本地门禁失败都会发生在源码 tag 和远程触发之前。
+任何本地门禁失败都会发生在版本提交或远程 dispatch 之前。
 
 ## Action 结构与时间上限
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+github_token=${GH_TOKEN:-}
 unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -100,25 +101,22 @@ backend_branch=${backend_state%%|*}
 backend_head=${backend_state#*|}
 web_branch=${web_state%%|*}
 web_head=${web_state#*|}
-release_tag="v$VERSION"
-control_tag="user-v$VERSION"
 action_head="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
 
 printf '%s\n' \
   'One User release plan:' \
   "  version:          $VERSION" \
-  "  tag:              $release_tag" \
   "  backend:          $ONE_USER_BACKEND_REPOSITORY@$backend_head" \
   "  web:              $ONE_USER_WEB_REPOSITORY@$web_head" \
   "  backend branch:   $backend_branch" \
   "  web branch:       $web_branch" \
   "  action:           $ACTION_REPOSITORY@$action_head" \
-  "  control tag:      $control_tag"
+  '  trigger:          workflow_dispatch'
 
 if [[ "$dry_run" == true ]]; then
 	printf '%s\n' \
-	  'DRY_RUN=true: checks, source versions, commits, tags, pushes, uploads, and deployment are not changed.' \
-	  'The real run checks both sources, publishes their versions, then triggers image publication and deployment.'
+		  'DRY_RUN=true: checks, source versions, commits, pushes, dispatch, uploads, and deployment are not changed.' \
+		  'The real run checks both sources, publishes version commits, then dispatches image publication and deployment.'
   exit 0
 fi
 
@@ -127,29 +125,6 @@ validated_action_head="$(validate_action_repository)"
   printf '%s\n' 'Action HEAD changed while preparing the release; no source repositories were changed.' >&2
   exit 1
 }
-
-! git -C "$PROJECT_ROOT" rev-parse -q --verify \
-  "refs/tags/$control_tag" >/dev/null || {
-  printf 'Action control tag already exists locally: %s\n' "$control_tag" >&2
-  exit 1
-}
-
-remote_control_tag_status=0
-git -C "$PROJECT_ROOT" ls-remote --exit-code --tags origin \
-  "refs/tags/$control_tag" "refs/tags/$control_tag^{}" >/dev/null || \
-  remote_control_tag_status=$?
-case "$remote_control_tag_status" in
-  0)
-    printf 'Action control tag already exists remotely: %s\n' "$control_tag" >&2
-    exit 1
-    ;;
-  2) ;;
-  *)
-    printf 'Could not check remote Action control tag %s; no repositories were changed.\n' \
-      "$control_tag" >&2
-    exit 1
-    ;;
-esac
 
 if ! git -C "$PROJECT_ROOT" fetch --no-tags origin \
   '+refs/heads/main:refs/remotes/origin/main'; then
@@ -177,7 +152,7 @@ preflight_release_repository() {
   local directory=$2
   local branch=$3
 
-  git -C "$directory" fetch --tags origin \
+  git -C "$directory" fetch --no-tags origin \
     "refs/heads/$branch:refs/remotes/origin/$branch"
   git -C "$directory" show-ref --verify --quiet "refs/remotes/origin/$branch" || {
     printf '%s remote branch origin/%s was not found\n' "$label" "$branch" >&2
@@ -185,10 +160,6 @@ preflight_release_repository() {
   }
   git -C "$directory" merge-base --is-ancestor "origin/$branch" HEAD || {
     printf '%s branch is behind or diverged from origin/%s\n' "$label" "$branch" >&2
-    exit 1
-  }
-  ! git -C "$directory" rev-parse -q --verify "refs/tags/$release_tag" >/dev/null || {
-    printf '%s tag already exists: %s\n' "$label" "$release_tag" >&2
     exit 1
   }
 }
@@ -295,47 +266,48 @@ verify_changed_paths Backend "$ONE_USER_BACKEND_DIR" 'Cargo.lock Cargo.toml'
 verify_changed_paths Web "$ONE_USER_WEB_DIR" 'package.json'
 
 git -C "$ONE_USER_BACKEND_DIR" add -- Cargo.toml Cargo.lock
-git -C "$ONE_USER_BACKEND_DIR" commit -m \
-  "chore: bump one-user-backend version to $release_tag"
-git -C "$ONE_USER_BACKEND_DIR" tag "$release_tag"
+if ! git -C "$ONE_USER_BACKEND_DIR" diff --cached --quiet; then
+  git -C "$ONE_USER_BACKEND_DIR" commit -m \
+    "chore: bump one-user-backend version to $VERSION"
+fi
 
 git -C "$ONE_USER_WEB_DIR" add -- package.json
-git -C "$ONE_USER_WEB_DIR" commit -m \
-  "chore: bump one-user-web version to $release_tag"
-git -C "$ONE_USER_WEB_DIR" tag "$release_tag"
+if ! git -C "$ONE_USER_WEB_DIR" diff --cached --quiet; then
+  git -C "$ONE_USER_WEB_DIR" commit -m \
+    "chore: bump one-user-web version to $VERSION"
+fi
 
-if ! git -C "$ONE_USER_BACKEND_DIR" push --atomic origin \
-  "HEAD:refs/heads/$backend_branch" "refs/tags/$release_tag:refs/tags/$release_tag"; then
-  printf 'Backend push failed; its local release commit and tag %s were kept for recovery.\n' \
-    "$release_tag" >&2
+if ! git -C "$ONE_USER_BACKEND_DIR" push origin \
+  "HEAD:refs/heads/$backend_branch"; then
+  printf '%s\n' 'Backend version commit push failed; dispatch was not attempted.' >&2
   exit 1
 fi
-if ! git -C "$ONE_USER_WEB_DIR" push --atomic origin \
-  "HEAD:refs/heads/$web_branch" "refs/tags/$release_tag:refs/tags/$release_tag"; then
+if ! git -C "$ONE_USER_WEB_DIR" push origin \
+  "HEAD:refs/heads/$web_branch"; then
   printf '%s\n' \
-    "Web push failed; its local release commit and tag $release_tag were kept for recovery." \
-    'Backend may already be published; the Action control tag was not created.' >&2
+    'Web version commit push failed; dispatch was not attempted.' \
+    'Backend version commit may already be published.' >&2
   exit 1
 fi
 
-backend_release_sha="$(git -C "$ONE_USER_BACKEND_DIR" rev-parse "$release_tag^{commit}")"
-web_release_sha="$(git -C "$ONE_USER_WEB_DIR" rev-parse "$release_tag^{commit}")"
+backend_release_sha="$(git -C "$ONE_USER_BACKEND_DIR" rev-parse HEAD)"
+web_release_sha="$(git -C "$ONE_USER_WEB_DIR" rev-parse HEAD)"
 printf '%s\n' \
   "Published Backend source: $ONE_USER_BACKEND_REPOSITORY@$backend_release_sha" \
   "Published Web source: $ONE_USER_WEB_REPOSITORY@$web_release_sha"
 
-if ! git -C "$PROJECT_ROOT" tag "$control_tag" "$action_head"; then
-  printf '%s\n' \
-    "Both source releases were published, but Action control tag $control_tag could not be created." \
-    "Recover with: git -C $PROJECT_ROOT tag $control_tag $action_head" >&2
-  exit 1
-fi
-if ! git -C "$PROJECT_ROOT" push origin \
-  "refs/tags/$control_tag:refs/tags/$control_tag"; then
-  printf '%s\n' \
-    "Both source releases were published and local control tag $control_tag was kept." \
-    "Recover with: git -C $PROJECT_ROOT push origin refs/tags/$control_tag:refs/tags/$control_tag" >&2
-  exit 1
-fi
-printf 'Triggered One User image publication and server deployment with Action control tag: %s@%s\n' \
-  "$control_tag" "$action_head"
+CONFIRM_DISPATCH="dispatch:user.yml:$action_head" \
+CONFIRM_MUTATION="mutate:user.yml:$action_head" \
+DRY_RUN=false \
+ACTION_REPOSITORY="$ACTION_REPOSITORY" \
+ACTION_REF=main \
+GH_TOKEN="$github_token" \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
+  "backend_repository=$ONE_USER_BACKEND_REPOSITORY" \
+  "backend_ref=$backend_release_sha" \
+  "web_repository=$ONE_USER_WEB_REPOSITORY" \
+  "web_ref=$web_release_sha" \
+  "version=$VERSION" \
+  'publish=true'
+printf 'Dispatched One User image publication and server deployment at Action %s.\n' \
+  "$action_head"

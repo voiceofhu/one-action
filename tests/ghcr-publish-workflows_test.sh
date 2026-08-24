@@ -26,17 +26,16 @@ reject_text() {
   fi
 }
 
-assert_tag_only() {
-  local file=$1 tag=$2
+assert_dispatch_only() {
+  local file=$1 expected=$2
   ruby -ryaml -e '
     workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
     trigger = workflow.fetch("on")
-    expected_tag = ARGV.fetch(1)
-    abort("workflow trigger must contain only push") unless trigger.keys == ["push"]
-    push = trigger.fetch("push")
-    abort("push trigger must contain only tags") unless push.keys == ["tags"]
-    abort("unexpected control tag trigger") unless push.fetch("tags") == [expected_tag]
-  ' "$file" "$tag"
+    abort("workflow trigger must contain only workflow_dispatch") unless
+      trigger.keys == ["workflow_dispatch"]
+    actual = trigger.fetch("workflow_dispatch").fetch("inputs").keys.sort.join(",")
+    abort("unexpected dispatch inputs: #{actual}") unless actual == ARGV.fetch(1)
+  ' "$file" "$expected"
 }
 
 assert_jobs() {
@@ -79,8 +78,8 @@ for file in "$user" "$node_server" "$publisher" "$user_release" "$user_deployer"
   }
 done
 
-assert_tag_only "$user" 'user-v*'
-assert_tag_only "$node_server" 'node-server-v*'
+assert_dispatch_only "$user" 'backend_ref,backend_repository,confirmation,expected_action_sha,publish,version,web_ref,web_repository'
+assert_dispatch_only "$node_server" 'backend_ref,backend_repository,confirmation,deploy,expected_action_sha,publish,version,web_ref,web_repository'
 assert_jobs "$user" 'deploy,prepare,publish'
 assert_jobs "$node_server" 'deploy,prepare,publish'
 assert_jobs "$publisher" 'build,manifest'
@@ -120,10 +119,10 @@ assert_timeout_at_most "$publisher" build 20
 assert_timeout_at_most "$publisher" manifest 3
 assert_native_matrix "$publisher"
 
-require_text "$user" 'group: one-user-publish-${{ github.ref_name }}'
+require_text "$user" 'group: one-user-publish-${{ inputs.version }}'
 require_text "$user" 'workflow_name: one-user'
-require_text "$user" 'gh api "repos/voiceofhu/one-user-backend/commits/$source_tag"'
-require_text "$user" 'gh api "repos/voiceofhu/one-user-web/commits/$source_tag"'
+require_text "$user" 'gh api "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA"'
+require_text "$user" 'gh api "repos/$WEB_REPOSITORY/commits/$WEB_SHA"'
 require_text "$user" 'backend_sha: ${{ needs.prepare.outputs.backend_sha }}'
 require_text "$user" 'web_sha: ${{ needs.prepare.outputs.web_sha }}'
 require_text "$user" 'name: Deploy One User image'
@@ -146,16 +145,10 @@ require_text "$user" 'run: exec bash action/scripts/deploy/registry-auth.sh'
 require_text "$user" 'run: exec bash action/scripts/deploy/deploy-user.sh'
 require_text "$user" "if: \${{ always() && steps.registry_login.outcome == 'success' }}"
 
-require_text "$node_server" 'group: one-node-server-publish-${{ github.ref_name }}'
+require_text "$node_server" 'group: one-node-server-publish-${{ inputs.version }}'
 require_text "$node_server" 'workflow_name: one-node-server'
-require_text "$node_server" 'gh api "repos/$ACTION_REPOSITORY/git/ref/tags/$TAG_NAME"'
-require_text "$node_server" 'gh api "repos/$ACTION_REPOSITORY/git/tags/$tag_object_sha"'
-require_text "$node_server" 'format="$(manifest_field format)"'
-require_text "$node_server" 'backend_sha="$(manifest_field backend_sha)"'
-require_text "$node_server" 'web_sha="$(manifest_field web_sha)"'
-require_text "$node_server" 'gh api "repos/voiceofhu/one-node-server/commits/$backend_sha"'
-require_text "$node_server" 'gh api "repos/voiceofhu/one-node-web/commits/$web_sha"'
-reject_text "$node_server" 'source_tag='
+require_text "$node_server" 'gh api "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA"'
+require_text "$node_server" 'gh api "repos/$WEB_REPOSITORY/commits/$WEB_SHA"'
 require_text "$node_server" 'backend_sha: ${{ needs.prepare.outputs.backend_sha }}'
 require_text "$node_server" 'web_sha: ${{ needs.prepare.outputs.web_sha }}'
 require_text "$node_server" 'name: Deploy One Node Server image'
@@ -180,7 +173,7 @@ require_text "$node_server" "if: \${{ always() && steps.registry_login.outcome =
 
 for caller in "$user" "$node_server"; do
   require_text "$caller" 'timeout-minutes: 2'
-  require_text "$caller" '&& "$ACTION_SHA" =~ ^[0-9a-f]{40}$'
+  require_text "$caller" '&& "$ACTION_SHA" == "$EXPECTED_ACTION_SHA"'
   require_text "$caller" 'backend_pid=$!'
   require_text "$caller" 'web_pid=$!'
   require_text "$caller" 'wait "$backend_pid"'
@@ -192,9 +185,8 @@ for caller in "$user" "$node_server"; do
   require_text "$caller" 'source_read_token: ${{ secrets.GH_TOKEN }}'
   require_text "$caller" 'package_write_token: ${{ secrets.GH_TOKEN }}'
 done
-require_text "$user" '[[ "$backend_sha" =~ ^[0-9a-f]{40}$ && "$web_sha" =~ ^[0-9a-f]{40}$ ]]'
-require_text "$node_server" '&& "$backend_sha" =~ ^[0-9a-f]{40}$'
-require_text "$node_server" '&& "$web_sha" =~ ^[0-9a-f]{40}$'
+require_text "$user" '[[ "$backend_sha" == "$BACKEND_SHA" && "$web_sha" == "$WEB_SHA" ]]'
+require_text "$node_server" '[[ "$(jq -er .sha "$backend_commit_file")" == "$BACKEND_SHA"'
 
 require_text "$publisher" "repository: \${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || 'voiceofhu/one-node-server' }}"
 require_text "$publisher" "repository: \${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || 'voiceofhu/one-node-web' }}"
@@ -242,7 +234,6 @@ reject_text "$publisher" 'scripts/deploy/'
 reject_text "$publisher" 'ssh'
 
 for workflow in "$user" "$node_server" "$publisher"; do
-  reject_text "$workflow" 'workflow_dispatch:'
   reject_text "$workflow" 'cargo test'
   reject_text "$workflow" 'go test'
   reject_text "$workflow" 'make test'
@@ -260,8 +251,10 @@ require_text "$user_release" 'cargo fmt --all -- --check'
 require_text "$user_release" 'make --no-print-directory -C "$ONE_USER_BACKEND_DIR" test'
 require_text "$user_release" 'pnpm --dir "$ONE_USER_WEB_DIR" install --frozen-lockfile'
 require_text "$user_release" 'pnpm --dir "$ONE_USER_WEB_DIR" test'
-require_text "$user_release" 'control_tag="user-v$VERSION"'
-require_text "$user_release" '"refs/tags/$control_tag:refs/tags/$control_tag"'
+require_text "$user_release" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml'
+reject_text "$user_release" 'git -C "$PROJECT_ROOT" tag'
+reject_text "$user_release" 'git -C "$ONE_USER_BACKEND_DIR" tag'
+reject_text "$user_release" 'git -C "$ONE_USER_WEB_DIR" tag'
 require_text "$publisher" 'cache-from: type=gha,scope=${{ inputs.workflow_name }}-${{ matrix.arch }}'
 require_text "$publisher" 'cache-to: type=gha,mode=max,scope=${{ inputs.workflow_name }}-${{ matrix.arch }}'
 
@@ -273,15 +266,13 @@ require_text "$node_server_release" 'make --no-print-directory -C "$ONE_NODE_SER
 require_text "$node_server_release" 'go vet ./...'
 require_text "$node_server_release" 'make --no-print-directory -C "$ONE_NODE_SERVER_DIR" build \'
 require_text "$node_server_release" 'HEAD must exactly match published origin/%s before triggering One Action.'
-require_text "$node_server_release" 'format=one-node-server-release-v1'
-require_text "$node_server_release" 'backend_sha=$server_head'
-require_text "$node_server_release" 'web_sha=$web_head'
-require_text "$node_server_release" 'tag -a "$control_tag" "$action_head" -m "$control_manifest"'
-require_text "$node_server_release" 'control_tag="node-server-v$VERSION"'
-require_text "$node_server_release" '"refs/tags/$control_tag:refs/tags/$control_tag"'
-require_text "$node_server_release" 'Triggered One Node Server image publication and server deployment'
+require_text "$node_server_release" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-server.yml'
+require_text "$node_server_release" '"backend_ref=$server_head"'
+require_text "$node_server_release" '"web_ref=$web_head"'
+require_text "$node_server_release" 'Dispatched One Node Server image publication and deployment'
 reject_text "$node_server_release" 'git -C "$ONE_NODE_SERVER_DIR" tag'
 reject_text "$node_server_release" 'git -C "$ONE_NODE_WEB_DIR" tag'
+reject_text "$node_server_release" 'git -C "$PROJECT_ROOT" tag'
 reject_text "$node_server_release" 'document.version = process.env.VERSION;'
 
 require_text "$node_server_deployer" '^ghcr\.io/voiceofhu/node-server:'

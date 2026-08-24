@@ -23,7 +23,9 @@ export ONE_NODE_SERVER_REPOSITORY=voiceofhu/one-node-server
 export ONE_NODE_WEB_REPOSITORY=voiceofhu/one-node-web
 export ONE_NODE_SERVER_DIR="$test_dir/backend"
 export ONE_NODE_WEB_DIR="$test_dir/web"
-unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
+export GH_TOKEN=abcdefghijklmnopqrstuvwxyz123456
+unset GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
+export DISPATCH_LOG="$test_dir/dispatch.log"
 : >"$LOCAL_GATE_LOG"
 
 backend_bare="$test_dir/backend-origin.git"
@@ -62,12 +64,18 @@ git -C "$ONE_NODE_WEB_DIR" config url."file://$web_bare".insteadOf \
   https://github.com/voiceofhu/one-node-web.git
 git -C "$ONE_NODE_WEB_DIR" push -q -u origin main
 
-mkdir -p "$action_dir/scripts/release"
+mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github"
 cp "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh" \
   "$action_dir/scripts/release/deploy-node-server-release.sh"
-git -C "$action_dir" add scripts/release/deploy-node-server-release.sh
+cat >"$action_dir/scripts/github/dispatch-workflow.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "$GH_TOKEN" == abcdefghijklmnopqrstuvwxyz123456 ]]
+printf '%s\n' "$*" >"$DISPATCH_LOG"
+SCRIPT
+chmod 0755 "$action_dir/scripts/github/dispatch-workflow.sh"
+git -C "$action_dir" add scripts/release/deploy-node-server-release.sh scripts/github/dispatch-workflow.sh
 git -C "$action_dir" commit -qm initial
-action_sha="$(git -C "$action_dir" rev-parse HEAD)"
 git -C "$action_dir" remote add origin https://github.com/voiceofhu/one-action.git
 git -C "$action_dir" config url."file://$action_bare".insteadOf \
   https://github.com/voiceofhu/one-action.git
@@ -85,16 +93,18 @@ node -e '
   if (p.version !== "0.1.0") process.exit(1);
 ' "$ONE_NODE_WEB_DIR/package.json"
 
-control_tag=refs/tags/node-server-v26.815.1234
-[ "$(git --git-dir="$action_bare" cat-file -t "$control_tag")" = tag ]
-[ "$(git --git-dir="$action_bare" rev-parse "$control_tag^{commit}")" = "$action_sha" ]
-tag_message="$(git --git-dir="$action_bare" for-each-ref --format='%(contents)' "$control_tag")"
+if git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags | grep -q .; then
+  printf '%s\n' 'Node Server release created a forbidden Action control tag.' >&2
+  exit 1
+fi
 for field in \
-  format=one-node-server-release-v1 \
+  node-server.yml \
+  "backend_ref=$server_sha" \
+  "web_ref=$web_sha" \
   version=26.815.1234 \
-  backend_sha="$server_sha" \
-  web_sha="$web_sha"; do
-  grep -Fxq "$field" <<<"$tag_message"
+  publish=true \
+  deploy=true; do
+  grep -Fq "$field" "$DISPATCH_LOG"
 done
 
 require_gate() {
@@ -109,4 +119,4 @@ require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR test"
 require_gate 'go vet ./...'
 require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR build VERSION=26.815.1234 COMMIT=$server_sha"
 
-printf '%s\n' 'One Node Server pushed only its annotated One Action control tag.'
+printf '%s\n' 'One Node Server dispatched exact source SHAs without repository tags.'

@@ -1,15 +1,29 @@
 name: One Node
 
 'on':
-  push:
-    tags:
-      - 'one-node-v*'
+  workflow_dispatch:
+    inputs:
+      expected_action_sha:
+        required: true
+        type: string
+      confirmation:
+        required: true
+        type: string
+      node_repository:
+        required: true
+        type: string
+      node_ref:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: one-node-${{ github.ref_name }}
+  group: one-node-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -20,6 +34,7 @@ jobs:
     outputs:
       version: ${{ steps.source.outputs.version }}
       node_sha: ${{ steps.source.outputs.node_sha }}
+      action_sha: ${{ steps.source.outputs.action_sha }}
       upstream_version: ${{ steps.source.outputs.upstream_version }}
       upstream_commit: ${{ steps.source.outputs.upstream_commit }}
     steps:
@@ -28,29 +43,32 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          NODE_REPOSITORY: ${{ inputs.node_repository }}
+          NODE_SHA: ${{ inputs.node_ref }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action ]]
           [[ -n "$GH_TOKEN" ]]
-          [[ "$RELEASE_TAG" =~ ^one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-
-          version=${RELEASE_TAG#one-node-v}
-          node_sha="$(gh api "repos/voiceofhu/one-node-node/commits/v$version" --jq .sha)"
-          [[ "$node_sha" =~ ^[0-9a-f]{40}$ ]]
-
+          [[ "$GITHUB_SHA" == "$EXPECTED_ACTION_SHA" ]]
+          [[ "$CONFIRMATION" == "enable:node:$GITHUB_SHA" ]]
+          [[ "$NODE_REPOSITORY" == voiceofhu/one-node-node ]]
+          [[ "$NODE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           read_source_file() {
-            gh api "repos/voiceofhu/one-node-node/contents/$1?ref=$node_sha" --jq .content |
+            gh api "repos/$NODE_REPOSITORY/contents/$1?ref=$NODE_SHA" --jq .content |
               base64 --decode | tr -d '\r\n'
           }
-          [[ "$(read_source_file VERSION)" == "$version" ]]
           upstream_version="$(read_source_file one/version/UPSTREAM_VERSION)"
           upstream_commit="$(read_source_file one/version/UPSTREAM_COMMIT)"
           [[ "$upstream_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$upstream_commit" =~ ^[0-9a-f]{40}$ ]]
 
-          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
-          printf 'node_sha=%s\n' "$node_sha" >>"$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
+          printf 'node_sha=%s\n' "$NODE_SHA" >>"$GITHUB_OUTPUT"
+          printf 'action_sha=%s\n' "$GITHUB_SHA" >>"$GITHUB_OUTPUT"
           printf 'upstream_version=%s\n' "$upstream_version" >>"$GITHUB_OUTPUT"
           printf 'upstream_commit=%s\n' "$upstream_commit" >>"$GITHUB_OUTPUT"
 
@@ -273,12 +291,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          ACTION_SHA: ${{ needs.prepare.outputs.action_sha }}
+          RELEASE_TAG: one-node-v${{ needs.prepare.outputs.version }}
           UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -Eeuo pipefail
+          if tag_sha="$(gh api repos/voiceofhu/one-action/git/ref/tags/$RELEASE_TAG --jq .object.sha 2>/dev/null)"; then
+            [[ "$tag_sha" == "$ACTION_SHA" ]]
+          else
+            gh api --method POST repos/voiceofhu/one-action/git/refs \
+              -f ref="refs/tags/$RELEASE_TAG" \
+              -f sha="$ACTION_SHA" >/dev/null
+          fi
           expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
           notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
             "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION")"
@@ -351,7 +377,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: one-node-v${{ needs.prepare.outputs.version }}
           UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.prepare.outputs.upstream_commit }}
           VERSION: ${{ needs.prepare.outputs.version }}

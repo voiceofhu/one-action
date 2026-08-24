@@ -59,6 +59,22 @@ case "$scope" in
     )
     run_node_check=false
     ;;
+  node)
+    active_tests=(
+      "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/tests/fakes/curl"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      node.yml
+    )
+    run_node_check=false
+    ;;
   node-server)
     active_tests=(
       "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"

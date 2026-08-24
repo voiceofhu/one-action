@@ -32,8 +32,12 @@ done
 
 ruby -ryaml -e '
   user = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
-  abort("One User workflow must be tag-only") unless
-    user.fetch("on") == {"push" => {"tags" => ["user-v*"]}}
+  trigger = user.fetch("on")
+  abort("One User workflow must be dispatch-only") unless
+    trigger.keys == ["workflow_dispatch"]
+  inputs = trigger.fetch("workflow_dispatch").fetch("inputs")
+  expected_inputs = %w[backend_ref backend_repository confirmation expected_action_sha publish version web_ref web_repository]
+  abort("unexpected One User dispatch inputs") unless inputs.keys.sort == expected_inputs
   abort("unexpected One User jobs") unless user.fetch("jobs").keys.sort == %w[deploy prepare publish]
   abort("One User prepare timeout changed") unless
     user.fetch("jobs").fetch("prepare").fetch("timeout-minutes") <= 2
@@ -98,7 +102,10 @@ for text in \
   'pnpm --dir "$ONE_USER_WEB_DIR" format:check' \
   'pnpm --dir "$ONE_USER_WEB_DIR" lint' \
   'pnpm --dir "$ONE_USER_WEB_DIR" test' \
-  'pnpm --dir "$ONE_USER_WEB_DIR" build'; do
+  'pnpm --dir "$ONE_USER_WEB_DIR" build' \
+  'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml' \
+  '"backend_ref=$backend_release_sha"' \
+  '"web_ref=$web_release_sha"'; do
   require_text "$release" "$text"
 done
 
@@ -108,5 +115,8 @@ if grep -Fxq 'make --no-print-directory -C "$PROJECT_ROOT" validate' "$release";
 fi
 reject_text "$release" 'make --no-print-directory -C "$ONE_USER_BACKEND_DIR" check'
 reject_text "$release" 'make --no-print-directory -C "$ONE_USER_BACKEND_DIR" build'
+reject_text "$release" 'git -C "$ONE_USER_BACKEND_DIR" tag'
+reject_text "$release" 'git -C "$ONE_USER_WEB_DIR" tag'
+reject_text "$release" 'git -C "$PROJECT_ROOT" tag'
 
 printf '%s\n' 'One User focused publication workflow contract passed.'

@@ -33,10 +33,11 @@ done
 ruby -ryaml -e '
   workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
   trigger = workflow.fetch("on")
-  abort("Node Server workflow trigger must contain only push") unless
-    trigger.keys == ["push"]
-  abort("unexpected Node Server control tag") unless
-    trigger.fetch("push").fetch("tags") == ["node-server-v*"]
+  abort("Node Server workflow trigger must contain only workflow_dispatch") unless
+    trigger.keys == ["workflow_dispatch"]
+  inputs = trigger.fetch("workflow_dispatch").fetch("inputs")
+  expected_inputs = %w[backend_ref backend_repository confirmation deploy expected_action_sha publish version web_ref web_repository]
+  abort("unexpected Node Server dispatch inputs") unless inputs.keys.sort == expected_inputs
   jobs = workflow.fetch("jobs")
   abort("unexpected Node Server jobs") unless
     jobs.keys.sort == %w[deploy prepare publish]
@@ -74,13 +75,11 @@ ruby -ryaml -e '
 ' "$publisher"
 
 for text in \
-  'group: one-node-server-publish-${{ github.ref_name }}' \
+  'group: one-node-server-publish-${{ inputs.version }}' \
   'workflow_name: one-node-server' \
-  'format="$(manifest_field format)"' \
-  'backend_sha="$(manifest_field backend_sha)"' \
-  'web_sha="$(manifest_field web_sha)"' \
-  'gh api "repos/voiceofhu/one-node-server/commits/$backend_sha"' \
-  'gh api "repos/voiceofhu/one-node-web/commits/$web_sha"' \
+  'BACKEND_SHA: ${{ inputs.backend_ref }}' \
+  'WEB_SHA: ${{ inputs.web_ref }}' \
+  'CONFIRMATION: ${{ inputs.confirmation }}' \
   'uses: ./.github/workflows/reusable-publish-web-backend.yml' \
   'name: Deploy One Node Server image' \
   'name: one-node-prod' \
@@ -91,7 +90,6 @@ for text in \
   require_text "$node_server" "$text"
 done
 reject_text "$node_server" 'source_tag='
-reject_text "$node_server" 'workflow_dispatch:'
 
 for text in \
   'ref: ${{ inputs.backend_sha }}' \
@@ -116,13 +114,15 @@ for text in \
   'make --no-print-directory -C "$ONE_NODE_WEB_DIR" install lint' \
   'make --no-print-directory -C "$ONE_NODE_SERVER_DIR" test' \
   'go vet ./...' \
-  'format=one-node-server-release-v1' \
-  'tag -a "$control_tag" "$action_head" -m "$control_manifest"' \
-  'Triggered One Node Server image publication and server deployment'; do
+  'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-server.yml' \
+  '"backend_ref=$server_head"' \
+  '"web_ref=$web_head"' \
+  'Dispatched One Node Server image publication and deployment'; do
   require_text "$release" "$text"
 done
 reject_text "$release" 'git -C "$ONE_NODE_SERVER_DIR" tag'
 reject_text "$release" 'git -C "$ONE_NODE_WEB_DIR" tag'
+reject_text "$release" 'git -C "$PROJECT_ROOT" tag'
 
 for text in \
   '^ghcr\.io/voiceofhu/node-server:' \

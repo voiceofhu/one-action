@@ -132,7 +132,9 @@ case "$workflow" in
     publish_supported=true
     ;;
   node.yml)
-    require_inputs version
+    require_inputs node_repository node_ref version
+    require_repository node_repository voiceofhu/one-node-node
+    publish_supported=true
     ;;
 esac
 
@@ -153,6 +155,9 @@ esac
 publish="$(input_value publish || printf false)"
 deploy="$(input_value deploy || printf false)"
 upload_artifact="$(input_value upload_artifact || printf false)"
+if [[ "$workflow" == node.yml ]]; then
+  publish=true
+fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done

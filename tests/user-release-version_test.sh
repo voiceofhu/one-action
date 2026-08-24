@@ -99,14 +99,21 @@ git -C "$ONE_USER_WEB_DIR" config \
   https://github.com/voiceofhu/one-user-web.git
 git -C "$ONE_USER_WEB_DIR" push -q -u origin main
 
-# Run from a temporary canonical One Action repository so the control tag and
-# Action validation gate cannot touch the developer's real checkout.
-mkdir -p "$action_dir/scripts/release"
+# Run from a temporary canonical One Action repository so dispatch validation
+# cannot touch the developer's real checkout.
+mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github"
 cp "$PROJECT_ROOT/scripts/release/deploy-user-release.sh" \
   "$action_dir/scripts/release/deploy-user-release.sh"
-git -C "$action_dir" add scripts/release/deploy-user-release.sh
+export DISPATCH_LOG="$test_dir/dispatch.log"
+cat >"$action_dir/scripts/github/dispatch-workflow.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "$GH_TOKEN" == local-token-must-not-reach-gates ]]
+printf '%s\n' "$*" >"$DISPATCH_LOG"
+SCRIPT
+chmod 0755 "$action_dir/scripts/github/dispatch-workflow.sh"
+git -C "$action_dir" add scripts/release/deploy-user-release.sh scripts/github/dispatch-workflow.sh
 git -C "$action_dir" commit -qm initial
-action_sha="$(git -C "$action_dir" rev-parse HEAD)"
 git -C "$action_dir" remote add origin https://github.com/voiceofhu/one-action.git
 git -C "$action_dir" config \
   url."file://$action_bare".insteadOf \
@@ -124,20 +131,27 @@ node -e '
   if (p.version !== "26.815.1234") process.exit(1);
 ' "$ONE_USER_WEB_DIR/package.json"
 
-git --git-dir="$backend_bare" rev-parse --verify refs/tags/v26.815.1234 >/dev/null
-git --git-dir="$web_bare" rev-parse --verify refs/tags/v26.815.1234 >/dev/null
+if git --git-dir="$backend_bare" for-each-ref --format='%(refname)' refs/tags | grep -q . ||
+  git --git-dir="$web_bare" for-each-ref --format='%(refname)' refs/tags | grep -q . ||
+  git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags | grep -q .; then
+  printf '%s\n' 'One User release created a forbidden repository tag.' >&2
+  exit 1
+fi
 git --git-dir="$backend_bare" show refs/heads/main:Cargo.toml |
   grep -Fq 'version = "26.815.1234"'
 git --git-dir="$web_bare" show refs/heads/main:package.json |
   grep -Fq '"version": "26.815.1234"'
 
-control_sha="$(
-  git --git-dir="$action_bare" rev-parse 'refs/tags/user-v26.815.1234^{commit}'
-)"
-[ "$control_sha" = "$action_sha" ] || {
-  printf '%s\n' 'One User control tag does not point to the exact Action commit.' >&2
-  exit 1
-}
+backend_sha="$(git --git-dir="$backend_bare" rev-parse refs/heads/main)"
+web_sha="$(git --git-dir="$web_bare" rev-parse refs/heads/main)"
+for field in \
+  user.yml \
+  "backend_ref=$backend_sha" \
+  "web_ref=$web_sha" \
+  version=26.815.1234 \
+  publish=true; do
+  grep -Fq "$field" "$DISPATCH_LOG"
+done
 
 require_gate() {
   grep -Fxq "$1" "$LOCAL_GATE_LOG" || {
@@ -160,4 +174,4 @@ if [ -s "$FAKE_CURL_LOG" ]; then
 fi
 
 [[ -z "${GH_TOKEN:-}" ]]
-printf '%s\n' 'One User source and control-tag release passed all local gates without a local token.'
+printf '%s\n' 'One User version commits dispatched exact SHAs without repository tags.'

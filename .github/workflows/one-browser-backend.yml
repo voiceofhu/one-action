@@ -1,0 +1,103 @@
+name: One Browser App Server
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha: {required: true, type: string}
+      confirmation: {required: true, type: string}
+      backend_repository: {required: true, type: string}
+      backend_ref: {required: true, type: string}
+      web_repository: {required: true, type: string}
+      web_ref: {required: true, type: string}
+      version: {required: true, type: string}
+      environment: {required: true, type: string}
+      publish: {required: true, type: boolean}
+      deploy: {required: true, type: boolean}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-browser-app-server-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve exact App Server sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      backend_sha: ${{ steps.release.outputs.backend_sha }}
+      web_sha: ${{ steps.release.outputs.web_sha }}
+      version: ${{ steps.release.outputs.version }}
+      created_at: ${{ steps.release.outputs.created_at }}
+    steps:
+      - name: Validate dispatched release sources
+        id: release
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          ACTION_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          BACKEND_SHA: ${{ inputs.backend_ref }}
+          WEB_REPOSITORY: ${{ inputs.web_repository }}
+          WEB_SHA: ${{ inputs.web_ref }}
+          VERSION: ${{ inputs.version }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          PUBLISH: ${{ inputs.publish }}
+          DEPLOY: ${{ inputs.deploy }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$ACTION_REPOSITORY" == voiceofhu/one-action \
+            && "$ACTION_SERVER_URL" == https://github.com \
+            && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
+            && "$CONFIRMATION" == "enable:one-browser-backend:$ACTION_SHA" \
+            && "$BACKEND_REPOSITORY" == voiceofhu/one-browser-backend-next \
+            && "$WEB_REPOSITORY" == voiceofhu/one-browser-web-next \
+            && "$BACKEND_SHA" =~ ^[0-9a-f]{40}$ \
+            && "$WEB_SHA" =~ ^[0-9a-f]{40}$ \
+            && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            && "$ENVIRONMENT" == prod \
+            && "$PUBLISH" == true \
+            && "$DEPLOY" == false \
+            && -n "$GH_TOKEN" ]] || {
+            echo 'Invalid One Browser App Server dispatch inputs or Action trust root.' >&2
+            exit 1
+          }
+          backend_file="$RUNNER_TEMP/one-browser-backend-commit.json"
+          web_file="$RUNNER_TEMP/one-browser-web-commit.json"
+          gh api "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA" >"$backend_file" &
+          backend_pid=$!
+          gh api "repos/$WEB_REPOSITORY/commits/$WEB_SHA" >"$web_file" &
+          web_pid=$!
+          wait "$backend_pid"
+          wait "$web_pid"
+          [[ "$(jq -er .sha "$backend_file")" == "$BACKEND_SHA" \
+            && "$(jq -er .sha "$web_file")" == "$WEB_SHA" ]]
+          created_at="$(jq -er '.commit.committer.date' "$web_file")"
+          [[ "$created_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+          printf 'backend_sha=%s\n' "$BACKEND_SHA" >>"$GITHUB_OUTPUT"
+          printf 'web_sha=%s\n' "$WEB_SHA" >>"$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
+          printf 'created_at=%s\n' "$created_at" >>"$GITHUB_OUTPUT"
+
+  publish:
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-publish-web-backend.yml
+    with:
+      workflow_name: one-browser-app-server
+      action_sha: ${{ github.sha }}
+      backend_sha: ${{ needs.prepare.outputs.backend_sha }}
+      web_sha: ${{ needs.prepare.outputs.web_sha }}
+      version: ${{ needs.prepare.outputs.version }}
+      created_at: ${{ needs.prepare.outputs.created_at }}
+    secrets:
+      source_read_token: ${{ secrets.GH_TOKEN }}
+      package_write_token: ${{ secrets.GH_TOKEN }}

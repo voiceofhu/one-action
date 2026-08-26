@@ -98,7 +98,7 @@ write_environment_source() {
 	: >"$ENV_SOURCE"
 	chmod 0600 "$ENV_SOURCE"
 	write_env "NODE_NODE_ID" "$ONE_NODE_ID"
-	write_env "NODE_HEARTBEAT_INTERVAL" "30s"
+	write_env "NODE_HEARTBEAT_INTERVAL" "60s"
 	write_env "NODE_STATE_DIR" "$ONE_NODE_STATE_DIR"
 	write_env "CONTROL_ADDR" "$ONE_NODE_SERVER"
 	write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"

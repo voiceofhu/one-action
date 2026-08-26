@@ -1,0 +1,220 @@
+name: One Browser App
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha: {required: true, type: string}
+      confirmation: {required: true, type: string}
+      app_repository: {required: true, type: string}
+      app_ref: {required: true, type: string}
+      version: {required: true, type: string}
+      publish: {required: true, type: boolean}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-browser-app-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  CI: true
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  ONE_BROWSER_BACKEND_URL: ${{ vars.ONE_BROWSER_BACKEND_URL }}
+  ONE_BROWSER_APP_USE_REMOTE_FRONTEND: 'true'
+  PNPM_VERSION: 10.32.1
+
+jobs:
+  prepare:
+    name: Resolve exact App source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      app_sha: ${{ steps.release.outputs.app_sha }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+    steps:
+      - name: Validate dispatched release source
+        id: release
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SERVER_URL: ${{ github.server_url }}
+          ACTION_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          APP_REPOSITORY: ${{ inputs.app_repository }}
+          APP_SHA: ${{ inputs.app_ref }}
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+          BACKEND_URL: ${{ vars.ONE_BROWSER_BACKEND_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$ACTION_REPOSITORY" == voiceofhu/one-action \
+            && "$ACTION_SERVER_URL" == https://github.com \
+            && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
+            && "$CONFIRMATION" == "enable:app:$ACTION_SHA" \
+            && "$APP_REPOSITORY" == voiceofhu/one-browser-app-next \
+            && "$APP_SHA" =~ ^[0-9a-f]{40}$ \
+            && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            && "$PUBLISH" == true \
+            && "$BACKEND_URL" =~ ^https://[^/]+/?$ \
+            && -n "$GH_TOKEN" ]] || {
+            echo 'Invalid One Browser App dispatch inputs or Action trust root.' >&2
+            exit 1
+          }
+          commit_file="$RUNNER_TEMP/one-browser-app-commit.json"
+          gh api "repos/$APP_REPOSITORY/commits/$APP_SHA" >"$commit_file"
+          [[ "$(jq -er .sha "$commit_file")" == "$APP_SHA" ]]
+          printf 'app_sha=%s\n' "$APP_SHA" >>"$GITHUB_OUTPUT"
+          printf 'release_tag=one-browser-app-v%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            runner: ubuntu-24.04
+            rust_target: ''
+            bundles: appimage,deb
+            config: ''
+            assets: |
+              app/src-tauri/target/release/bundle/appimage/*.AppImage
+              app/src-tauri/target/release/bundle/deb/*.deb
+          - name: windows-amd64
+            runner: windows-latest
+            rust_target: ''
+            bundles: nsis
+            config: ''
+            assets: app/src-tauri/target/release/bundle/nsis/*.exe
+          - name: macos-arm64
+            runner: macos-14
+            rust_target: aarch64-apple-darwin
+            bundles: dmg
+            config: src-tauri/tauri.macos.conf.json
+            assets: app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          - name: macos-amd64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            bundles: dmg
+            config: src-tauri/tauri.macos.conf.json
+            assets: app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+    steps:
+      - name: Checkout exact App source
+        uses: actions/checkout@v4
+        with:
+          repository: voiceofhu/one-browser-app-next
+          ref: ${{ needs.prepare.outputs.app_sha }}
+          path: app
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm --dir app install --frozen-lockfile
+
+      - name: Validate App version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          actual="$(node -e 'const p=require("./app/package.json");process.stdout.write(p.version||"")')"
+          [[ "$actual" == "$VERSION" ]]
+
+      - name: Build desktop bundle
+        shell: bash
+        env:
+          BUNDLES: ${{ matrix.bundles }}
+          CONFIG: ${{ matrix.config }}
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          set -Eeuo pipefail
+          args=(--bundles "$BUNDLES" --ci)
+          [[ -z "$RUST_TARGET" ]] || args+=(--target "$RUST_TARGET")
+          [[ -z "$CONFIG" ]] || args+=(--config "$CONFIG")
+          pnpm --dir app tauri:build -- "${args[@]}"
+
+      - name: Upload verified bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-browser-app-${{ matrix.name }}
+          path: ${{ matrix.assets }}
+          if-no-files-found: error
+          retention-days: 2
+
+  publish:
+    name: Publish immutable App release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Download platform bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: one-browser-app-*
+          path: dist
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          APP_SHA: ${{ needs.prepare.outputs.app_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          mkdir release-assets
+          while IFS= read -r -d '' asset; do
+            artifact="${asset#dist/}"
+            artifact="${artifact%%/*}"
+            target="release-assets/$artifact-$(basename "$asset")"
+            [[ ! -e "$target" ]]
+            cp "$asset" "$target"
+          done < <(find dist -type f -print0 | sort -z)
+          (cd release-assets && sha256sum ./* >SHA256SUMS)
+          body="One Browser App source: voiceofhu/one-browser-app-next@$APP_SHA"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to mutate it." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "One Browser App v$VERSION" \
+            --notes "$body"

@@ -9,7 +9,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 受保护凭据读取精确的私有源码 commit/tag，再统一构建、分发，并按产品合同部署。公共日志
 和产物不得包含私有源码、Token、环境文件或生产凭据。
 
-所有产品最终都必须接入 One Action。当前已实现并保留三条活跃发布链；其他产品在这里
+所有产品最终都必须接入 One Action。当前已实现并保留六条活跃发布链；其他产品在这里
 补齐发布合同前，不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
@@ -17,9 +17,12 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-user` | dispatch `user.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-app-server` | dispatch `one-browser-backend.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像 |
+| `make deploy-app-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
 `deploy-user` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
-`deploy-node` 只触发 Runtime 编译上传。Browser、AMZ、Egress 和 App 的旧工作流不在活跃发布清单中。
+`deploy-node` 只触发 Runtime 编译上传。Browser 三条链路当前只发布产物，不执行生产服务器部署；部署合同需要在对应源码仓库补齐 Compose 和环境边界后另行启用。
 
 ## 发布边界
 
@@ -28,12 +31,12 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 1. 确认 `one-action` 和源码仓库位于干净分支，origin 指向固定仓库；
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
 3. 本地仅运行对应产品的格式、lint、测试和构建；
-4. One User 推送版本文件提交；One Node Server 和 One Node Runtime 要求本地 HEAD 已与远端分支完全一致；三条链路都不创建源码发布 tag；
+4. One User 推送版本文件提交；One Node Server、One Node Runtime 和 Browser 三条链路要求本地 HEAD 已与远端分支完全一致；这些链路不创建源码发布 tag；
 5. 本地入口把精确 Action SHA、源码 SHA 和版本 dispatch 给对应 workflow；One Node Release workflow 仅为公开 Release 自动创建所需的 Action tag；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One User 与 One Node Server 在镜像成功合并后，将 digest-qualified 镜像分别部署到受保护的生产 environment。
 
-本地 Git 凭据用于源码 `fetch/push` 和 workflow dispatch；dispatch 依次复用显式 `GH_TOKEN`、`gh auth` 登录或 Git HTTPS credential helper，凭据只进入最终 dispatch 子进程，不进入格式、测试或构建命令。仓库 Secret 只在 workflow 启动后读取私有源码和发布产物。三个 workflow 都校验固定的 Action commit 和源码 commit，不读取可变的远端分支头。
+本地 Git 凭据用于源码 `fetch/push` 和 workflow dispatch；dispatch 依次复用显式 `GH_TOKEN`、`gh auth` 登录或 Git HTTPS credential helper，凭据只进入最终 dispatch 子进程，不进入格式、测试或构建命令。仓库 Secret 只在 workflow 启动后读取私有源码和发布产物。所有发布 workflow 都校验固定的 Action commit 和源码 commit，不读取可变的远端分支头。
 
 ## One User 发布流程
 
@@ -70,15 +73,21 @@ One Node/Node Server 合同、临时 tag 模拟发布或 One Node 安装生命�
 make deploy-user VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
+make deploy-app
+make deploy-app-server
+make deploy-app-egress
 ```
 
-三个目标默认执行各自产品的真实本地检查，并通过 workflow dispatch 触发对应 Action。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 也不修改源码 `VERSION`。只查看计划时显式启用 dry-run；dry-run 不运行
+One User 和 One Node 目标执行各自产品的本地检查；Browser 三个目标直接通过 workflow dispatch 触发对应 Action。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash
 make deploy-user DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
+make deploy-app DRY_RUN=true
+make deploy-app-server DRY_RUN=true
+make deploy-app-egress DRY_RUN=true
 ```
 
 版本必须是无 `v` 前缀、无前导零的 `<major>.<minor>.<patch>`。
@@ -110,6 +119,10 @@ make node-bundle-installers
   release build 通过 Server 的 `build: frontend` 唯一执行一次 Web typecheck/Vite build 并暂存 `web-dist`；
 - One Node Runtime：仅在 Node 源码仓库执行完整 `verify-upgrade`。
 
+Browser 三个入口按当前约定不运行本地 fmt、lint、test 或 build；dispatcher 校验固定远程
+仓库名，把配置的 ref 解析为精确 SHA，并绑定当前 Action SHA 后直接 dispatch。App Server
+只读取 Backend+Web，App 和 Egress 各自只读取自己的远程源码仓库。
+
 任何本地门禁失败都会发生在版本提交或远程 dispatch 之前。
 
 ## Action 结构与时间上限
@@ -119,6 +132,9 @@ make node-bundle-installers
 - One User / One Node Server 部署：镜像发布成功后运行，各自最多 20 分钟，同一产品同一时间只允许一个生产部署。
 - One Node Runtime：2 分钟源码解析；两个架构并行编译和推送，每个最多 15 分钟；
   OCI index、checksum 和公开 One Action GitHub Release 上传最多 8 分钟。
+- One Browser App：2 分钟源码解析；Linux、Windows、macOS arm64/x64 并行打包；
+- One Browser App Server：复用 Web+Backend 双架构镜像发布器；
+- One Browser App Egress：amd64/arm64 原生包和镜像并行构建，再分别发布 Release 与 OCI index。
 
 Action 中没有 fmt、lint、test、race、e2e 或 installer lifecycle；双架构 Docker 构建使用
 按产品和架构隔离的 GHA layer cache。One User 与 One Node Server 保留各自隔离的
@@ -132,6 +148,10 @@ SSH/Compose 部署步骤。
 - 读取固定的私有源码仓库；
 - 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index；
 - 在 `voiceofhu/one-action@one-node-v<version>` 创建并上传公开 One Node Release。
+- 在 One Action 创建 One Browser App 与 Egress 的产品前缀 Release。
+
+App workflow 还需要 Repository Variable `ONE_BROWSER_BACKEND_URL`，值为生产 Backend 的
+HTTPS origin；该值在 Tauri 打包时写入远程能力和登录来源白名单。
 
 One Node 的构建使用 `contents: read`；Release job 使用仓库 `GITHUB_TOKEN` 的 `contents: write`。
 
@@ -169,12 +189,12 @@ PID、内存、运行时长和服务/容器状态。
 ## 目录
 
 ```text
-.github/workflows/   三个产品入口和一个 Web+Backend 复用发布工作流
+.github/workflows/   六个产品入口和一个 Web+Backend 复用发布工作流
 node/                One Node 安装、升级、卸载和本地 fixture
 scripts/release/     本地发布入口与上传辅助脚本
 scripts/deploy/      One User / One Node Server SSH、Registry 和 Compose 部署脚本
 scripts/github/      GitHub 只读检查和历史调度辅助代码
-tests/               当前三条发布链的本地契约测试
+tests/               当前六条发布链的本地契约测试
 make/                Makefile 子模块
 ```
 

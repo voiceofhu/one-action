@@ -107,8 +107,10 @@ case "$workflow" in
     publish_supported=true
     ;;
   one-browser-backend.yml)
-    require_inputs backend_repository backend_ref version environment publish deploy
+    require_inputs backend_repository backend_ref web_repository web_ref \
+      version environment publish deploy
     require_repository backend_repository voiceofhu/one-browser-backend-next
+    require_repository web_repository voiceofhu/one-browser-web-next
     publish_supported=true
     ;;
   node-server.yml)
@@ -121,6 +123,7 @@ case "$workflow" in
   app.yml)
     require_inputs app_repository app_ref version publish
     require_repository app_repository voiceofhu/one-browser-app-next
+    publish_supported=true
     ;;
   app-debug.yml)
     require_inputs app_repository app_ref upload_artifact

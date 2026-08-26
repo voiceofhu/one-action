@@ -6,6 +6,7 @@ include $(PROJECT_ROOT)/make/config.mk
 include $(PROJECT_ROOT)/make/github.mk
 include $(PROJECT_ROOT)/make/user.mk
 include $(PROJECT_ROOT)/make/node.mk
+include $(PROJECT_ROOT)/make/browser.mk
 
 .PHONY: help
 help:
@@ -24,4 +25,7 @@ help:
 		"Product releases:" \
 		"  make deploy-user            Compile, upload, and deploy One User" \
 		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
-		"  make deploy-node            Check One Node source and dispatch compile/upload"
+		"  make deploy-node            Check One Node source and dispatch compile/upload" \
+		"  make deploy-app             Check One Browser App and dispatch installer publication" \
+		"  make deploy-app-server      Check Browser Backend/Web and dispatch image publication" \
+		"  make deploy-app-egress      Check Browser Egress and dispatch package/image publication"

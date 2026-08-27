@@ -6,6 +6,7 @@ This namespace owns the One Node installer lifecycle inside the central
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/install.sh`
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/upgrade.sh`
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/uninstall.sh`
+- `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/open-ports.sh`
 
 The entrypoints load the product-specific modules under `scripts`. A
 remote invocation may set `ONE_ACTION_COMMIT` to the exact 40-character
@@ -101,3 +102,18 @@ A commit-pinned remote invocation has this form:
 curl -fsSL "https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/install.sh" |
   ONE_ACTION_COMMIT="<action-commit>" sh -s -- --mode native
 ```
+
+## Firewall ports
+
+Managed One Node protocol inbounds use the public IPv4 TCP/UDP range
+`20000-60000`. On a new server, run the commit-pinned firewall helper as root:
+
+```sh
+curl -fsSL "https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/open-ports.sh" |
+  sudo sh
+```
+
+The helper detects active UFW, firewalld, nftables, or iptables rules, adds the
+range idempotently, and uses an existing host persistence mechanism when one is
+available. Cloud security groups, provider firewalls, and router ACLs remain
+separate and must allow the same range.

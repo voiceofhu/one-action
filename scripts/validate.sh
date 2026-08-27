@@ -17,6 +17,7 @@ case "$scope" in
     )
     shell_files=(
       "$PROJECT_ROOT/node/install.sh"
+      "$PROJECT_ROOT/node/open-ports.sh"
       "$PROJECT_ROOT/node/upgrade.sh"
       "$PROJECT_ROOT/node/uninstall.sh"
       "$PROJECT_ROOT/scripts/github/check-token.sh"
@@ -32,6 +33,7 @@ case "$scope" in
       "${active_tests[@]}"
       "$PROJECT_ROOT/tests/fakes/curl"
       "$PROJECT_ROOT/scripts/validate.sh"
+      "$PROJECT_ROOT/node/tests/firewall_test.sh"
     )
     active_workflows=(
       user.yml
@@ -62,8 +64,10 @@ case "$scope" in
   node)
     active_tests=(
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+      "$PROJECT_ROOT/node/tests/firewall_test.sh"
     )
     shell_files=(
+      "$PROJECT_ROOT/node/open-ports.sh"
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "${active_tests[@]}"

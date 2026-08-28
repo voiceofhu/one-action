@@ -56,6 +56,15 @@ reads systemd and `/proc`; Docker status reads the container state, PID, and
 token. Non-TTY execution without an explicit option prints help instead of
 waiting for input.
 
+On systemd hosts, Native and Docker installation also owns
+`one-node-updater.path` and `one-node-updater.service`. The Node process can
+only queue an exact three-component numeric version in its state directory;
+the host service then invokes `/opt/one-node/install.sh --upgrade VERSION` and
+persists pending, running, succeeded, or failed status for the restarted Node
+to report. A manual upgrade from an older installation migrates the existing
+environment without replacing credentials and installs this host boundary.
+Non-systemd Docker hosts do not advertise remote self-upgrade.
+
 Native mode supports Linux amd64/arm64 hosts using systemd, including the major
 Debian/Ubuntu, RHEL-compatible, Fedora, Amazon Linux, SUSE, and Arch families.
 Docker mode works on any supported Linux host with Docker Engine and Compose v2;
@@ -94,6 +103,7 @@ sh tests/readiness_test.sh
 sh tests/reconfigure_test.sh
 sh tests/reset_test.sh
 sh tests/native_recovery_test.sh
+sh tests/updater_test.sh
 ```
 
 A commit-pinned remote invocation has this form:

@@ -234,6 +234,7 @@ reconfigure_native_installation() {
 		RECONFIGURE_BINARY_CHANGED="true"
 	fi
 	prepare_native_reconfiguration_manifest
+	record_host_updater_manifest_paths
 
 	systemctl stop one-node.service || die "unable to stop the existing native runtime"
 	if [ "$RECONFIGURE_BINARY_CHANGED" = "true" ]; then

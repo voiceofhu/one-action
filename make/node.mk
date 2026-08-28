@@ -9,6 +9,7 @@ node-check:
 	@sh $(PROJECT_ROOT)/node/tests/reconfigure_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/reset_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/native_recovery_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/updater_test.sh
 
 NODE_INSTALLER_DIST ?= $(PROJECT_ROOT)/node/dist
 

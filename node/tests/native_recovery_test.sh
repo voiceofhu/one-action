@@ -20,6 +20,7 @@ fail() {
 . "$ROOT_DIR/scripts/install/config.sh"
 . "$ROOT_DIR/scripts/install/host.sh"
 . "$ROOT_DIR/scripts/install/files.sh"
+. "$ROOT_DIR/scripts/install/updater.sh"
 . "$ROOT_DIR/scripts/install/native.sh"
 . "$ROOT_DIR/scripts/install/native_reconfigure.sh"
 

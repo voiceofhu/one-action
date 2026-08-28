@@ -34,6 +34,12 @@ on_install_exit() {
 	trap - EXIT HUP INT TERM
 	if [ "$INSTALL_STARTED" = "true" ] && [ "$INSTALL_COMMITTED" != "true" ]; then
 		set +e
+		if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
+			systemctl disable --now one-node-updater.path >/dev/null 2>&1
+			systemctl stop one-node-updater.service >/dev/null 2>&1
+			rm -f -- "$UPDATER_FILE" "$UPDATER_SERVICE_FILE" "$UPDATER_PATH_FILE"
+			systemctl daemon-reload >/dev/null 2>&1
+		fi
 		if [ "$INSTALL_MODE" = "native" ]; then
 			systemctl disable --now one-node.service >/dev/null 2>&1
 			rm -f -- "$UNIT_FILE"
@@ -100,6 +106,9 @@ write_environment_source() {
 	write_env "NODE_NODE_ID" "$ONE_NODE_ID"
 	write_env "NODE_HEARTBEAT_INTERVAL" "60s"
 	write_env "NODE_STATE_DIR" "$ONE_NODE_STATE_DIR"
+	if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
+		write_env "NODE_UPGRADE_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/update/request"
+	fi
 	write_env "CONTROL_ADDR" "$ONE_NODE_SERVER"
 	write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"
 	write_env "CONTROL_BOOTSTRAP_ENV_FILE" "$ENV_FILE"
@@ -134,6 +143,7 @@ write_common_sources() {
 	else
 		manifest_append_owned_path "$MANIFEST_COMPOSE_PATH"
 	fi
+	record_host_updater_manifest_paths
 	MANIFEST_OWNED_COUNT=$(printf '%s\n' "$MANIFEST_OWNED_PATHS" | awk 'NF { count++ } END { print count + 0 }')
 	manifest_write "$RECORD_SOURCE" || die "unable to write the installation manifest"
 }
@@ -304,6 +314,7 @@ reconfigure_existing_installation() {
 	replace_managed_file "$ENV_SOURCE" "$ENV_FILE" 0600 ||
 		die "unable to replace the One Node environment"
 	MANIFEST_DESIRED_CONFIG_REVISION=$ONE_NODE_EXPECTED_CONFIG_REVISION
+	record_host_updater_manifest_paths
 	manifest_write "$INSTALL_RECORD" || die "unable to update the installation manifest"
 	reset_registration_state_for_reenrollment
 	restart_reconfigured_runtime || die "unable to restart the existing $INSTALL_MODE runtime"

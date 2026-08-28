@@ -10,6 +10,9 @@ MANIFEST_ENV_PATH="${MANIFEST_INSTALL_DIR}/.env"
 MANIFEST_COMPOSE_PATH="${MANIFEST_INSTALL_DIR}/docker-compose.yml"
 MANIFEST_RECORD_PATH="${MANIFEST_INSTALL_DIR}/.installation"
 MANIFEST_UNIT_PATH="/etc/systemd/system/one-node.service"
+MANIFEST_UPDATER_PATH="${MANIFEST_INSTALL_DIR}/updater.sh"
+MANIFEST_UPDATER_SERVICE_PATH="/etc/systemd/system/one-node-updater.service"
+MANIFEST_UPDATER_PATH_UNIT_PATH="/etc/systemd/system/one-node-updater.path"
 
 manifest_fail() {
 	printf '%s\n' "[one-node] error: $*" >&2
@@ -103,6 +106,14 @@ manifest_validate_owned_paths() {
 	manifest_require_owned_path "$MANIFEST_ENV_PATH" || return 1
 	manifest_require_owned_path "$MANIFEST_RECORD_PATH" || return 1
 	manifest_allowed_count=3
+	manifest_updater_owned=0
+	for manifest_updater_path in "$MANIFEST_UPDATER_PATH" "$MANIFEST_UPDATER_SERVICE_PATH" "$MANIFEST_UPDATER_PATH_UNIT_PATH"; do
+		if manifest_has_owned_path "$manifest_updater_path"; then
+			manifest_updater_owned=$((manifest_updater_owned + 1))
+		fi
+	done
+	[ "$manifest_updater_owned" -eq 0 ] || [ "$manifest_updater_owned" -eq 3 ] || return 1
+	manifest_allowed_count=$((manifest_allowed_count + manifest_updater_owned))
 	if manifest_has_owned_path "$MANIFEST_INSTALLER_PATH"; then
 		manifest_allowed_count=$((manifest_allowed_count + 1))
 	fi

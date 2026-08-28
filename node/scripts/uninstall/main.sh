@@ -17,6 +17,10 @@ main() {
 		return 0
 	fi
 	preflight_owned_paths
+	if manifest_has_owned_path "$MANIFEST_UPDATER_PATH_UNIT_PATH"; then
+		systemctl disable --now one-node-updater.path >/dev/null 2>&1 || true
+		systemctl stop one-node-updater.service >/dev/null 2>&1 || true
+	fi
 
 	if [ "$installed_mode" = "native" ]; then
 		uninstall_native
@@ -24,5 +28,6 @@ main() {
 		uninstall_docker
 	fi
 	remove_owned_files
+	command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
 	log "One Node sing-box runtime and all runtime state were removed"
 }

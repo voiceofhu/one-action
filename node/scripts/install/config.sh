@@ -8,6 +8,9 @@ initialize_install_config() {
 	INSTALL_DIR="/opt/one-node"
 	ENV_FILE="${INSTALL_DIR}/.env"
 	UNIT_FILE="/etc/systemd/system/one-node.service"
+	UPDATER_FILE="${INSTALL_DIR}/updater.sh"
+	UPDATER_SERVICE_FILE="/etc/systemd/system/one-node-updater.service"
+	UPDATER_PATH_FILE="/etc/systemd/system/one-node-updater.path"
 	COMPOSE_FILE="${INSTALL_DIR}/docker-compose.yml"
 	INSTALL_RECORD="${INSTALL_DIR}/.installation"
 	CONTAINER_NAME="one-node"
@@ -27,6 +30,7 @@ initialize_install_config() {
 	ONE_NODE_BINARY_SHA256_ARM64=${ONE_NODE_BINARY_SHA256_ARM64:-}
 	ONE_NODE_DOCKER_IMAGE=${ONE_NODE_DOCKER_IMAGE:-}
 	ONE_NODE_STATE_DIR=${ONE_NODE_STATE_DIR:-/var/lib/one-node}
+	HOST_UPDATER_ENABLED="false"
 	ONE_NODE_EXPECTED_CONFIG_REVISION=${ONE_NODE_EXPECTED_CONFIG_REVISION:-0}
 	if [ "${ONE_NODE_ALLOW_INSECURE+x}" != x ]; then
 		case "$ONE_NODE_SERVER" in

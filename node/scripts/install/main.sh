@@ -12,6 +12,7 @@ main() {
 	parse_install_arguments "$@"
 	validate_install_host
 	validate_install_config
+	configure_host_updater
 	probe_control_endpoint
 	validate_install_target
 	if [ "$INSTALL_OPERATION" = "reconfigure" ]; then
@@ -24,6 +25,7 @@ main() {
 			reconfigure_existing_installation
 		fi
 		install_persistent_installer
+		install_host_updater
 		if command -v entrypoint_cleanup >/dev/null 2>&1; then
 			entrypoint_cleanup
 			ONE_NODE_ENTRYPOINT_TEMP_DIR=""
@@ -50,6 +52,7 @@ main() {
 	else
 		install_docker_runtime
 	fi
+	install_host_updater
 	wait_for_ready_heartbeat
 
 	INSTALL_COMMITTED="true"

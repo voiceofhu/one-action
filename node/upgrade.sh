@@ -5,7 +5,7 @@
 set -eu
 umask 077
 
-ONE_NODE_UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
+ONE_NODE_UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/updater.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
 ONE_NODE_INSTALLER_SOURCE=""
 

@@ -46,6 +46,7 @@ main() {
 	fi
 
 	validate_upgrade_target
+	enable_host_updater_for_upgrade
 	stage_upgrade || die "upgrade artifact staging or immutable metadata verification failed"
 	if ! switch_upgrade; then
 		if [ "$UPGRADE_SWITCHED" = true ]; then

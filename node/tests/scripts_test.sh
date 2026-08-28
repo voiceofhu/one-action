@@ -5,9 +5,9 @@ ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEST_TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
 
-INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
+INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
 UNINSTALL_MODULES="install/common.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
-UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
+UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/updater.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
 
 for entrypoint in install.sh uninstall.sh upgrade.sh; do
 	sh -n "$ROOT_DIR/$entrypoint"
@@ -297,6 +297,7 @@ fi
 	. "$ROOT_DIR/scripts/shared/manifest.sh"
 	# shellcheck disable=SC1090
 	. "$ROOT_DIR/scripts/install/files.sh"
+	. "$ROOT_DIR/scripts/install/updater.sh"
 	ONE_NODE_VERSION=""
 	set_product_version 26.809.2200 fixture
 	[ "$ONE_NODE_VERSION" = 26.809.2200 ]
@@ -306,6 +307,7 @@ if (
 	. "$ROOT_DIR/scripts/shared/manifest.sh"
 	# shellcheck disable=SC1090
 	. "$ROOT_DIR/scripts/install/files.sh"
+	. "$ROOT_DIR/scripts/install/updater.sh"
 	ONE_NODE_VERSION="26.809.2200"
 	set_product_version 1.13.18 fixture
 ) >/dev/null 2>&1; then

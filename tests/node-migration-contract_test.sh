@@ -35,9 +35,19 @@ job_timeout() {
 for entrypoint in install.sh upgrade.sh uninstall.sh; do
   [[ -f "$PROJECT_ROOT/node/$entrypoint" ]] ||
     fail "missing namespaced Node entrypoint: node/$entrypoint"
-  [[ ! -e "$PROJECT_ROOT/$entrypoint" ]] ||
-    fail "ambiguous root lifecycle entrypoint must not exist: $entrypoint"
 done
+
+for entrypoint in install.sh uninstall.sh; do
+  root_entrypoint="$PROJECT_ROOT/$entrypoint"
+  [[ ! -e "$root_entrypoint" ]] && continue
+  [[ -f "$root_entrypoint" ]] ||
+    fail "root lifecycle entrypoint must be a regular file: $entrypoint"
+  grep -Fq 'ONE_BROWSER_EGRESS_' "$root_entrypoint" ||
+    fail "ambiguous root lifecycle entrypoint is not branded for Egress: $entrypoint"
+done
+
+[[ ! -e "$PROJECT_ROOT/upgrade.sh" ]] ||
+  fail "ambiguous root lifecycle entrypoint must not exist: upgrade.sh"
 
 require_text "$WORKFLOW" "'on':"
 require_text "$WORKFLOW" 'workflow_dispatch:'

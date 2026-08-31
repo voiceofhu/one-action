@@ -16,7 +16,7 @@ log() {
 
 print_uninstall_command() {
   cat <<'EOF'
-( set -o pipefail; r=; if [ "$(id -u)" -ne 0 ]; then command -v sudo >/dev/null 2>&1 || { echo 'root privileges or sudo are required' >&2; exit 1; }; r=sudo; fi; curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 'https://raw.githubusercontent.com/voiceofhu/one-action/main/uninstall.sh' | $r bash )
+( set -o pipefail; r=; if [ "$(id -u)" -ne 0 ]; then command -v sudo >/dev/null 2>&1 || { echo 'root privileges or sudo are required' >&2; exit 1; }; r=sudo; fi; curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 'https://raw.githubusercontent.com/voiceofhu/one-action/main/egress/uninstall.sh' | $r bash )
 EOF
 }
 

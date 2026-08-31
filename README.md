@@ -9,6 +9,11 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 受保护凭据读取精确的私有源码 commit/tag，再统一构建、分发，并按产品合同部署。公共日志
 和产物不得包含私有源码、Token、环境文件或生产凭据。
 
+公开安装器按产品命名空间组织：One Node 使用 `node/{install,upgrade,uninstall}.sh`
+及 `node/scripts/`，One Browser Egress 使用 `egress/{install,uninstall}.sh` 及
+`egress/scripts/`。根目录 Egress 入口仅兼容历史命令；新生成的安装命令必须使用
+`egress/` 路径。
+
 所有产品最终都必须接入 One Action。当前已实现并保留六条活跃发布链；其他产品在这里
 补齐发布合同前，不应视为已经具备正式分发或部署能力：
 

@@ -16,6 +16,12 @@ case "$scope" in
       "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
     shell_files=(
+      "$PROJECT_ROOT/install.sh"
+      "$PROJECT_ROOT/uninstall.sh"
+      "$PROJECT_ROOT/egress/install.sh"
+      "$PROJECT_ROOT/egress/uninstall.sh"
+      "$PROJECT_ROOT"/egress/scripts/install/*.sh
+      "$PROJECT_ROOT"/egress/scripts/uninstall/*.sh
       "$PROJECT_ROOT/node/install.sh"
       "$PROJECT_ROOT/node/open-ports.sh"
       "$PROJECT_ROOT/node/upgrade.sh"

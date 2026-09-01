@@ -24,7 +24,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-app-server` | dispatch `one-browser-backend.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像 |
-| `make deploy-app-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
+| `make deploy-browser-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
 `deploy-user` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
 `deploy-node` 只触发 Runtime 编译上传。Browser 三条链路当前只发布产物，不执行生产服务器部署；部署合同需要在对应源码仓库补齐 Compose 和环境边界后另行启用。
@@ -80,10 +80,10 @@ make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 make deploy-app
 make deploy-app-server
-make deploy-app-egress
+make deploy-browser-egress
 ```
 
-One User 和 One Node 目标执行各自产品的本地检查；Browser 三个目标直接通过 workflow dispatch 触发对应 Action。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
+One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App/App Server 直接通过 workflow dispatch 触发对应 Action。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash
@@ -92,7 +92,7 @@ make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
 make deploy-app DRY_RUN=true
 make deploy-app-server DRY_RUN=true
-make deploy-app-egress DRY_RUN=true
+make deploy-browser-egress DRY_RUN=true
 ```
 
 版本必须是无 `v` 前缀、无前导零的 `<major>.<minor>.<patch>`。
@@ -106,6 +106,7 @@ make validate
 make validate-user
 make validate-node
 make validate-node-server
+make validate-browser-egress
 make node-check
 make node-bundle-installers
 ```
@@ -123,10 +124,12 @@ make node-bundle-installers
 - One Node Server：Web frozen install/lint；Backend model/test、vet、release build，
   release build 通过 Server 的 `build: frontend` 唯一执行一次 Web typecheck/Vite build 并暂存 `web-dist`；
 - One Node Runtime：仅在 Node 源码仓库执行完整 `verify-upgrade`。
+- One Browser Egress：`cargo fmt`、Clippy（warnings 视为错误）和完整 feature 测试。
 
-Browser 三个入口按当前约定不运行本地 fmt、lint、test 或 build；dispatcher 校验固定远程
-仓库名，把配置的 ref 解析为精确 SHA，并绑定当前 Action SHA 后直接 dispatch。App Server
-只读取 Backend+Web，App 和 Egress 各自只读取自己的远程源码仓库。
+Browser App/App Server 入口按当前约定不运行本地 fmt、lint、test 或 build；dispatcher 校验
+固定远程仓库名，把配置的 ref 解析为精确 SHA，并绑定当前 Action SHA 后直接 dispatch。
+Browser Egress 则要求本地源码仓库干净、当前分支与远端完全一致且 Rust 门禁通过，再 dispatch
+精确源码 SHA。
 
 任何本地门禁失败都会发生在版本提交或远程 dispatch 之前。
 

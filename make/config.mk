@@ -31,14 +31,13 @@ ONE_BROWSER_WEB_REF ?= main
 ONE_BROWSER_APP_REPOSITORY ?= voiceofhu/one-browser-app-next
 ONE_BROWSER_APP_REF ?= main
 ONE_BROWSER_EGRESS_REPOSITORY ?= voiceofhu/one-browser-egress-next
-ONE_BROWSER_EGRESS_REF ?= main
 ONE_BROWSER_BACKEND_DIR ?= $(SOURCE_ROOT)/one-browser/backend
 ONE_BROWSER_WEB_DIR ?= $(SOURCE_ROOT)/one-browser/web
 ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/app
 ONE_BROWSER_EGRESS_DIR ?= $(SOURCE_ROOT)/one-browser/egress
 BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(shell node -e "const p=require(process.argv[1]);process.stdout.write(p.version||'')" "$(ONE_BROWSER_APP_DIR)/package.json" 2>/dev/null))))
 BROWSER_APP_SERVER_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(shell awk -F '"' '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{print $$2;exit}' "$(ONE_BROWSER_BACKEND_DIR)/Cargo.toml" 2>/dev/null))))
-BROWSER_APP_EGRESS_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(shell awk -F '"' '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{print $$2;exit}' "$(ONE_BROWSER_EGRESS_DIR)/Cargo.toml" 2>/dev/null))))
+BROWSER_EGRESS_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 BROWSER_RUNTIME_REPOSITORY ?=
 BROWSER_RUNTIME_REF ?= main
 
@@ -78,7 +77,7 @@ export ONE_USER_BACKEND_DIR ONE_USER_WEB_DIR GENERATED_VERSION
 export ONE_BROWSER_BACKEND_REPOSITORY ONE_BROWSER_BACKEND_REF
 export ONE_BROWSER_WEB_REPOSITORY ONE_BROWSER_WEB_REF
 export ONE_BROWSER_APP_REPOSITORY ONE_BROWSER_APP_REF
-export ONE_BROWSER_EGRESS_REPOSITORY ONE_BROWSER_EGRESS_REF
+export ONE_BROWSER_EGRESS_REPOSITORY
 export ONE_BROWSER_BACKEND_DIR ONE_BROWSER_WEB_DIR ONE_BROWSER_APP_DIR
 export ONE_BROWSER_EGRESS_DIR
 export BROWSER_RUNTIME_REPOSITORY BROWSER_RUNTIME_REF

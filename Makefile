@@ -18,6 +18,7 @@ help:
 		"  make validate-user          Validate only One User release contracts" \
 		"  make validate-node          Validate only One Node Runtime release contracts" \
 		"  make validate-node-server   Validate only One Node Server release contracts" \
+		"  make validate-browser-egress Validate only Browser Egress release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \
 		"  make check-token            Check read-only access to active workflows" \
@@ -28,4 +29,4 @@ help:
 		"  make deploy-node            Check One Node source and dispatch compile/upload" \
 		"  make deploy-app             Check One Browser App and dispatch installer publication" \
 		"  make deploy-app-server      Check Browser Backend/Web and dispatch image publication" \
-		"  make deploy-app-egress      Check Browser Egress and dispatch package/image publication"
+		"  make deploy-browser-egress  Check Browser Egress and dispatch package/image publication"

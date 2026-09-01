@@ -8,6 +8,7 @@ case "$scope" in
   all)
     active_tests=(
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
+      "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
@@ -33,6 +34,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
@@ -43,6 +45,7 @@ case "$scope" in
     )
     active_workflows=(
       user.yml
+      egress.yml
       node-server.yml
       node.yml
       reusable-publish-web-backend.yml
@@ -101,6 +104,22 @@ case "$scope" in
     active_workflows=(
       node-server.yml
       reusable-publish-web-backend.yml
+    )
+    run_node_check=false
+    ;;
+  browser-egress)
+    active_tests=(
+      "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/tests/fakes/curl"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      egress.yml
     )
     run_node_check=false
     ;;

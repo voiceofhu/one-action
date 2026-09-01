@@ -131,7 +131,7 @@ case "$workflow" in
     ;;
   egress.yml)
     require_inputs egress_repository egress_ref version environment publish deploy
-    require_repository egress_repository voiceofhu/one-browser-egress-next
+    require_repository egress_repository voiceofhu/one-browser-egress
     publish_supported=true
     ;;
   node.yml)

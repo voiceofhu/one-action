@@ -51,7 +51,7 @@ jobs:
             && "$ACTION_SERVER_URL" == https://github.com \
             && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
             && "$CONFIRMATION" == "enable:egress:$ACTION_SHA" \
-            && "$EGRESS_REPOSITORY" == voiceofhu/one-browser-egress-next \
+            && "$EGRESS_REPOSITORY" == voiceofhu/one-browser-egress \
             && "$EGRESS_SHA" =~ ^[0-9a-f]{40}$ \
             && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
             && "$ENVIRONMENT" == prod \
@@ -86,7 +86,7 @@ jobs:
       - name: Checkout exact Egress source
         uses: actions/checkout@v4
         with:
-          repository: voiceofhu/one-browser-egress-next
+          repository: voiceofhu/one-browser-egress
           ref: ${{ needs.prepare.outputs.egress_sha }}
           path: egress
           token: ${{ secrets.GH_TOKEN }}
@@ -150,7 +150,7 @@ jobs:
       - name: Checkout exact Egress source
         uses: actions/checkout@v4
         with:
-          repository: voiceofhu/one-browser-egress-next
+          repository: voiceofhu/one-browser-egress
           ref: ${{ needs.prepare.outputs.egress_sha }}
           path: egress
           token: ${{ secrets.GH_TOKEN }}
@@ -183,7 +183,7 @@ jobs:
           push: true
           tags: ghcr.io/voiceofhu/one-browser-egress:build-${{ needs.prepare.outputs.egress_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           labels: |
-            org.opencontainers.image.source=https://github.com/voiceofhu/one-browser-egress-next
+            org.opencontainers.image.source=https://github.com/voiceofhu/one-browser-egress
             org.opencontainers.image.revision=${{ needs.prepare.outputs.egress_sha }}
             org.opencontainers.image.version=${{ inputs.version }}
             one.action.revision=${{ github.sha }}
@@ -220,7 +220,7 @@ jobs:
           tar -C dist -czf "dist/one-browser-egress-$VERSION.tar.gz" \
             one-browser-egress-linux-amd64 one-browser-egress-linux-arm64 SHA256SUMS
           (cd dist && sha256sum "one-browser-egress-$VERSION.tar.gz" >>SHA256SUMS)
-          body="One Browser Egress source: voiceofhu/one-browser-egress-next@$EGRESS_SHA"
+          body="One Browser Egress source: voiceofhu/one-browser-egress@$EGRESS_SHA"
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; refusing to mutate it." >&2
             exit 1

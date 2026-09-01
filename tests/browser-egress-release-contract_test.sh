@@ -50,6 +50,7 @@ fi
 
 require_text "$WORKFLOW" 'egress_repository: {required: true, type: string}'
 require_text "$WORKFLOW" 'egress_ref: {required: true, type: string}'
+require_text "$WORKFLOW" 'repository: voiceofhu/one-browser-egress'
 require_text "$WORKFLOW" 'one-browser-egress-linux-amd64 one-browser-egress-linux-arm64 >SHA256SUMS'
 require_text "$WORKFLOW" 'ghcr.io/voiceofhu/one-browser-egress:'
 require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
@@ -58,7 +59,7 @@ dry_run_output="$(
   DRY_RUN=true \
   VERSION=26.901.1200 \
   ONE_BROWSER_EGRESS_DIR=/missing/one-browser-egress \
-  ONE_BROWSER_EGRESS_REPOSITORY=voiceofhu/one-browser-egress-next \
+  ONE_BROWSER_EGRESS_REPOSITORY=voiceofhu/one-browser-egress \
   bash "$RELEASE_SCRIPT"
 )"
 grep -Fq 'One Browser Egress release plan:' <<<"$dry_run_output" ||
@@ -79,7 +80,7 @@ dispatch_output="$(
   ACTION_REPOSITORY=voiceofhu/one-action \
   ACTION_REF=main \
   bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" egress.yml \
-    egress_repository=voiceofhu/one-browser-egress-next \
+    egress_repository=voiceofhu/one-browser-egress \
     egress_ref=main \
     version=26.901.1200 \
     environment=prod \

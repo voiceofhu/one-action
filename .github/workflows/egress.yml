@@ -67,19 +67,21 @@ jobs:
           printf 'egress_sha=%s\n' "$EGRESS_SHA" >>"$GITHUB_OUTPUT"
           printf 'release_tag=one-browser-egress-v%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
 
-  native:
-    name: Build native Linux ${{ matrix.arch }}
+  build:
+    name: Build and upload linux/${{ matrix.arch }}
     needs: prepare
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
+            platform: linux/amd64
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-musl
           - arch: arm64
+            platform: linux/arm64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-musl
     steps:
@@ -131,32 +133,6 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
-  image:
-    name: Build image ${{ matrix.arch }}
-    needs: prepare
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            runner: ubuntu-24.04
-          - arch: arm64
-            platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - name: Checkout exact Egress source
-        uses: actions/checkout@v4
-        with:
-          repository: voiceofhu/one-browser-egress
-          ref: ${{ needs.prepare.outputs.egress_sha }}
-          path: egress
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 1
-          persist-credentials: false
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -178,7 +154,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: egress
-          file: egress/deploy/docker/Dockerfile
+          file: egress/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
           tags: ghcr.io/voiceofhu/one-browser-egress:build-${{ needs.prepare.outputs.egress_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
@@ -196,7 +172,7 @@ jobs:
     name: Publish immutable Egress release
     needs:
       - prepare
-      - native
+      - build
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -235,7 +211,7 @@ jobs:
     name: Publish immutable Egress image
     needs:
       - prepare
-      - image
+      - build
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

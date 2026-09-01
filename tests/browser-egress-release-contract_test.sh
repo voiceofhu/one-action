@@ -51,9 +51,22 @@ fi
 require_text "$WORKFLOW" 'egress_repository: {required: true, type: string}'
 require_text "$WORKFLOW" 'egress_ref: {required: true, type: string}'
 require_text "$WORKFLOW" 'repository: voiceofhu/one-browser-egress'
+require_text "$WORKFLOW" '  build:'
+require_text "$WORKFLOW" 'name: Build and upload linux/${{ matrix.arch }}'
+require_text "$WORKFLOW" 'file: egress/Dockerfile'
 require_text "$WORKFLOW" 'one-browser-egress-linux-amd64 one-browser-egress-linux-arm64 >SHA256SUMS'
 require_text "$WORKFLOW" 'ghcr.io/voiceofhu/one-browser-egress:'
 require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
+if grep -Eq '^  (native|image):' "$WORKFLOW"; then
+  fail 'Browser Egress must use one build matrix for native assets and images'
+fi
+if grep -Fq -- 'egress/deploy/docker/Dockerfile' "$WORKFLOW"; then
+  fail 'Browser Egress workflow references the removed nested Dockerfile path'
+fi
+[[ "$(grep -Ec '^[[:space:]]+- arch: (amd64|arm64)$' "$WORKFLOW")" == 2 ]] ||
+  fail 'Browser Egress build matrix must contain exactly amd64 and arm64'
+[[ "$(grep -Fc -- '- build' "$WORKFLOW")" == 2 ]] ||
+  fail 'Browser Egress Release and image manifest must both depend on build'
 
 dry_run_output="$(
   DRY_RUN=true \

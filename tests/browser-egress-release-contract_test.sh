@@ -54,11 +54,20 @@ require_text "$WORKFLOW" 'repository: voiceofhu/one-browser-egress'
 require_text "$WORKFLOW" '  build:'
 require_text "$WORKFLOW" 'name: Build and upload linux/${{ matrix.arch }}'
 require_text "$WORKFLOW" 'file: egress/Dockerfile'
+require_text "$WORKFLOW" 'working-directory: egress'
+require_text "$WORKFLOW" 'toolchain="$(sed -nE'
+require_text "$WORKFLOW" 'rustup toolchain install "$toolchain"'
+require_text "$WORKFLOW" '--target "$RUST_TARGET"'
+require_text "$WORKFLOW" 'RUSTUP_TOOLCHAIN=%s'
+require_text "$WORKFLOW" 'rustup target list --installed | grep -Fx "$RUST_TARGET"'
 require_text "$WORKFLOW" 'one-browser-egress-linux-amd64 one-browser-egress-linux-arm64 >SHA256SUMS'
 require_text "$WORKFLOW" 'ghcr.io/voiceofhu/one-browser-egress:'
 require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
 if grep -Eq '^  (native|image):' "$WORKFLOW"; then
   fail 'Browser Egress must use one build matrix for native assets and images'
+fi
+if grep -Fq -- 'dtolnay/rust-toolchain@stable' "$WORKFLOW"; then
+  fail 'Browser Egress must not install the musl target on a different stable toolchain'
 fi
 if grep -Fq -- 'egress/deploy/docker/Dockerfile' "$WORKFLOW"; then
   fail 'Browser Egress workflow references the removed nested Dockerfile path'

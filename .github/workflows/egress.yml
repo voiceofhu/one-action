@@ -95,10 +95,22 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
+      - name: Install source-declared Rust toolchain
+        working-directory: egress
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          set -Eeuo pipefail
+          toolchain="$(sed -nE 's/^channel = "([^"]+)"$/\1/p' rust-toolchain.toml)"
+          [[ "$toolchain" =~ ^1\.[0-9]+\.[0-9]+$ ]]
+          rustup toolchain install "$toolchain" \
+            --profile minimal \
+            --target "$RUST_TARGET" \
+            --no-self-update
+          printf 'RUSTUP_TOOLCHAIN=%s\n' "$toolchain" >>"$GITHUB_ENV"
+          rustc --version
+          rustup target list --installed | grep -Fx "$RUST_TARGET"
 
       - name: Install musl toolchain
         shell: bash

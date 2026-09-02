@@ -34,7 +34,12 @@ install_host_updater
 fake_installer="${TEST_TEMP_DIR}/install.sh"
 cat >"$fake_installer" <<'EOF'
 #!/bin/sh
-[ "$1" = --upgrade ] && [ "$2" = 26.828.1600 ]
+if [ "$1" = --upgrade ] && [ "$2" = 26.828.1600 ]; then
+	printf '%s\n' '[one-node] upgrade fixture completed'
+	exit 0
+fi
+printf '%s\n' '[one-node] error: nftables is required for One Node firewall management' >&2
+exit 1
 EOF
 chmod 0700 "$fake_installer"
 
@@ -80,6 +85,9 @@ fi
 	exit 1
 }
 grep -Fx 'state=failed' "${update_dir}/status" >/dev/null
+grep -Fx 'message=nftables is required for One Node firewall management' "${update_dir}/status" >/dev/null
+grep -Fx '[one-node] error: nftables is required for One Node firewall management' \
+	"${update_dir}/last-upgrade.log" >/dev/null
 
 cat >"${update_dir}/request" <<'EOF'
 command_id=command-2

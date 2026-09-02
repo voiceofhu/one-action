@@ -118,13 +118,28 @@ done
 
 mv -f -- "$request_file" "$running_file"
 write_status running "upgrade started"
-if "$installer" --upgrade "$version"; then
+output_file="${update_dir}/last-upgrade.log"
+temporary_output=$(mktemp "${update_dir}/.upgrade-output.XXXXXX")
+chmod 0600 "$temporary_output"
+if "$installer" --upgrade "$version" >"$temporary_output" 2>&1; then
+	cat "$temporary_output"
+	mv -f -- "$temporary_output" "$output_file"
+	sync -f "$output_file"
 	write_status succeeded "upgrade completed"
 	rm -f -- "$running_file"
 	sync -f "$update_dir"
 	exit 0
 fi
-write_status failed "upgrade failed"
+cat "$temporary_output" >&2
+failure_message=$(sed -n 's/^\[one-node\] error: //p' "$temporary_output" | tail -n 1)
+if [ -z "$failure_message" ]; then
+	failure_message=$(awk 'NF { message = $0 } END { print message }' "$temporary_output")
+fi
+[ -n "$failure_message" ] || failure_message="upgrade failed"
+failure_message=$(printf '%s' "$failure_message" | tr '\r\n' '  ' | cut -c 1-1000)
+mv -f -- "$temporary_output" "$output_file"
+sync -f "$output_file"
+write_status failed "$failure_message"
 rm -f -- "$running_file"
 sync -f "$update_dir"
 exit 1

@@ -92,6 +92,7 @@ installer_main() {
       die_runtime_switch native docker
   fi
   ensure_install_directories
+  install_host_updater
   case "$installation_state" in
     fresh)
       log "No existing Egress installation detected; starting a fresh install for $HOST_PLATFORM"
@@ -178,6 +179,7 @@ bootstrap() {
   local version_argument_seen=0
   local enrollment_fingerprint token_file stage_code
   local replace_existing=0
+  local upgrade_existing=0
   local token_argument_seen=0
 
   while [ "$#" -gt 0 ]; do
@@ -224,6 +226,12 @@ bootstrap() {
         replace_existing=1
         shift
         ;;
+      --upgrade-existing)
+        [ "$upgrade_existing" -eq 0 ] ||
+          die "--upgrade-existing may be supplied only once"
+        upgrade_existing=1
+        shift
+        ;;
       -h|--help)
         show_help
         return 0
@@ -231,6 +239,16 @@ bootstrap() {
       *) die "Unknown argument: $1" ;;
     esac
   done
+
+  if [ "$upgrade_existing" -eq 1 ]; then
+    [ -z "$environment_token_present" ] && [ -z "$staged_token_present" ] &&
+      [ "$token_argument_seen" -eq 0 ] && [ "$replace_existing" -eq 0 ] ||
+      die "--upgrade-existing cannot be combined with enrollment options"
+    [ -z "$control_url" ] && [ -z "$install_mode" ] && [ -z "$tls_enabled" ] ||
+      die "--upgrade-existing reads runtime settings from the managed installation"
+    upgrade_existing_installation "$requested_version"
+    return
+  fi
 
   if [ -n "$staged_token_present" ]; then
     [ -z "$environment_token_present" ] ||
@@ -293,7 +311,7 @@ bootstrap() {
     fingerprint_matches existing_enrollment_mode claim_matches_existing_config \
     load_partial_enrollment_identity refresh_existing_enrollment \
     install_unconfigured_enrollment \
-    write_service_env write_compose_file \
+    write_service_env write_compose_file install_host_updater \
     discover_public_ip canonicalize_ipv6 query_ipv4_records \
     query_public_dns_records query_public_ipv4_records resolve_ipv4 \
     query_ipv6_records query_public_ipv6_records resolve_ipv6 \
@@ -305,4 +323,23 @@ bootstrap() {
     one-browser-egress-installer-stage2 \
     "$control_url" "$token_file" "$enrollment_fingerprint" "$replace_existing" "$tls_enabled" \
     "$install_mode" "$requested_version"
+}
+
+upgrade_existing_installation() {
+  local requested_version=$1
+  local control_url install_mode tls_enabled
+
+  INSTALL_DIR=/opt/one-browser-egress
+  ENV_FILE=$INSTALL_DIR/.env
+  INSTALL_RECORD=$INSTALL_DIR/.installation
+  EGRESS_IMAGE_REPOSITORY=ghcr.io/voiceofhu/one-browser-egress
+  [ -f "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ] &&
+    [ -f "$INSTALL_RECORD" ] && [ ! -L "$INSTALL_RECORD" ] ||
+    die "--upgrade-existing requires a complete managed Egress installation"
+  install_mode=$(installed_runtime) ||
+    die "managed Egress runtime metadata is invalid"
+  control_url=$(read_env_value "$ENV_FILE" EGRESS_CONTROL_URL) ||
+    die "managed Egress control URL is missing"
+  tls_enabled=$(read_env_value "$ENV_FILE" EGRESS_TLS_ENABLED 2>/dev/null || printf true)
+  installer_main "$control_url" "" "" 0 "$tls_enabled" "$install_mode" "$requested_version"
 }

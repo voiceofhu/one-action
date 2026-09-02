@@ -13,6 +13,8 @@ ENV_FILE=$INSTALL_DIR/.env
 COMPOSE_FILE=$INSTALL_DIR/docker-compose.yml
 NATIVE_BINARY=/usr/local/bin/one-browser-egress
 NATIVE_SERVICE_FILE=/etc/systemd/system/one-browser-egress.service
+UPDATER_SERVICE_FILE=/etc/systemd/system/one-browser-egress-updater.service
+UPDATER_PATH_FILE=/etc/systemd/system/one-browser-egress-updater.path
 RENEWAL_HOOK=/etc/letsencrypt/renewal-hooks/deploy/one-browser-egress.sh
 RUN_DIR=/run/one-browser-egress-installer
 

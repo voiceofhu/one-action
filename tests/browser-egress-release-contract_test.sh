@@ -4,6 +4,8 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$PROJECT_ROOT/.github/workflows/egress.yml"
 RELEASE_SCRIPT="$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
+INSTALLER="$PROJECT_ROOT/egress/install.sh"
+UPDATER="$PROJECT_ROOT/egress/scripts/install/updater.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -63,6 +65,23 @@ require_text "$WORKFLOW" 'rustup target list --installed | grep -Fx "$RUST_TARGE
 require_text "$WORKFLOW" 'one-browser-egress-linux-amd64 one-browser-egress-linux-arm64 >SHA256SUMS'
 require_text "$WORKFLOW" 'ghcr.io/voiceofhu/one-browser-egress:'
 require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
+require_text "$INSTALLER" 'updater.sh'
+require_text "$INSTALLER" '--upgrade-existing'
+require_text "$UPDATER" 'one-browser-egress-updater.service'
+require_text "$UPDATER" 'one-browser-egress-updater.path'
+require_text "$UPDATER" '--upgrade-existing --version "$version"'
+require_text "$PROJECT_ROOT/egress/scripts/install/enrollment.sh" 'EGRESS_UPGRADE_REQUEST_FILE='
+require_text "$PROJECT_ROOT/egress/scripts/install/compose-config.sh" ':/app/update'
+
+upgrade_parse_output="$(
+  ONE_BROWSER_INSTALLER_LIBRARY_ONLY=1 bash -c '
+    source "$1"
+    upgrade_existing_installation() { printf "upgrade:%s\n" "$1"; }
+    bootstrap --upgrade-existing --version 26.902.1200
+  ' _ "$INSTALLER"
+)"
+[[ "$upgrade_parse_output" == 'upgrade:26.902.1200' ]] ||
+  fail 'Egress installer did not route tokenless managed upgrade safely'
 if grep -Eq '^  (native|image):' "$WORKFLOW"; then
   fail 'Browser Egress must use one build matrix for native assets and images'
 fi

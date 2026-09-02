@@ -40,6 +40,10 @@ main() {
     die "Installed mode is $detected_mode, not $requested_mode"
   fi
 
+  systemctl disable --now one-browser-egress-updater.path >/dev/null 2>&1 || true
+  systemctl stop one-browser-egress-updater.service >/dev/null 2>&1 || true
+  rm -f -- "$UPDATER_PATH_FILE" "$UPDATER_SERVICE_FILE"
+  systemctl daemon-reload
   log "Stopping and removing the $detected_mode Egress runtime"
   if [ "$detected_mode" = native ]; then
     uninstall_native

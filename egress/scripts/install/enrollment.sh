@@ -336,6 +336,11 @@ write_service_env() {
     printf 'EGRESS_MAX_STREAMS_PER_CONNECTION=%s\n' "$per_connection_limit"
     printf 'EGRESS_MAX_STREAMS_GLOBAL=%s\n' "$CONFIG_MAX_STREAMS"
     printf 'EGRESS_AUTHORIZATION_TIMEOUT_SECONDS=5\n'
+    if [ "$INSTALL_MODE" = docker ]; then
+      printf 'EGRESS_UPGRADE_REQUEST_FILE=/app/update/request\n'
+    else
+      printf 'EGRESS_UPGRADE_REQUEST_FILE=%s/update/request\n' "$INSTALL_DIR"
+    fi
     printf 'RUST_LOG=one_browser_egress=info\n'
   } >"$env_tmp"
   chown root:root "$env_tmp"

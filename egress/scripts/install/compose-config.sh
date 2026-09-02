@@ -20,12 +20,14 @@ services:
       EGRESS_BIND_ADDR: 0.0.0.0:27600
       EGRESS_TLS_ENABLED: ${EGRESS_TLS_ENABLED:-true}
       EGRESS_HEALTHCHECK_ADDR: 127.0.0.1:27600
+      EGRESS_UPGRADE_REQUEST_FILE: /app/update/request
+    volumes:
+      - ${EGRESS_UPDATE_DIR:-./update}:/app/update
 EOF
   if [ "$CONFIG_TLS_ENABLED" = true ]; then
     cat >>"$compose_tmp" <<'EOF'
       EGRESS_TLS_CERT_FILE: /app/tls/fullchain.pem
       EGRESS_TLS_KEY_FILE: /app/tls/privkey.pem
-    volumes:
       - ${EGRESS_CERT_DIR:-./certs}:/app/tls:ro
 EOF
   fi

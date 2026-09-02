@@ -16,6 +16,7 @@ readonly -a ONE_BROWSER_EGRESS_INSTALL_MODULES=(
   compose-config.sh
   tls.sh
   docker.sh
+  updater.sh
   main.sh
 )
 ONE_BROWSER_EGRESS_MODULE_TEMP_DIR=
@@ -151,6 +152,7 @@ egress_entrypoint_stage_remote_install() {
   local environment_token_present=${ONE_BROWSER_ENROLLMENT_TOKEN+x}
   local enrollment_token=${ONE_BROWSER_ENROLLMENT_TOKEN-}
   local token_argument_seen=0
+  local upgrade_existing_seen=0
   local token_file loader_code
   local -a sanitized_arguments=()
 
@@ -171,6 +173,13 @@ egress_entrypoint_stage_remote_install() {
         token_argument_seen=1
         shift 2
         ;;
+      --upgrade-existing)
+        [ "$upgrade_existing_seen" -eq 0 ] ||
+          egress_entrypoint_die "--upgrade-existing may be supplied only once"
+        upgrade_existing_seen=1
+        sanitized_arguments+=("$1")
+        shift
+        ;;
       *)
         sanitized_arguments+=("$1")
         shift
@@ -178,7 +187,10 @@ egress_entrypoint_stage_remote_install() {
     esac
   done
 
-  if [ -n "$environment_token_present" ] || [ "$token_argument_seen" -eq 1 ]; then
+  if [ "$upgrade_existing_seen" -eq 1 ]; then
+    [ -z "$environment_token_present" ] && [ "$token_argument_seen" -eq 0 ] ||
+      egress_entrypoint_die "--upgrade-existing cannot use an enrollment token"
+  elif [ -n "$environment_token_present" ] || [ "$token_argument_seen" -eq 1 ]; then
     egress_entrypoint_validate_token "$enrollment_token" ||
       egress_entrypoint_die "--enrollment-token is invalid"
     [ "${EUID:-$(id -u)}" -eq 0 ] ||
@@ -192,6 +204,8 @@ egress_entrypoint_stage_remote_install() {
     export ONE_BROWSER_EGRESS_ENROLLMENT_TOKEN_FILE=$token_file
     ONE_BROWSER_EGRESS_STAGED_TOKEN_FILE=$token_file
     trap egress_entrypoint_cleanup_remote EXIT
+  else
+    egress_entrypoint_die "--enrollment-token is required"
   fi
   set --
 

@@ -117,6 +117,10 @@ case "$scope" in
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
     )
     shell_files=(
+      "$PROJECT_ROOT/egress/install.sh"
+      "$PROJECT_ROOT/egress/uninstall.sh"
+      "$PROJECT_ROOT"/egress/scripts/install/*.sh
+      "$PROJECT_ROOT"/egress/scripts/uninstall/*.sh
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "${active_tests[@]}"

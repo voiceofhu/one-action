@@ -134,10 +134,19 @@ update_existing_installation() {
   load_existing_env "$ENV_FILE"
   prepare_runtime_config
   ensure_tls_configuration
+  write_service_env
   installed=$(installed_version 2>/dev/null || true)
   if [ "$installed" = "$RESOLVED_VERSION" ] &&
     runtime_installation_complete; then
     CONFIG_CONTROL_TOKEN=
+    if [ "$INSTALL_MODE" = native ]; then
+      systemctl restart one-browser-egress
+      wait_for_native_health
+    else
+      write_compose_file
+      compose up -d egress
+      wait_for_health
+    fi
     log "One Browser Egress $RESOLVED_VERSION is already the requested version"
     printf 'One Browser Egress %s (%s, %s) is already up to date at %s.\n' \
       "$CONFIG_EGRESS_ID" "$INSTALL_MODE" "$RESOLVED_VERSION" "$CONFIG_PUBLIC_ENDPOINT"
@@ -151,7 +160,6 @@ update_existing_installation() {
   else
     log "The installed Egress version is unknown; overwriting the runtime with $RESOLVED_VERSION"
   fi
-  write_service_env
   CONFIG_CONTROL_TOKEN=
   if [ "$INSTALL_MODE" = native ]; then
     start_native_egress

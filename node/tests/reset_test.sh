@@ -15,6 +15,7 @@ fail() {
 . "$ROOT_DIR/scripts/shared/manifest.sh"
 . "$ROOT_DIR/scripts/install/config.sh"
 . "$ROOT_DIR/scripts/install/host.sh"
+. "$ROOT_DIR/scripts/install/firewall.sh"
 . "$ROOT_DIR/scripts/install/readiness.sh"
 
 initialize_install_config

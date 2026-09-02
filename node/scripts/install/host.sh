@@ -7,6 +7,10 @@ validate_install_host() {
 			die "$required_command is required"
 	done
 	[ "$(uname -s)" = "Linux" ] || die "only Linux is supported"
+	command -v systemctl >/dev/null 2>&1 ||
+		die "systemd is required for One Node firewall management"
+	command -v nft >/dev/null 2>&1 ||
+		die "nftables is required for One Node firewall management"
 
 	resolve_host_architecture
 	if [ "$INSTALL_MODE" = "native" ]; then
@@ -94,6 +98,7 @@ replace_existing_installation() {
 		docker) uninstall_docker ;;
 		*) die "existing installation mode is invalid" ;;
 		esac
+		remove_host_firewall
 		remove_owned_files
 	else
 		reset_existing_installation
@@ -150,6 +155,9 @@ reset_existing_installation() {
 	fi
 	if command -v docker >/dev/null 2>&1; then
 		docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+	fi
+	if command -v nft >/dev/null 2>&1; then
+		nft delete table inet one_node >/dev/null 2>&1 || true
 	fi
 	rm -f -- "$UNIT_FILE"
 	rm -rf -- "$INSTALL_DIR" "$ONE_NODE_STATE_DIR"

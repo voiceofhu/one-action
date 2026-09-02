@@ -9,6 +9,7 @@ trap 'rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
 . "$ROOT_DIR/scripts/shared/manifest.sh"
 . "$ROOT_DIR/scripts/install/files.sh"
 . "$ROOT_DIR/scripts/install/updater.sh"
+. "$ROOT_DIR/scripts/install/firewall.sh"
 
 INSTALL_DIR="${TEST_TEMP_DIR}/opt/one-node"
 ONE_NODE_STATE_DIR="${TEST_TEMP_DIR}/var/lib/one-node"

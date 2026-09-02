@@ -4,8 +4,8 @@ write_native_source() {
 	cat >"$UNIT_SOURCE" <<'EOF'
 [Unit]
 Description=One Node sing-box runtime
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target one-node-firewall.path
+After=network-online.target one-node-firewall.path
 
 [Service]
 Type=simple

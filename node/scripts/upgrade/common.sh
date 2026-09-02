@@ -45,6 +45,7 @@ cleanup_upgrade() {
 interrupt_upgrade() {
 	trap - HUP INT TERM
 	if [ "$UPGRADE_SWITCHED" = true ] && [ "$UPGRADE_ROLLED_BACK" != true ]; then
+		stage_host_firewall_transition >/dev/null 2>&1 || true
 		rollback_runtime >/dev/null 2>&1 || true
 		wait_for_ready_heartbeat >/dev/null 2>&1 || true
 	fi
@@ -87,6 +88,8 @@ load_upgrade_manifest() {
 
 validate_upgrade_host() {
 	[ "$(id -u)" -eq 0 ] || die "run this upgrade as root"
+	command -v systemctl >/dev/null 2>&1 || die "systemd is required for One Node firewall management"
+	command -v nft >/dev/null 2>&1 || die "nftables is required for One Node firewall management"
 	command -v stat >/dev/null 2>&1 || die "stat is required (install coreutils)"
 	command -v sync >/dev/null 2>&1 || die "sync is required (install coreutils)"
 	case "$INSTALL_MODE" in

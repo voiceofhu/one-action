@@ -6,7 +6,6 @@ This namespace owns the One Node installer lifecycle inside the central
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/install.sh`
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/upgrade.sh`
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/uninstall.sh`
-- `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/open-ports.sh`
 
 The entrypoints load the product-specific modules under `scripts`. A
 remote invocation may set `ONE_ACTION_COMMIT` to the exact 40-character
@@ -56,20 +55,38 @@ reads systemd and `/proc`; Docker status reads the container state, PID, and
 token. Non-TTY execution without an explicit option prints help instead of
 waiting for input.
 
-On systemd hosts, Native and Docker installation also owns
+Native and Docker installation requires systemd and nftables. It owns
+`one-node-firewall.path` and `one-node-firewall.service`; the Node writes only
+validated inbound TCP/UDP ports under its state directory, while the host
+service atomically replaces the dedicated nftables sets. Unused ports in the
+managed `20000-60000` allocation range are dropped. Existing host firewall and
+cloud security-group policy remain separate.
+
+The installation also owns
 `one-node-updater.path` and `one-node-updater.service`. The Node process can
 only queue an exact three-component numeric version in its state directory;
 the host service then invokes `/opt/one-node/install.sh --upgrade VERSION` and
 persists pending, running, succeeded, or failed status for the restarted Node
 to report. A manual upgrade from an older installation migrates the existing
 environment without replacing credentials and installs this host boundary.
-Non-systemd Docker hosts do not advertise remote self-upgrade.
 
 Native mode supports Linux amd64/arm64 hosts using systemd, including the major
 Debian/Ubuntu, RHEL-compatible, Fedora, Amazon Linux, SUSE, and Arch families.
-Docker mode works on any supported Linux host with Docker Engine and Compose v2;
+Docker mode works on supported systemd Linux hosts with nftables, Docker Engine, and Compose v2;
 Debian/Ubuntu may install those packages automatically, while other families
 must provide Docker first. Docker and Native installations use the same menu.
+
+## Host network tuning
+
+Install, reconfiguration, and upgrade check the effective host network settings
+before the runtime starts. The lifecycle persists `fq`, BBR when the kernel
+provides it, and dynamic socket-buffer limits in
+`/etc/sysctl.d/99-zz-one-node.conf`. TCP maxima scale at 64 MiB per rounded GiB of
+RAM, with a 32 MiB floor for hosts below roughly 768 MiB and a 512 MiB ceiling.
+Initial receive/send buffers scale more conservatively and stop at 16 MiB.
+Matching settings are left untouched, while changed settings are applied
+immediately and reported in the installation output. Host tuning files are
+preserved on uninstall because they may benefit other host services.
 
 ## Migration record
 
@@ -115,15 +132,10 @@ curl -fsSL "https://raw.githubusercontent.com/voiceofhu/one-action/<action-commi
 
 ## Firewall ports
 
-Managed One Node protocol inbounds use the public IPv4 TCP/UDP range
-`20000-60000`. On a new server, run the commit-pinned firewall helper as root:
-
-```sh
-curl -fsSL "https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/open-ports.sh" |
-  sudo sh
-```
-
-The helper detects active UFW, firewalld, nftables, or iptables rules, adds the
-range idempotently, and uses an existing host persistence mechanism when one is
-available. Cloud security groups, provider firewalls, and router ACLs remain
-separate and must allow the same range.
+One Node dynamically publishes only the inbound TCP/UDP ports in the active
+runtime configuration. The host service accepts those ports and drops unused
+ports in the managed `20000-60000` allocation range. A configuration switch
+updates the nftables sets before listeners are exposed and restores the prior
+set if the runtime transaction fails. Cloud security groups, provider
+firewalls, and router ACLs cannot be changed by the host and must still permit
+the allocation range.

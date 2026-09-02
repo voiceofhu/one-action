@@ -5,9 +5,9 @@ ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEST_TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
 
-INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
-UNINSTALL_MODULES="install/common.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
-UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/updater.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
+INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
+UNINSTALL_MODULES="install/common.sh install/firewall.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
+UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
 
 for entrypoint in install.sh uninstall.sh upgrade.sh; do
 	sh -n "$ROOT_DIR/$entrypoint"
@@ -49,6 +49,7 @@ done
 # shellcheck disable=SC1090
 . "$ROOT_DIR/scripts/install/common.sh"
 . "$ROOT_DIR/scripts/shared/manifest.sh"
+. "$ROOT_DIR/scripts/install/firewall.sh"
 mode_fixture="$TEST_TEMP_DIR/mode-fixture"
 : >"$mode_fixture"
 chmod 0600 "$mode_fixture"
@@ -153,6 +154,7 @@ check_linux_host() (
 		esac
 	}
 	systemctl() { :; }
+	nft() { :; }
 	sha256sum() { :; }
 	INSTALL_MODE=native
 	ONE_NODE_BINARY_SHA256_AMD64=amd64-checksum

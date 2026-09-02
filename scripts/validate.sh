@@ -11,6 +11,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+      "$PROJECT_ROOT/node/tests/tuning_test.sh"
       "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
       "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
@@ -24,7 +25,8 @@ case "$scope" in
       "$PROJECT_ROOT"/egress/scripts/install/*.sh
       "$PROJECT_ROOT"/egress/scripts/uninstall/*.sh
       "$PROJECT_ROOT/node/install.sh"
-      "$PROJECT_ROOT/node/open-ports.sh"
+      "$PROJECT_ROOT/node/scripts/install/firewall.sh"
+      "$PROJECT_ROOT/node/scripts/install/tuning.sh"
       "$PROJECT_ROOT/node/upgrade.sh"
       "$PROJECT_ROOT/node/uninstall.sh"
       "$PROJECT_ROOT/scripts/github/check-token.sh"
@@ -42,6 +44,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/fakes/curl"
       "$PROJECT_ROOT/scripts/validate.sh"
       "$PROJECT_ROOT/node/tests/firewall_test.sh"
+      "$PROJECT_ROOT/node/tests/tuning_test.sh"
     )
     active_workflows=(
       user.yml
@@ -74,9 +77,11 @@ case "$scope" in
     active_tests=(
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/node/tests/firewall_test.sh"
+      "$PROJECT_ROOT/node/tests/tuning_test.sh"
     )
     shell_files=(
-      "$PROJECT_ROOT/node/open-ports.sh"
+      "$PROJECT_ROOT/node/scripts/install/firewall.sh"
+      "$PROJECT_ROOT/node/scripts/install/tuning.sh"
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "${active_tests[@]}"

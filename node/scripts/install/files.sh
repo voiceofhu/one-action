@@ -50,6 +50,7 @@ on_install_exit() {
 				docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1
 			fi
 		fi
+		remove_host_firewall
 		rm -f -- "$BINARY_FILE" "$MANIFEST_INSTALLER_PATH" "$ENV_FILE" "$COMPOSE_FILE" "$INSTALL_RECORD"
 		if [ "$STATE_DIR_CREATED" = "true" ]; then
 			rmdir -- "$ONE_NODE_STATE_DIR" 2>/dev/null || true
@@ -109,6 +110,7 @@ write_environment_source() {
 	if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
 		write_env "NODE_UPGRADE_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/update/request"
 	fi
+	write_env "NODE_FIREWALL_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/firewall/request"
 	write_env "CONTROL_ADDR" "$ONE_NODE_SERVER"
 	write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"
 	write_env "CONTROL_BOOTSTRAP_ENV_FILE" "$ENV_FILE"
@@ -144,6 +146,7 @@ write_common_sources() {
 		manifest_append_owned_path "$MANIFEST_COMPOSE_PATH"
 	fi
 	record_host_updater_manifest_paths
+	record_host_firewall_manifest_paths
 	MANIFEST_OWNED_COUNT=$(printf '%s\n' "$MANIFEST_OWNED_PATHS" | awk 'NF { count++ } END { print count + 0 }')
 	manifest_write "$RECORD_SOURCE" || die "unable to write the installation manifest"
 }
@@ -315,10 +318,12 @@ reconfigure_existing_installation() {
 		die "unable to replace the One Node environment"
 	MANIFEST_DESIRED_CONFIG_REVISION=$ONE_NODE_EXPECTED_CONFIG_REVISION
 	record_host_updater_manifest_paths
+	record_host_firewall_manifest_paths
 	manifest_write "$INSTALL_RECORD" || die "unable to update the installation manifest"
 	reset_registration_state_for_reenrollment
 	restart_reconfigured_runtime || die "unable to restart the existing $INSTALL_MODE runtime"
 	wait_for_ready_heartbeat || die "existing installation did not accept the updated registration"
+	log "firewall: active runtime ports applied"
 
 	RECONFIGURE_COMMITTED="true"
 	log "existing $INSTALL_MODE installation is registered as node $ONE_NODE_ID"

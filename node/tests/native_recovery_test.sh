@@ -21,6 +21,7 @@ fail() {
 . "$ROOT_DIR/scripts/install/host.sh"
 . "$ROOT_DIR/scripts/install/files.sh"
 . "$ROOT_DIR/scripts/install/updater.sh"
+. "$ROOT_DIR/scripts/install/firewall.sh"
 . "$ROOT_DIR/scripts/install/native.sh"
 . "$ROOT_DIR/scripts/install/native_reconfigure.sh"
 
@@ -57,6 +58,9 @@ configure_case() {
 	MANIFEST_RECORD_PATH=$INSTALL_RECORD
 	MANIFEST_UNIT_PATH=$UNIT_FILE
 	MANIFEST_COMPOSE_PATH=$COMPOSE_FILE
+	MANIFEST_FIREWALL_PATH="${INSTALL_DIR}/firewall.sh"
+	MANIFEST_FIREWALL_SERVICE_PATH="${CASE_DIR}/one-node-firewall.service"
+	MANIFEST_FIREWALL_PATH_UNIT_PATH="${CASE_DIR}/one-node-firewall.path"
 	PROGRAM="one-node"
 	INSTALL_MODE="native"
 	INSTALL_OPERATION="fresh"
@@ -198,11 +202,13 @@ run_upgrade_rollback() (
 	MANIFEST_CURRENT_BINARY_SHA256=$old_sha256
 	for owned_path in \
 		"$MANIFEST_INSTALL_DIR" "$MANIFEST_ENV_PATH" "$MANIFEST_RECORD_PATH" \
-		"$MANIFEST_STATE_DIR" "$MANIFEST_BINARY_PATH" "$MANIFEST_UNIT_PATH"
+		"$MANIFEST_STATE_DIR" "$MANIFEST_BINARY_PATH" "$MANIFEST_UNIT_PATH" \
+		"$MANIFEST_FIREWALL_PATH" "$MANIFEST_FIREWALL_SERVICE_PATH" \
+		"$MANIFEST_FIREWALL_PATH_UNIT_PATH"
 	do
 		manifest_append_owned_path "$owned_path"
 	done
-	MANIFEST_OWNED_COUNT=6
+	MANIFEST_OWNED_COUNT=9
 	manifest_write "$INSTALL_RECORD"
 	cp "$MANIFEST_BINARY_PATH" "${CASE_DIR}/binary.before"
 	cp "$ENV_FILE" "${CASE_DIR}/env.before"

@@ -7,7 +7,7 @@
 set -eu
 umask 077
 
-ONE_NODE_UNINSTALL_MODULES="install/common.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
+ONE_NODE_UNINSTALL_MODULES="install/common.sh install/firewall.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
 
 entrypoint_die() {

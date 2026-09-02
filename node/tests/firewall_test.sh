@@ -1,99 +1,109 @@
 #!/bin/sh
+# shellcheck disable=SC2034
 set -eu
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEST_TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
+TEST_BIN="${TEST_TEMP_DIR}/bin"
+TEST_LOG="${TEST_TEMP_DIR}/nft.log"
+TABLE_STATE="${TEST_TEMP_DIR}/table"
+install -d -m 0755 "$TEST_BIN"
 
-make_fake() {
-	name=$1
-	shift
-	path="${TEST_TEMP_DIR}/bin/${name}"
-	install -d -m 0755 "${TEST_TEMP_DIR}/bin"
-	{
-		printf '%s\n' '#!/bin/sh' 'set -eu'
-		printf '%s\n' "$@"
-	} >"$path"
-	chmod 0755 "$path"
+cat >"${TEST_BIN}/systemctl" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod 0755 "${TEST_BIN}/systemctl"
+
+cat >"${TEST_BIN}/stat" <<'EOF'
+#!/bin/sh
+[ "${1:-}" = -c ] && [ "${2:-}" = %a ] || exit 1
+/usr/bin/stat -f %Lp "$3"
+EOF
+chmod 0755 "${TEST_BIN}/stat"
+
+cat >"${TEST_BIN}/nft" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FIREWALL_TEST_LOG"
+case "$*" in
+"-nn list table inet one_node")
+	[ -f "$FIREWALL_TABLE_STATE" ] || exit 1
+	cat <<'TABLE'
+table inet one_node {
+ set tcp_ports { type inet_service; }
+ set udp_ports { type inet_service; }
+ chain input {
+  comment "one-node-established"
+  comment "one-node-active-tcp"
+  comment "one-node-active-udp"
+  comment "one-node-unused-tcp"
+  comment "one-node-unused-udp"
+ }
 }
-
-make_fake id '[ "${1:-}" = -u ] && printf "%s\n" 0'
-make_fake ufw 'exit 1'
-make_fake firewall-cmd 'exit 1'
-make_fake nft 'exit 1'
-make_fake systemctl 'exit 1'
-make_fake service 'exit 1'
-make_fake iptables '
-printf "%s\n" "$*" >>"$FIREWALL_TEST_LOG"
-case "${1:-}" in
--C) [ "${IPTABLES_RULES_EXIST:-false}" = true ] ;;
--L) printf "%s\n" "Chain INPUT" "num target" "5 REJECT" ;;
-*) exit 0 ;;
-esac
-'
-make_fake netfilter-persistent 'printf "%s\n" "netfilter-persistent $*" >>"$FIREWALL_TEST_LOG"'
-
-FIREWALL_TEST_LOG="${TEST_TEMP_DIR}/iptables.log"
-export FIREWALL_TEST_LOG
-PATH="${TEST_TEMP_DIR}/bin:/usr/bin:/bin" sh "$ROOT_DIR/open-ports.sh"
-grep -F -- '-I INPUT 5 -p tcp --dport 20000:60000 -m comment --comment One Node TCP -j ACCEPT' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F -- '-I INPUT 5 -p udp --dport 20000:60000 -m comment --comment One Node UDP -j ACCEPT' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F 'netfilter-persistent save' "$FIREWALL_TEST_LOG" >/dev/null
-
-: >"$FIREWALL_TEST_LOG"
-IPTABLES_RULES_EXIST=true
-export IPTABLES_RULES_EXIST
-PATH="${TEST_TEMP_DIR}/bin:/usr/bin:/bin" sh "$ROOT_DIR/open-ports.sh"
-if grep -F -- '-I INPUT' "$FIREWALL_TEST_LOG" >/dev/null; then
-	printf '%s\n' 'firewall script duplicated existing iptables rules' >&2
-	exit 1
-fi
-
-unset IPTABLES_RULES_EXIST
-make_fake ufw '
-printf "%s\n" "ufw $*" >>"$FIREWALL_TEST_LOG"
-case "${1:-}" in
-status) printf "%s\n" "Status: active" ;;
-*) exit 0 ;;
-esac
-'
-: >"$FIREWALL_TEST_LOG"
-PATH="${TEST_TEMP_DIR}/bin:/usr/bin:/bin" sh "$ROOT_DIR/open-ports.sh"
-grep -F 'ufw allow 20000:60000/tcp comment One Node TCP' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F 'ufw allow 20000:60000/udp comment One Node UDP' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F 'ufw reload' "$FIREWALL_TEST_LOG" >/dev/null
-
-make_fake ufw 'exit 1'
-make_fake firewall-cmd '
-printf "%s\n" "firewall-cmd $*" >>"$FIREWALL_TEST_LOG"
-case "$*" in
---state) printf "%s\n" running ;;
---get-active-zones) printf "%s\n" public "  interfaces: eth0" ;;
-*--query-port=*) exit 1 ;;
-*) exit 0 ;;
-esac
-'
-: >"$FIREWALL_TEST_LOG"
-PATH="${TEST_TEMP_DIR}/bin:/usr/bin:/bin" sh "$ROOT_DIR/open-ports.sh"
-grep -F 'firewall-cmd --permanent --zone=public --add-port=20000-60000/tcp' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F 'firewall-cmd --permanent --zone=public --add-port=20000-60000/udp' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F 'firewall-cmd --reload' "$FIREWALL_TEST_LOG" >/dev/null
-
-make_fake firewall-cmd 'exit 1'
-make_fake systemctl '[ "${1:-}" = is-active ] && exit 0; exit 1'
-make_fake nft '
-printf "%s\n" "nft $*" >>"$FIREWALL_TEST_LOG"
-case "$*" in
-"-nn list ruleset")
-	printf "%s\n" "table inet filter {" " chain input {" "  type filter hook input priority filter; policy drop;" " }" "}"
+TABLE
 	;;
-"list chain"*) exit 0 ;;
-*) exit 0 ;;
+"-f "*)
+	rules=$2
+	cat "$rules" >>"$FIREWALL_TEST_LOG"
+	touch "$FIREWALL_TABLE_STATE"
+	;;
+"delete table inet one_node")
+	rm -f -- "$FIREWALL_TABLE_STATE"
+	;;
 esac
-'
-: >"$FIREWALL_TEST_LOG"
-PATH="${TEST_TEMP_DIR}/bin:/usr/bin:/bin" sh "$ROOT_DIR/open-ports.sh"
-grep -F 'nft insert rule inet filter input tcp dport 20000-60000 counter accept comment one-node-managed-tcp' "$FIREWALL_TEST_LOG" >/dev/null
-grep -F 'nft insert rule inet filter input udp dport 20000-60000 counter accept comment one-node-managed-udp' "$FIREWALL_TEST_LOG" >/dev/null
+EOF
+chmod 0755 "${TEST_BIN}/nft"
 
-printf '%s\n' 'One Node firewall script checks passed.'
+export FIREWALL_TEST_LOG="$TEST_LOG"
+export FIREWALL_TABLE_STATE="$TABLE_STATE"
+PATH="${TEST_BIN}:/usr/bin:/bin"
+export PATH
+
+# shellcheck disable=SC1090
+. "$ROOT_DIR/scripts/install/common.sh"
+. "$ROOT_DIR/scripts/shared/manifest.sh"
+. "$ROOT_DIR/scripts/install/files.sh"
+. "$ROOT_DIR/scripts/install/firewall.sh"
+
+INSTALL_DIR="${TEST_TEMP_DIR}/opt/one-node"
+ONE_NODE_STATE_DIR="${TEST_TEMP_DIR}/var/lib/one-node"
+ENV_FILE="${INSTALL_DIR}/.env"
+FIREWALL_FILE="${INSTALL_DIR}/firewall.sh"
+FIREWALL_SERVICE_FILE="${TEST_TEMP_DIR}/one-node-firewall.service"
+FIREWALL_PATH_FILE="${TEST_TEMP_DIR}/one-node-firewall.path"
+FIREWALL_REQUEST_FILE="${ONE_NODE_STATE_DIR}/firewall/request"
+install -d -m 0755 "$INSTALL_DIR"
+install -d -m 0700 "$ONE_NODE_STATE_DIR"
+: >"$ENV_FILE"
+chmod 0600 "$ENV_FILE"
+
+install_host_firewall
+[ -x "$FIREWALL_FILE" ]
+[ -f "$TABLE_STATE" ]
+grep -F 'one-node-unused-tcp' "$TEST_LOG" >/dev/null
+grep -F 'one-node-unused-udp' "$TEST_LOG" >/dev/null
+grep -F 'elements = { 20000-60000 }' "$TEST_LOG" >/dev/null
+grep -F "PathExists=${FIREWALL_REQUEST_FILE}" "$FIREWALL_PATH_FILE" >/dev/null
+
+cat >"$FIREWALL_REQUEST_FILE" <<'EOF'
+request_id=11111111-1111-4111-8111-111111111111
+tcp_ports=23837,26172,43555
+udp_ports=41825,43555
+EOF
+chmod 0600 "$FIREWALL_REQUEST_FILE"
+ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE"
+grep -F 'flush set inet one_node tcp_ports' "$TEST_LOG" >/dev/null
+grep -F 'add element inet one_node tcp_ports { 23837,26172,43555 }' "$TEST_LOG" >/dev/null
+grep -F 'add element inet one_node udp_ports { 41825,43555 }' "$TEST_LOG" >/dev/null
+grep -F 'state=succeeded' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
+
+stage_host_firewall_transition
+grep -F 'add element inet one_node tcp_ports { 20000-60000 }' "$TEST_LOG" >/dev/null
+grep -F 'add element inet one_node udp_ports { 20000-60000 }' "$TEST_LOG" >/dev/null
+
+remove_host_firewall
+[ ! -f "$TABLE_STATE" ]
+
+printf '%s\n' 'One Node dynamic firewall checks passed.'

@@ -23,6 +23,7 @@ switch_upgrade() {
 
 restore_after_failed_upgrade() {
 	log "upgrade failed after switching; restoring the single previous immutable version"
+	stage_host_firewall_transition || die "upgrade failed and the firewall could not be prepared for rollback"
 	rollback_runtime || die "upgrade failed and automatic rollback could not restore the previous runtime"
 	wait_for_rollback_ready || die "previous runtime was restored but did not become ready"
 }
@@ -34,11 +35,14 @@ main() {
 	load_upgrade_manifest
 	validate_upgrade_host
 	configure_readiness
+	apply_network_tuning
 	ONE_NODE_READINESS_RETURN_ONLY="true"
 
 	if [ "$UPGRADE_OPERATION" = rollback ]; then
 		[ -n "$MANIFEST_PREVIOUS_VERSION" ] || die "installation manifest has no previous version"
 		UPGRADE_MANIFEST_ADVANCED="true"
+		enable_host_firewall_for_upgrade
+		stage_host_firewall_transition || die "firewall could not be prepared for rollback"
 		rollback_runtime || die "explicit rollback could not restore the previous runtime"
 		wait_for_rollback_ready || die "rolled-back runtime did not become ready"
 		log "explicit rollback completed"
@@ -47,6 +51,7 @@ main() {
 
 	validate_upgrade_target
 	enable_host_updater_for_upgrade
+	enable_host_firewall_for_upgrade
 	stage_upgrade || die "upgrade artifact staging or immutable metadata verification failed"
 	if ! switch_upgrade; then
 		if [ "$UPGRADE_SWITCHED" = true ]; then
@@ -58,5 +63,6 @@ main() {
 		restore_after_failed_upgrade
 		die "upgrade target did not become ready and was rolled back"
 	fi
+	log "firewall: active runtime ports applied"
 	log "${INSTALL_MODE} upgrade to ${MANIFEST_CURRENT_VERSION} is ready"
 }

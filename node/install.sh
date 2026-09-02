@@ -5,7 +5,7 @@
 set -eu
 umask 077
 
-ONE_NODE_INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
+ONE_NODE_INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
 ONE_NODE_INSTALLER_SOURCE=""
 ONE_NODE_INSTALL_DIR=${ONE_NODE_INSTALL_DIR:-/opt/one-node}
@@ -129,6 +129,10 @@ manager_doctor() {
 		docker inspect -f '{{.State.Running}}' one-node 2>/dev/null | grep -qx true || manager_die "One Node container is not running"
 		;;
 	esac
+	command -v nft >/dev/null 2>&1 || manager_die "nftables is unavailable"
+	command -v systemctl >/dev/null 2>&1 || manager_die "systemctl is unavailable"
+	systemctl is-active --quiet one-node-firewall.path || manager_die "one-node-firewall.path is not active"
+	nft -nn list table inet one_node >/dev/null 2>&1 || manager_die "One Node nftables table is unavailable"
 	printf '%s\n' '[one-node] environment check passed'
 }
 

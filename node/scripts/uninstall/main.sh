@@ -21,12 +21,12 @@ main() {
 		systemctl disable --now one-node-updater.path >/dev/null 2>&1 || true
 		systemctl stop one-node-updater.service >/dev/null 2>&1 || true
 	fi
-
 	if [ "$installed_mode" = "native" ]; then
 		uninstall_native
 	else
 		uninstall_docker
 	fi
+	remove_host_firewall
 	remove_owned_files
 	command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
 	log "One Node sing-box runtime and all runtime state were removed"

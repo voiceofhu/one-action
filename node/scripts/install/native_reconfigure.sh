@@ -177,12 +177,14 @@ manifest_initialize_recovered_native() {
 	MANIFEST_STATE_DIR=$ONE_NODE_STATE_DIR
 	for recovered_owned_path in \
 		"$MANIFEST_INSTALL_DIR" "$MANIFEST_ENV_PATH" "$MANIFEST_RECORD_PATH" \
-		"$MANIFEST_STATE_DIR" "$MANIFEST_BINARY_PATH" "$MANIFEST_UNIT_PATH"
+		"$MANIFEST_STATE_DIR" "$MANIFEST_BINARY_PATH" "$MANIFEST_UNIT_PATH" \
+		"$MANIFEST_FIREWALL_PATH" "$MANIFEST_FIREWALL_SERVICE_PATH" \
+		"$MANIFEST_FIREWALL_PATH_UNIT_PATH"
 	do
 		manifest_append_owned_path "$recovered_owned_path" ||
 			die "unable to construct the recovered installation manifest"
 	done
-	MANIFEST_OWNED_COUNT=6
+	MANIFEST_OWNED_COUNT=9
 }
 
 prepare_native_reconfiguration_manifest() {
@@ -235,6 +237,7 @@ reconfigure_native_installation() {
 	fi
 	prepare_native_reconfiguration_manifest
 	record_host_updater_manifest_paths
+	record_host_firewall_manifest_paths
 
 	systemctl stop one-node.service || die "unable to stop the existing native runtime"
 	if [ "$RECONFIGURE_BINARY_CHANGED" = "true" ]; then
@@ -252,6 +255,7 @@ reconfigure_native_installation() {
 	reset_registration_state_for_reenrollment
 	restart_reconfigured_runtime || die "unable to restart the existing native runtime"
 	wait_for_ready_heartbeat || die "existing installation did not accept the updated registration"
+	log "firewall: active runtime ports applied"
 
 	RECONFIGURE_COMMITTED="true"
 	log "existing native installation is registered as node $ONE_NODE_ID"

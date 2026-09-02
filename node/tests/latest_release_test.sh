@@ -16,6 +16,7 @@ fail() {
 . "$ROOT_DIR/scripts/install/config.sh"
 . "$ROOT_DIR/scripts/install/files.sh"
 . "$ROOT_DIR/scripts/install/updater.sh"
+. "$ROOT_DIR/scripts/install/firewall.sh"
 . "$ROOT_DIR/scripts/install/docker.sh"
 
 curl() {

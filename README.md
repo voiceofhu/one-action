@@ -22,7 +22,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-user` | dispatch `user.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
-| `make deploy-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-browser-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-app-server` | dispatch `one-browser-backend.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像 |
 | `make deploy-browser-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
@@ -78,7 +78,7 @@ One Node/Node Server 合同、临时 tag 模拟发布或 One Node 安装生命�
 make deploy-user VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
-make deploy-app
+make deploy-browser-app
 make deploy-app-server
 make deploy-browser-egress
 ```
@@ -90,7 +90,7 @@ One User、One Node 和 Browser Egress 目标执行各自产品的本地检查�
 make deploy-user DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
-make deploy-app DRY_RUN=true
+make deploy-browser-app DRY_RUN=true
 make deploy-app-server DRY_RUN=true
 make deploy-browser-egress DRY_RUN=true
 ```

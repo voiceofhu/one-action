@@ -21,8 +21,6 @@ env:
   CI: true
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
-  ONE_BROWSER_BACKEND_URL: ${{ vars.ONE_BROWSER_BACKEND_URL }}
-  ONE_BROWSER_APP_USE_REMOTE_FRONTEND: 'true'
   PNPM_VERSION: 10.32.1
 
 jobs:
@@ -48,17 +46,15 @@ jobs:
           APP_REF: ${{ inputs.app_ref }}
           VERSION: ${{ inputs.version }}
           PUBLISH: ${{ inputs.publish }}
-          BACKEND_URL: ${{ vars.ONE_BROWSER_BACKEND_URL }}
         run: |
           set -Eeuo pipefail
           [[ "$ACTION_REPOSITORY" == voiceofhu/one-action \
             && "$ACTION_SERVER_URL" == https://github.com \
             && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
             && "$CONFIRMATION" == "enable:app:$ACTION_SHA" \
-            && "$APP_REPOSITORY" == voiceofhu/one-browser-app-next \
+            && "$APP_REPOSITORY" == voiceofhu/one-browser-app \
             && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
             && "$PUBLISH" == true \
-            && "$BACKEND_URL" =~ ^https://[^/]+/?$ \
             && -n "$GH_TOKEN" ]] || {
             echo 'Invalid One Browser App dispatch inputs or Action trust root.' >&2
             exit 1
@@ -114,7 +110,7 @@ jobs:
       - name: Checkout exact App source
         uses: actions/checkout@v4
         with:
-          repository: voiceofhu/one-browser-app-next
+          repository: voiceofhu/one-browser-app
           ref: ${{ needs.prepare.outputs.app_sha }}
           path: app
           token: ${{ secrets.GH_TOKEN }}
@@ -213,7 +209,7 @@ jobs:
             cp "$asset" "$target"
           done < <(find dist -type f -print0 | sort -z)
           (cd release-assets && sha256sum ./* >SHA256SUMS)
-          body="One Browser App source: voiceofhu/one-browser-app-next@$APP_SHA"
+          body="One Browser App source: voiceofhu/one-browser-app@$APP_SHA"
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; refusing to mutate it." >&2
             exit 1

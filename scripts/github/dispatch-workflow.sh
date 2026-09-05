@@ -122,12 +122,12 @@ case "$workflow" in
     ;;
   app.yml)
     require_inputs app_repository app_ref version publish
-    require_repository app_repository voiceofhu/one-browser-app-next
+    require_repository app_repository voiceofhu/one-browser-app
     publish_supported=true
     ;;
   app-debug.yml)
     require_inputs app_repository app_ref upload_artifact
-    require_repository app_repository voiceofhu/one-browser-app-next
+    require_repository app_repository voiceofhu/one-browser-app
     ;;
   egress.yml)
     require_inputs egress_repository egress_ref version environment publish deploy

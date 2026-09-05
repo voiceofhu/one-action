@@ -27,6 +27,6 @@ help:
 		"  make deploy-user            Compile, upload, and deploy One User" \
 		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
 		"  make deploy-node            Check One Node source and dispatch compile/upload" \
-		"  make deploy-browser-app     Dispatch One Browser App installer publication" \
+		"  make deploy-browser-app     Check One Browser App and dispatch installer publication" \
 		"  make deploy-app-server      Check Browser Backend/Web and dispatch image publication" \
 		"  make deploy-browser-egress  Check Browser Egress and dispatch package/image publication"

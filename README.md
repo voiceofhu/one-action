@@ -37,7 +37,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
 3. 本地仅运行对应产品的格式、lint、测试和构建；
 4. One User 推送版本文件提交；One Node Server、One Node Runtime 和 Browser 三条链路要求本地 HEAD 已与远端分支完全一致；这些链路不创建源码发布 tag；
-5. 本地入口把精确 Action SHA、源码 SHA 和版本 dispatch 给对应 workflow；One Node Release workflow 仅为公开 Release 自动创建所需的 Action tag；
+5. 本地入口把精确 Action SHA、源码 SHA 和版本 dispatch 给对应 workflow（Browser App 直接发送 ref，由 workflow 解析源码 SHA）；One Node Release workflow 仅为公开 Release 自动创建所需的 Action tag；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One User 与 One Node Server 在镜像成功合并后，将 digest-qualified 镜像分别部署到受保护的生产 environment。
 
@@ -83,7 +83,7 @@ make deploy-app-server
 make deploy-browser-egress
 ```
 
-One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App/App Server 直接通过 workflow dispatch 触发对应 Action。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
+One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App/App Server 直接通过 workflow dispatch 触发对应 Action。`deploy-browser-app` 从本地 Git 读取 Action SHA 并直接向该提交发送 dispatch POST，不查询 Action 或私有源码 commit；`app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash

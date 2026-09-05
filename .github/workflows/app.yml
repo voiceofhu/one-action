@@ -45,7 +45,7 @@ jobs:
           EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
           CONFIRMATION: ${{ inputs.confirmation }}
           APP_REPOSITORY: ${{ inputs.app_repository }}
-          APP_SHA: ${{ inputs.app_ref }}
+          APP_REF: ${{ inputs.app_ref }}
           VERSION: ${{ inputs.version }}
           PUBLISH: ${{ inputs.publish }}
           BACKEND_URL: ${{ vars.ONE_BROWSER_BACKEND_URL }}
@@ -56,7 +56,6 @@ jobs:
             && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
             && "$CONFIRMATION" == "enable:app:$ACTION_SHA" \
             && "$APP_REPOSITORY" == voiceofhu/one-browser-app-next \
-            && "$APP_SHA" =~ ^[0-9a-f]{40}$ \
             && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
             && "$PUBLISH" == true \
             && "$BACKEND_URL" =~ ^https://[^/]+/?$ \
@@ -65,8 +64,14 @@ jobs:
             exit 1
           }
           commit_file="$RUNNER_TEMP/one-browser-app-commit.json"
-          gh api "repos/$APP_REPOSITORY/commits/$APP_SHA" >"$commit_file"
-          [[ "$(jq -er .sha "$commit_file")" == "$APP_SHA" ]]
+          [[ -n "$APP_REF" && ${#APP_REF} -le 256 ]]
+          encoded_ref="$(jq -rn --arg ref "$APP_REF" '$ref | @uri')"
+          gh api "repos/$APP_REPOSITORY/commits/$encoded_ref" >"$commit_file"
+          APP_SHA="$(jq -er .sha "$commit_file")"
+          [[ "$APP_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$APP_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            [[ "$APP_SHA" == "$APP_REF" ]]
+          fi
           printf 'app_sha=%s\n' "$APP_SHA" >>"$GITHUB_OUTPUT"
           printf 'release_tag=one-browser-app-v%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
 

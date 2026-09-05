@@ -54,7 +54,7 @@ jobs:
       - name: Checkout exact backend source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-browser-app-server' && 'voiceofhu/one-browser-backend-next' || 'voiceofhu/one-node-server' }}
+          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}
           ref: ${{ inputs.backend_sha }}
           path: backend
           token: ${{ secrets.source_read_token }}
@@ -64,7 +64,7 @@ jobs:
       - name: Checkout exact Web source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || inputs.workflow_name == 'one-browser-app-server' && 'voiceofhu/one-browser-web-next' || 'voiceofhu/one-node-web' }}
+          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-web' || 'voiceofhu/one-node-web' }}
           ref: ${{ inputs.web_sha }}
           path: web
           token: ${{ secrets.source_read_token }}
@@ -90,7 +90,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           case "$WORKFLOW_NAME" in
-            one-user|one-node-server|one-browser-app-server) ;;
+            one-user|one-node-server|one-browser-app-server|one-browser-server) ;;
             *) echo "Unsupported workflow: $WORKFLOW_NAME" >&2; exit 1 ;;
           esac
           pnpm --dir web install --frozen-lockfile
@@ -122,10 +122,10 @@ jobs:
           file: backend/${{ inputs.workflow_name == 'one-user' && 'deploy/docker/Dockerfile' || 'Dockerfile' }}
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || inputs.workflow_name == 'one-browser-app-server' && 'ghcr.io/voiceofhu/one-browser-backend' || 'ghcr.io/voiceofhu/node-server' }}:build-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          tags: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'ghcr.io/voiceofhu/one-browser-backend' || 'ghcr.io/voiceofhu/node-server' }}:build-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.created=${{ inputs.created_at }}
-            org.opencontainers.image.source=https://github.com/${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-browser-app-server' && 'voiceofhu/one-browser-backend-next' || 'voiceofhu/one-node-server' }}
+            org.opencontainers.image.source=https://github.com/${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}
             org.opencontainers.image.revision=${{ inputs.backend_sha }}
             org.opencontainers.image.version=${{ inputs.version }}
             one.action.revision=${{ inputs.action_sha }}
@@ -172,7 +172,7 @@ jobs:
         env:
           ACTION_SHA: ${{ inputs.action_sha }}
           BACKEND_SHA: ${{ inputs.backend_sha }}
-          IMAGE: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || inputs.workflow_name == 'one-browser-app-server' && 'ghcr.io/voiceofhu/one-browser-backend' || 'ghcr.io/voiceofhu/node-server' }}
+          IMAGE: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'ghcr.io/voiceofhu/one-browser-backend' || 'ghcr.io/voiceofhu/node-server' }}
           VERSION: ${{ inputs.version }}
           WEB_SHA: ${{ inputs.web_sha }}
         run: |

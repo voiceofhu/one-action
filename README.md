@@ -14,7 +14,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 `egress/scripts/`。根目录 Egress 入口仅兼容历史命令；新生成的安装命令必须使用
 `egress/` 路径。
 
-所有产品最终都必须接入 One Action。当前已实现并保留六条活跃发布链；其他产品在这里
+所有产品最终都必须接入 One Action。当前已实现并保留八条活跃发布链；其他产品在这里
 补齐发布合同前，不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
@@ -23,11 +23,12 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
-| `make deploy-app-server` | dispatch `one-browser-backend.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像 |
+| `make deploy-browser-server` | dispatch `browser-server.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像及 SSH/Compose 部署 |
+| `make deploy-browser-web` | dispatch `browser-web.yml` | 独立构建 Web，切换服务器静态文件版本，不更新 Server 容器 |
 | `make deploy-browser-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
 `deploy-user` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
-`deploy-node` 只触发 Runtime 编译上传。Browser 三条链路当前只发布产物，不执行生产服务器部署；部署合同需要在对应源码仓库补齐 Compose 和环境边界后另行启用。
+`deploy-node` 只触发 Runtime 编译上传。Browser App/Egress 发布产物；Browser Server/Web 使用 SSH 部署。
 
 ## 发布边界
 
@@ -79,11 +80,11 @@ make deploy-user VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 make deploy-browser-app
-make deploy-app-server
+make deploy-browser-server
 make deploy-browser-egress
 ```
 
-One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App 在 dispatch 前安装锁定依赖、检查 Node 脚本语法，并运行 Rust fmt、Clippy 和测试；失败即停止，成功后将本地校验过的源码 SHA 交给工作流构建。App 工作区须干净，HEAD 须匹配配置的源码 ref，版本须与 package.json 一致。Browser App Server 直接通过 workflow dispatch 触发对应 Action。`deploy-browser-app` 从本地 Git 读取 Action SHA 作为校验参数，向 `ACTION_REF` 分支或标签（默认 `main`）直接发送 dispatch POST，不查询 Action 或私有源码 commit；`app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。生产页面地址由 App 的 `src-tauri/tauri.conf.json` 管理（`https://browser.aicbe.com`），无需设置 Action 后端地址变量。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
+One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App 在 dispatch 前安装锁定依赖、检查 Node 脚本语法，并运行 Rust fmt、Clippy 和测试；失败即停止，成功后将本地校验过的源码 SHA 交给工作流构建。App 工作区须干净，HEAD 须匹配配置的源码 ref，版本须与 package.json 一致。Browser Server/Web 在本地校验后 dispatch。`deploy-browser-app` 从本地 Git 读取 Action SHA 作为校验参数，向 `ACTION_REF` 分支或标签（默认 `main`）直接发送 dispatch POST，不查询 Action 或私有源码 commit；`app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。生产页面地址由 App 的 `src-tauri/tauri.conf.json` 管理（`https://browser.aicbe.com`），无需设置 Action 后端地址变量。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash
@@ -91,7 +92,7 @@ make deploy-user DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
 make deploy-browser-app DRY_RUN=true
-make deploy-app-server DRY_RUN=true
+make deploy-browser-server DRY_RUN=true
 make deploy-browser-egress DRY_RUN=true
 ```
 
@@ -208,3 +209,29 @@ make/                Makefile 子模块
 
 本地 YAML、shell 和测试通过只能证明提交内容满足当前发布契约；GHCR Package 权限、Runner
 可用性、真实远端上传和服务器部署仍需由首次 GitHub Actions 运行证明。
+
+## Browser Server 与 Web 发布
+
+`make deploy-browser-server` 按 One Node Server 的流程校验源码、发布双架构镜像并部署。
+每次 Server 部署都会将镜像内配套 Web 切换到 `/opt/one-browser/web/current`；失败时同时回滚 Server 和 Web。
+`make deploy-browser-web` 只校验 Web、构建生产静态文件并通过 SSH 发布，失败回滚到上一目录，不构建或重启 Server。
+Web 目录通过只读挂载提供给 Server，两个工作流共用部署锁。旧入口 `deploy-app-server` 保留为 Server 入口别名。
+
+先执行一次新版 Server 部署以建立持久化 Web 挂载，再使用独立 Web 发布。
+两条链使用 `one-browser-prod` environment，与 One Node Server 一样配置 `DEPLOY_HOST`、`DEPLOY_PORT`、
+`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS` secrets，以及源码/镜像凭据 `GH_TOKEN`。
+`DEPLOY_REMOTE_DIR` 默认 `/opt/one-browser`，`DEPLOY_URL` 默认 `https://browser.aicbe.com`。
+服务器目录应预先存在且包含生产 `.env`；反向代理指向本地 27514 端口。
+
+## One Node Web 独立更新
+
+`make deploy-node-web` 仅安装锁定的 Web 依赖、执行 lint 和生产构建（含 TypeScript 检查），
+然后 dispatch `node-web.yml`，上传静态文件并切换 `/opt/one-node/web/current`。
+不编译后台、不发布后台镜像、不重启后台容器；健康检查失败时回滚 Web。
+首次需先通过新版 `make deploy-node-server` 部署带持久化 Web 挂载的 Compose。
+独立更新的 Web 在普通容器重启/重建后仍保留；再次发布 Server 时切换到新镜像配套 Web。
+使用现有 `one-node-prod` environment 的 SSH secrets、`DEPLOY_REMOTE_DIR` 和 `DEPLOY_URL`，
+默认目录 `/opt/one-node`，默认站点 `https://marseo.eu.org`；与 Server 发布共用部署锁。
+`make validate-node-web` 检查此发布链，`make deploy-node-web DRY_RUN=true` 只显示计划。
+
+Browser 与 Node 的 Web 均由后台在 `/` 路由提供，API 路由保持不变。

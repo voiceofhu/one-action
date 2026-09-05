@@ -25,3 +25,9 @@ deploy-node: DRY_RUN = false
 deploy-node:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/deploy-node-release.sh
+
+.PHONY: deploy-node-web
+deploy-node-web: DRY_RUN = false
+deploy-node-web:
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/deploy-node-web-release.sh

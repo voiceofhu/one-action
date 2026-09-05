@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml) ;;
+  user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -109,8 +109,8 @@ case "$workflow" in
   one-browser-backend.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
-    require_repository backend_repository voiceofhu/one-browser-backend-next
-    require_repository web_repository voiceofhu/one-browser-web-next
+    require_repository backend_repository voiceofhu/one-browser-server
+    require_repository web_repository voiceofhu/one-browser-web
     publish_supported=true
     ;;
   node-server.yml)
@@ -118,6 +118,22 @@ case "$workflow" in
       version publish deploy
     require_repository backend_repository voiceofhu/one-node-server
     require_repository web_repository voiceofhu/one-node-web
+    publish_supported=true
+    ;;
+  node-web.yml)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository voiceofhu/one-node-web
+    publish_supported=true
+    ;;
+  browser-web.yml)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository voiceofhu/one-browser-web
+    publish_supported=true
+    ;;
+  browser-server.yml)
+    require_inputs backend_repository backend_ref web_repository web_ref version publish deploy
+    require_repository backend_repository voiceofhu/one-browser-server
+    require_repository web_repository voiceofhu/one-browser-web
     publish_supported=true
     ;;
   app.yml)
@@ -164,8 +180,8 @@ fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true && "$workflow" != node-server.yml ]]; then
-  die 'deployment is implemented only for One Node Server'
+if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml ]]; then
+  die 'deployment is implemented only for One Node Server and One Browser Server'
 fi
 if [[ "$deploy" == true && "$publish" != true ]]; then
   die 'One Node Server deployment requires publication'
@@ -231,6 +247,8 @@ done
 if [[ "$publish" == true ]]; then
   if [[ "$workflow" == user.yml ]]; then
     workflow_base=one-user
+  elif [[ "$workflow" == browser-server.yml ]]; then
+    workflow_base=one-browser-server
   elif [[ "$workflow" == node-server.yml ]]; then
     workflow_base=one-node-server
   else

@@ -1,0 +1,22 @@
+services:
+  server:
+    image: ${DOCKER_IMAGE:?DOCKER_IMAGE is required}
+    container_name: ${CONTAINER_NAME:-one-browser-server}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENV: prod
+      APP_ADDR: 0.0.0.0:27514
+      ONE_BROWSER_WEB_DIST_DIR: /opt/one-browser/web/current
+    volumes:
+      - ./web:/opt/one-browser/web:ro
+    ports:
+      - "127.0.0.1:${HTTP_HOST_PORT:-27514}:27514"
+    networks:
+      - database
+
+networks:
+  database:
+    name: ${DOCKER_NETWORK:-db-networks}
+    external: true

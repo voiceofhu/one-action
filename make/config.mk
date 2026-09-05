@@ -24,9 +24,9 @@ GENERATED_VERSION ?= $(shell node -e "\
 USER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 NODE_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
-ONE_BROWSER_BACKEND_REPOSITORY ?= voiceofhu/one-browser-backend-next
+ONE_BROWSER_BACKEND_REPOSITORY ?= voiceofhu/one-browser-server
 ONE_BROWSER_BACKEND_REF ?= main
-ONE_BROWSER_WEB_REPOSITORY ?= voiceofhu/one-browser-web-next
+ONE_BROWSER_WEB_REPOSITORY ?= voiceofhu/one-browser-web
 ONE_BROWSER_WEB_REF ?= main
 ONE_BROWSER_APP_REPOSITORY ?= voiceofhu/one-browser-app
 ONE_BROWSER_APP_REF ?= main
@@ -88,3 +88,5 @@ export ONE_NODE_WEB_DIR
 export ONE_AMZ_BACKEND_REPOSITORY ONE_AMZ_BACKEND_REF
 export ONE_AMZ_WEB_REPOSITORY ONE_AMZ_WEB_REF
 export VERSION ENVIRONMENT PUBLISH DEPLOY
+
+BROWSER_SERVER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))

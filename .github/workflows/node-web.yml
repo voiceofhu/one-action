@@ -1,0 +1,108 @@
+name: One Node Web
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha: {required: true, type: string}
+      confirmation: {required: true, type: string}
+      web_repository: {required: true, type: string}
+      web_ref: {required: true, type: string}
+      version: {required: true, type: string}
+      publish: {required: true, type: boolean}
+      deploy: {required: true, type: boolean}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Validate dispatch
+        shell: bash
+        env:
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SHA: ${{ github.sha }}
+          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          WEB_REPOSITORY: ${{ inputs.web_repository }}
+          WEB_SHA: ${{ inputs.web_ref }}
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+          DEPLOY: ${{ inputs.deploy }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$ACTION_REPOSITORY" == voiceofhu/one-action \
+            && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
+            && "$CONFIRMATION" == "enable:node-web:$ACTION_SHA" \
+            && "$WEB_REPOSITORY" == voiceofhu/one-node-web \
+            && "$WEB_SHA" =~ ^[0-9a-f]{40}$ \
+            && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            && "$PUBLISH" == true && "$DEPLOY" == true ]]
+      - name: Checkout exact Web source
+        uses: actions/checkout@v4
+        with:
+          repository: voiceofhu/one-node-web
+          ref: ${{ inputs.web_ref }}
+          path: web
+          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build production Web
+        shell: bash
+        env:
+          WEB_SHA: ${{ inputs.web_ref }}
+        run: |
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web build
+          printf '%s\n' "$WEB_SHA" > web/dist/one-web-revision.txt
+          tar -czf node-web.tar.gz -C web/dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-web
+          path: node-web.tar.gz
+          if-no-files-found: error
+          retention-days: 2
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: one-node-prod
+      url: ${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}
+    concurrency:
+      group: one-node-server-prod-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: action
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: node-web
+          path: dist
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_ALIAS: one-node-deploy
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: exec bash action/scripts/deploy/configure-ssh.sh
+      - name: Deploy Web without replacing Server
+        shell: bash
+        env:
+          SSH_HOST: one-node-deploy
+          REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-node' }}
+          WEB_ARCHIVE: dist/node-web.tar.gz
+          WEB_SHA: ${{ inputs.web_ref }}
+          PUBLIC_URL: ${{ vars.DEPLOY_URL || 'https://marseo.eu.org' }}
+        run: exec bash action/scripts/deploy/deploy-node-web.sh

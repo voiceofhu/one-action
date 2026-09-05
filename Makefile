@@ -26,7 +26,9 @@ help:
 		"Product releases:" \
 		"  make deploy-user            Compile, upload, and deploy One User" \
 		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
+		"  make deploy-node-web        Check and deploy Web without restarting Node Server" \
 		"  make deploy-node            Check One Node source and dispatch compile/upload" \
 		"  make deploy-browser-app     Check One Browser App and dispatch installer publication" \
-		"  make deploy-app-server      Check Browser Backend/Web and dispatch image publication" \
+		"  make deploy-browser-server  Check, publish, and deploy Browser Server with Web" \
+		"  make deploy-browser-web     Check and deploy Web without restarting Server" \
 		"  make deploy-browser-egress  Check Browser Egress and dispatch package/image publication"

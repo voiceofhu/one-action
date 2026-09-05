@@ -17,3 +17,11 @@ validate-browser-egress:
 
 check-token:
 	@bash $(PROJECT_ROOT)/scripts/github/check-token.sh
+
+.PHONY: validate-browser-server
+validate-browser-server:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-server
+
+.PHONY: validate-node-web
+validate-node-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh node-web

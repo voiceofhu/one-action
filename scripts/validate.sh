@@ -7,6 +7,13 @@ scope=${1:-all}
 case "$scope" in
   all)
     active_tests=(
+      "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/browser-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/browser-server-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/browser-server-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/node-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/node-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/node-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
@@ -112,6 +119,35 @@ case "$scope" in
     )
     run_node_check=false
     ;;
+  node-web)
+    active_tests=(
+      "$PROJECT_ROOT/tests/node-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/node-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/node-web-deploy_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-node-web-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-node-web.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "${active_tests[@]}"
+    )
+    active_workflows=(node-web.yml node-server.yml)
+    run_node_check=false
+    ;;
+  browser-server)
+    active_tests=("$PROJECT_ROOT/tests/browser-server-publish-workflow_test.sh" "$PROJECT_ROOT/tests/browser-server-trigger-only_test.sh" "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh" "$PROJECT_ROOT/tests/browser-web-deploy_test.sh")
+    shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-browser-server-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-browser-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-browser-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-browser-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "${active_tests[@]}"
+    )
+    active_workflows=(browser-server.yml browser-web.yml reusable-publish-web-backend.yml)
+    run_node_check=false
+    ;;
   browser-egress)
     active_tests=(
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
@@ -172,6 +208,7 @@ ruby -ryaml -e '
 
 legacy_name='aic''be'
 canonical_user_origin="https://oa.${legacy_name}.com"
+canonical_browser_origin="https://browser.${legacy_name}.com"
 legacy_matches="$(
   grep -RniE "$legacy_name" \
     "$PROJECT_ROOT/.github" \
@@ -183,13 +220,13 @@ legacy_matches="$(
 )"
 unexpected_legacy_matches="$(
   printf '%s\n' "$legacy_matches" \
-    | sed "s#${canonical_user_origin}##g" \
+    | sed -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" \
     | grep -iE "$legacy_name" || true
 )"
 if [[ -n "$unexpected_legacy_matches" ]]; then
   printf '%s\n' "$unexpected_legacy_matches"
   printf '%s\n' \
-    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User origin.' >&2
+    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User/Browser origins.' >&2
   exit 1
 fi
 

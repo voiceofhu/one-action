@@ -18,10 +18,10 @@ action_sha="$(git -C "$PROJECT_ROOT" rev-parse --verify "${ACTION_REF}^{commit}"
 validate_sha "$action_sha"
 require_tool jq
 
-payload="$(jq -cn --arg ref "$action_sha" \
+payload="$(jq -cn --arg ref "$ACTION_REF" --arg action_sha "$action_sha" \
   --arg repository "$ONE_BROWSER_APP_REPOSITORY" \
   --arg source_ref "$ONE_BROWSER_APP_REF" --arg version "$VERSION" \
-  '{ref: $ref, inputs: {expected_action_sha: $ref, confirmation: ("enable:app:" + $ref), app_repository: $repository, app_ref: $source_ref, version: $version, publish: true}}')"
+  '{ref: $ref, inputs: {expected_action_sha: $action_sha, confirmation: ("enable:app:" + $action_sha), app_repository: $repository, app_ref: $source_ref, version: $version, publish: true}}')"
 case "${DRY_RUN:-true}" in
   true|1|yes)
     jq . <<<"$payload"

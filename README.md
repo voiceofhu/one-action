@@ -83,7 +83,7 @@ make deploy-app-server
 make deploy-browser-egress
 ```
 
-One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App/App Server 直接通过 workflow dispatch 触发对应 Action。`deploy-browser-app` 从本地 Git 读取 Action SHA 并直接向该提交发送 dispatch POST，不查询 Action 或私有源码 commit；`app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
+One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App/App Server 直接通过 workflow dispatch 触发对应 Action。`deploy-browser-app` 从本地 Git 读取 Action SHA 作为校验参数，向 `ACTION_REF` 分支或标签（默认 `main`）直接发送 dispatch POST，不查询 Action 或私有源码 commit；`app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash

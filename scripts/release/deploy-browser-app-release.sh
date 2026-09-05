@@ -38,6 +38,10 @@ esac
 require_tool pnpm
 require_tool node
 require_tool cargo
+app_root="$(git -C "$ONE_BROWSER_APP_DIR" rev-parse --show-toplevel 2>/dev/null)" ||
+  die "App Git repository is unavailable or incomplete: $ONE_BROWSER_APP_DIR; restore its Git metadata or set ONE_BROWSER_APP_DIR to a valid App checkout"
+[[ "$(cd "$ONE_BROWSER_APP_DIR" && pwd -P)" == "$(cd "$app_root" && pwd -P)" ]] ||
+  die "ONE_BROWSER_APP_DIR must point to the App repository root: $ONE_BROWSER_APP_DIR"
 app_sha="$(git -C "$ONE_BROWSER_APP_DIR" rev-parse --verify HEAD)"
 validate_sha "$app_sha"
 [[ "$app_sha" == "$(git -C "$ONE_BROWSER_APP_DIR" rev-parse --verify "${ONE_BROWSER_APP_REF}^{commit}")" ]] ||

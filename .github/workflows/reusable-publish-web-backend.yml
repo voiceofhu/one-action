@@ -86,6 +86,7 @@ jobs:
         shell: bash
         env:
           BUILD_TIME: ${{ inputs.created_at }}
+          VITE_APP_VERSION: ${{ inputs.version }}
           WORKFLOW_NAME: ${{ inputs.workflow_name }}
         run: |
           set -Eeuo pipefail

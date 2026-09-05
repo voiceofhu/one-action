@@ -56,6 +56,7 @@ jobs:
         shell: bash
         env:
           WEB_SHA: ${{ inputs.web_ref }}
+          VITE_APP_VERSION: ${{ inputs.version }}
         run: |
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web build

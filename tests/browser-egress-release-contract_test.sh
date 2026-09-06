@@ -180,5 +180,35 @@ done
 TEST
 printf '%s\n' 'Egress second-stage runtime switch tests passed.'
 
+# Parse generated Compose files for both TLS modes without installing services.
+ONE_BROWSER_INSTALLER_LIBRARY_ONLY=1 bash -s -- "$INSTALLER" <<'TEST'
+set -Eeuo pipefail
+source "$1"
+fixture=$(mktemp -d)
+trap 'rm -rf "$fixture"' EXIT
+INSTALL_DIR=$fixture
+COMPOSE_FILE=$fixture/docker-compose.yml
+chown() { :; }
+for CONFIG_TLS_ENABLED in true false; do
+  write_compose_file
+  ruby -ryaml -e '
+    service = YAML.safe_load(File.read(ARGV[0])).fetch("services").fetch("egress")
+    environment = service.fetch("environment")
+    volumes = service.fetch("volumes")
+    abort "missing update request path" unless environment["EGRESS_UPGRADE_REQUEST_FILE"] == "/app/update/request"
+    abort "missing update mount" unless volumes.include?("${EGRESS_UPDATE_DIR:-./update}:/app/update")
+    if ARGV[1] == "true"
+      abort "missing certificate path" unless environment["EGRESS_TLS_CERT_FILE"] == "/app/tls/fullchain.pem"
+      abort "missing key path" unless environment["EGRESS_TLS_KEY_FILE"] == "/app/tls/privkey.pem"
+      abort "missing certificate mount" unless volumes.include?("${EGRESS_CERT_DIR:-./certs}:/app/tls:ro")
+    else
+      abort "unexpected TLS environment" if environment.key?("EGRESS_TLS_CERT_FILE") || environment.key?("EGRESS_TLS_KEY_FILE")
+      abort "unexpected certificate mount" unless volumes.length == 1
+    end
+  ' "$COMPOSE_FILE" "$CONFIG_TLS_ENABLED"
+done
+TEST
+printf '%s\n' 'Egress generated Compose TLS mode tests passed.'
+
 require_text "$UPDATER" 'Restart=on-failure'
 require_text "$UPDATER" 'systemctl enable one-browser-egress-updater.service'

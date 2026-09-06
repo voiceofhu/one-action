@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  user.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+  user.yml|user-web.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -120,6 +120,11 @@ case "$workflow" in
     require_repository web_repository voiceofhu/one-node-web
     publish_supported=true
     ;;
+  user-web.yml)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository voiceofhu/one-user-web
+    publish_supported=true
+    ;;
   node-web.yml)
     require_inputs web_repository web_ref version publish deploy
     require_repository web_repository voiceofhu/one-node-web
@@ -180,11 +185,11 @@ fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml ]]; then
-  die 'deployment is implemented only for One Node Server and One Browser Server'
+if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml && "$workflow" != user-web.yml ]]; then
+  die 'deployment is not implemented for this workflow'
 fi
 if [[ "$deploy" == true && "$publish" != true ]]; then
-  die 'One Node Server deployment requires publication'
+  die 'deployment requires publication'
 fi
 [[ "$upload_artifact" == false ]] || die 'artifact upload is not implemented; refusing before API access'
 if [[ "$publish" == true ]]; then

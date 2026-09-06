@@ -19,7 +19,8 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
-| `make deploy-user` | dispatch `user.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
+| `make deploy-user-web` | dispatch `user-web.yml` | 仅部署 Web 静态文件，不重启 Server |
+| `make deploy-user-server` | dispatch `user.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
@@ -27,7 +28,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-browser-web` | dispatch `browser-web.yml` | 独立构建 Web，切换服务器静态文件版本，不更新 Server 容器 |
 | `make deploy-browser-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
-`deploy-user` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
+`deploy-user-server` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
 `deploy-node` 只触发 Runtime 编译上传。Browser App/Egress 发布产物；Browser Server/Web 使用 SSH 部署。
 
 ## 发布边界
@@ -48,7 +49,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 ```mermaid
 flowchart TD
-    start[make deploy-user] --> plan[生成版本并检查三个仓库]
+    start[make deploy-user-server] --> plan[生成版本并检查三个仓库]
     plan --> action[确认 one-action HEAD 等于 origin/main]
     action --> contract[validate-user]
     contract --> backend[Backend: fmt + test]
@@ -76,7 +77,7 @@ One Node/Node Server 合同、临时 tag 模拟发布或 One Node 安装生命�
 默认版本按上海时区生成三段数字，也可显式指定：
 
 ```bash
-make deploy-user VERSION=26.821.1200
+make deploy-user-server VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 make deploy-browser-app
@@ -88,7 +89,7 @@ One User、One Node 和 Browser Egress 目标执行各自产品的本地检查�
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash
-make deploy-user DRY_RUN=true
+make deploy-user-server DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
 make deploy-browser-app DRY_RUN=true
@@ -113,7 +114,7 @@ make node-bundle-installers
 ```
 
 `make validate` 检查全部活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
-`make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user` 使用这一范围，
+`make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user-server` 使用这一范围，
 不运行其他产品的模拟发布和生命周期 fixture。
 `make validate-node` 只检查 One Node Runtime 的安装生命周期、dispatch、构建和 Release 合同；
 `deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。
@@ -252,3 +253,12 @@ Egress updater 会在主机启动和异常退出后恢复遗留任务：安装�
 否则补报中断失败并允许重新发起升级，不自动重复安装。升级执行中的状态按同一任务 ID
 读取，避免被旧 pending 请求或上一任务结果遮蔽。已有节点需通过一次安装/升级更新
 systemd 单元，才能获得启动恢复能力。
+
+### One User 独立 Web 部署
+
+`make deploy-user-server` 发布 Server 镜像并同步更新配套 Web；`make deploy-user-web`
+只检查 Web（format、lint、test、build），按精确源码 SHA 构建并切换 `/opt/one-user/web/current`，不重建或重启 Server。
+两条部署链使用同一生产并发锁；Web 健康检查失败时恢复上一版本。
+首次使用独立 Web 部署前，先执行一次 `make deploy-user-server`，建立 Web 目录和持久化挂载。
+`make validate-user-web` 检查独立发布合同，`make deploy-user-web DRY_RUN=true` 仅显示计划。
+Browser 已采用对应的 `make deploy-browser-server` / `make deploy-browser-web`，行为一致。

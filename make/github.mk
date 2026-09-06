@@ -28,3 +28,7 @@ validate-browser-server:
 .PHONY: validate-node-web
 validate-node-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh node-web
+
+.PHONY: validate-user-web
+validate-user-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh user-web

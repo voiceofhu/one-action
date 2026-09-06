@@ -49,6 +49,9 @@ service_name=user
 
 cd "$remote_dir"
 test -f docker-compose.yml.next
+mkdir -p web/releases
+exec 9>web/.deploy.lock
+flock -w 120 9
 
 compose() {
   local compose_file=$1
@@ -69,9 +72,19 @@ configured_images="$(compose docker-compose.yml.next config --images)"
 }
 previous_image="$(docker inspect --format '{{.Config.Image}}' "$container_name" 2>/dev/null || true)"
 
+previous_web="$(readlink web/current 2>/dev/null || true)"
+extract_container=
+
 rollback() {
   local exit_code=$?
   trap - ERR
+  if [[ -n "$extract_container" ]]; then
+    docker rm "$extract_container" >/dev/null || true
+  fi
+  if [[ -n "$previous_web" ]]; then
+    ln -s "$previous_web" web/current.rollback
+    mv -Tf web/current.rollback web/current
+  fi
   printf '%s\n' 'One User deployment failed; attempting to restore the previous container' >&2
   if [[ "$previous_image" =~ ^ghcr\.io/voiceofhu/one-user:.*@sha256:[0-9a-f]{64}$ ]] \
     && [[ "$previous_image" != "$image" ]] \
@@ -87,6 +100,21 @@ rollback() {
 trap rollback ERR
 
 compose docker-compose.yml.next pull "$service_name"
+# Server releases activate the Web bundled with the new Server image.
+release_web="releases/server-$(date +%s)-$$"
+mkdir "web/$release_web"
+extract_container="$(docker create "$image")"
+docker cp "$extract_container:/opt/one-user/web-dist/." "web/$release_web/"
+docker rm "$extract_container" >/dev/null
+extract_container=
+test -f "web/$release_web/index.html"
+if [[ -d web/current/assets ]]; then
+  mkdir -p "web/$release_web/assets"
+  cp -an web/current/assets/. "web/$release_web/assets/"
+fi
+chmod -R a+rX "web/$release_web"
+ln -s "$release_web" web/current.next
+mv -Tf web/current.next web/current
 compose docker-compose.yml.next up -d --no-deps --wait --wait-timeout 120 "$service_name"
 
 published_port="$(docker port "$container_name" 27510/tcp 2>/dev/null | sed -n '1s/.*://p' || true)"

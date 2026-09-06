@@ -16,6 +16,7 @@ help:
 		"Local checks:" \
 		"  make validate               Validate active shell and workflow contracts locally" \
 		"  make validate-user          Validate only One User release contracts" \
+		"  make validate-user-web      Validate One User Web deployment contracts" \
 		"  make validate-node          Validate only One Node Runtime release contracts" \
 		"  make validate-node-server   Validate only One Node Server release contracts" \
 		"  make validate-browser-app   Validate Browser App release version contracts" \
@@ -25,7 +26,8 @@ help:
 		"  make check-token            Check read-only access to active workflows" \
 		"" \
 		"Product releases:" \
-		"  make deploy-user            Compile, upload, and deploy One User" \
+		"  make deploy-user-server     Compile, upload, and deploy One User with Web" \
+		"  make deploy-user-web        Check and deploy Web without restarting User Server" \
 		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
 		"  make deploy-node-web        Check and deploy Web without restarting Node Server" \
 		"  make deploy-node            Check One Node source and dispatch compile/upload" \

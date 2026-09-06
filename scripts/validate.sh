@@ -23,6 +23,9 @@ case "$scope" in
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
       "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/user-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/user-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/user-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
@@ -42,6 +45,9 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/common.sh"
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-user-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-user-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
@@ -59,6 +65,7 @@ case "$scope" in
     active_workflows=(
       app.yml
       user.yml
+      user-web.yml
       egress.yml
       node-server.yml
       node.yml
@@ -68,10 +75,16 @@ case "$scope" in
     ;;
   user)
     active_tests=(
+      "$PROJECT_ROOT/tests/user-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/user-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/user-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
     )
     shell_files=(
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-user-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-user-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
@@ -80,6 +93,7 @@ case "$scope" in
     )
     active_workflows=(
       user.yml
+      user-web.yml
       reusable-publish-web-backend.yml
     )
     run_node_check=false
@@ -121,6 +135,22 @@ case "$scope" in
       node-server.yml
       reusable-publish-web-backend.yml
     )
+    run_node_check=false
+    ;;
+  user-web)
+    active_tests=(
+      "$PROJECT_ROOT/tests/user-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/user-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/user-web-deploy_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-user-web-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-user-web.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "${active_tests[@]}"
+    )
+    active_workflows=(user-web.yml user.yml)
     run_node_check=false
     ;;
   node-web)

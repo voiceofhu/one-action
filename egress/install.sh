@@ -17,6 +17,7 @@ readonly -a ONE_BROWSER_EGRESS_INSTALL_MODULES=(
   tls.sh
   docker.sh
   updater.sh
+  manager.sh
   main.sh
 )
 ONE_BROWSER_EGRESS_MODULE_TEMP_DIR=
@@ -235,6 +236,10 @@ if [ "${ONE_BROWSER_INSTALLER_LIBRARY_ONLY:-0}" = 1 ]; then
 elif egress_entrypoint_local_source_dir >/dev/null 2>&1; then
   egress_entrypoint_load_modules
   bootstrap "$@"
+elif [ "$#" -eq 0 ] && [ -f /opt/one-browser-egress/.installation ]; then
+  egress_entrypoint_run_loaded "$@"
+elif [[ "${1:-}" =~ ^--(status|doctor|upgrade|restart|logs|uninstall|help)$ ]] || [ "${1:-}" = -h ]; then
+  egress_entrypoint_run_loaded "$@"
 else
   egress_entrypoint_stage_remote_install "$@"
 fi

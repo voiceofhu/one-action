@@ -16,6 +16,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/node-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
+      "$PROJECT_ROOT/tests/egress-updater_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
@@ -151,6 +152,7 @@ case "$scope" in
   browser-egress)
     active_tests=(
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
+      "$PROJECT_ROOT/tests/egress-updater_test.sh"
     )
     shell_files=(
       "$PROJECT_ROOT/egress/install.sh"

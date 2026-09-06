@@ -235,3 +235,20 @@ Web 目录通过只读挂载提供给 Server，两个工作流共用部署锁。
 `make validate-node-web` 检查此发布链，`make deploy-node-web DRY_RUN=true` 只显示计划。
 
 Browser 与 Node 的 Web 均由后台在 `/` 路由提供，API 路由保持不变。
+
+### Browser Egress 安装后管理
+
+安装或升级后保留 `/opt/one-browser-egress/install.sh`，执行
+`sudo /opt/one-browser-egress/install.sh` 打开交互菜单，支持状态、运行环境检查、
+升级至最新版或指定版本、重启、日志及卸载。非交互调用使用 `--status`、`--doctor`、
+`--upgrade [latest|VERSION]`、`--restart`、`--logs [--follow]`、`--uninstall --yes`。
+升级保留已有节点身份，无需重新提供安装令牌。
+
+Server 通过心跳响应下发升级指令，egress 写入受管请求后由 systemd updater 调用同一
+管理入口执行指定版本升级，并通过心跳回报结果。主机执行日志位于
+`/opt/one-browser-egress/last-upgrade.log`（仅 root 可读）。
+
+Egress updater 会在主机启动和异常退出后恢复遗留任务：安装记录已是目标版本时补报成功，
+否则补报中断失败并允许重新发起升级，不自动重复安装。升级执行中的状态按同一任务 ID
+读取，避免被旧 pending 请求或上一任务结果遮蔽。已有节点需通过一次安装/升级更新
+systemd 单元，才能获得启动恢复能力。

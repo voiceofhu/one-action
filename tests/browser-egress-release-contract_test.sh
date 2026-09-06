@@ -69,7 +69,7 @@ require_text "$INSTALLER" 'updater.sh'
 require_text "$INSTALLER" '--upgrade-existing'
 require_text "$UPDATER" 'one-browser-egress-updater.service'
 require_text "$UPDATER" 'one-browser-egress-updater.path'
-require_text "$UPDATER" '--upgrade-existing --version "$version"'
+require_text "$UPDATER" '"$install_dir/install.sh" --upgrade "$version"'
 require_text "$PROJECT_ROOT/egress/scripts/install/enrollment.sh" 'EGRESS_UPGRADE_REQUEST_FILE='
 require_text "$PROJECT_ROOT/egress/scripts/install/compose-config.sh" ':/app/update'
 
@@ -134,3 +134,34 @@ grep -Fq '"confirmation": "enable:egress:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   fail 'Browser Egress dispatch did not carry the publication confirmation'
 
 printf '%s\n' 'One Browser Egress release contract tests passed.'
+
+# Exercise the persisted manager without touching host services or the network.
+ONE_BROWSER_INSTALLER_LIBRARY_ONLY=1 bash -s -- "$INSTALLER" <<'TEST'
+set -Eeuo pipefail
+source "$1"
+fixture=$(mktemp -d)
+trap 'rm -rf "$fixture"' EXIT
+INSTALL_DIR=$fixture
+INSTALL_RECORD=$fixture/.installation
+printf 'schema=2\nruntime=native\nversion=26.902.1000\n' >"$INSTALL_RECORD"
+chown() { :; }
+install_manager
+bash -n "$fixture/install.sh"
+# Load the generated functions while suppressing its final manager invocation.
+source <(sed '$d' "$fixture/install.sh")
+systemctl() { printf 'active\n'; }
+[[ "$(manager_action --status)" == *'version: 26.902.1000'* ]]
+manager_run_entrypoint() { printf '%s\n' "$*"; }
+[[ "$(manager_action --upgrade 26.902.1200)" == 'install.sh --upgrade-existing --version 26.902.1200' ]]
+[[ "$(manager_action --upgrade)" == 'install.sh --upgrade-existing --version latest' ]]
+if (manager_action --upgrade invalid) >/dev/null 2>&1; then exit 1; fi
+[[ "$(printf '4\n26.902.1200\n0\n' | manager_interactive)" == *'install.sh --upgrade-existing --version 26.902.1200'* ]]
+[[ "$(printf '8\nn\n0\n' | manager_interactive)" != *'uninstall.sh --mode'* ]]
+[[ "$(printf '8\ny\n' | manager_interactive)" == *'uninstall.sh --mode native'* ]]
+manager_main() { printf 'manager:%s\n' "$*"; }
+[[ "$(bootstrap --upgrade 26.902.1200)" == 'manager:--upgrade 26.902.1200' ]]
+TEST
+printf '%s\n' 'Egress persisted manager tests passed.'
+
+require_text "$UPDATER" 'Restart=on-failure'
+require_text "$UPDATER" 'systemctl enable one-browser-egress-updater.service'

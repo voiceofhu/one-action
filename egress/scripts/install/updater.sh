@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 
 install_host_updater() {
-  local update_owner update_group
+  local update_owner update_group updater_temporary
 
   UPDATE_DIR=$INSTALL_DIR/update
   UPDATER_FILE=$INSTALL_DIR/updater.sh
@@ -20,7 +20,8 @@ install_host_updater() {
   fi
   install -d -m 0700 -o "$update_owner" -g "$update_group" "$UPDATE_DIR"
 
-  cat >"$UPDATER_FILE" <<'EOF'
+  updater_temporary=$(mktemp "$INSTALL_DIR/.updater.XXXXXX")
+  cat >"$updater_temporary" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
@@ -31,7 +32,7 @@ readonly request_file=$update_dir/request
 readonly running_file=$update_dir/request.running
 readonly status_file=$update_dir/status
 readonly install_record=$install_dir/.installation
-readonly installer_url=https://raw.githubusercontent.com/voiceofhu/one-action/main/egress/install.sh
+active=0
 
 fail() {
   printf '[one-browser-egress-updater] %s\n' "$*" >&2
@@ -79,15 +80,35 @@ write_status() {
   sync -f "$update_dir"
 }
 
-[ -f "$request_file" ] && [ ! -L "$request_file" ] || fail "upgrade request is missing or unsafe"
-[ "$(stat -c %a "$request_file")" = 600 ] || fail "upgrade request permissions must be 0600"
-[ "$(wc -l <"$request_file" | tr -d ' ')" = 6 ] || fail "upgrade request field count is invalid"
-upgrade_id=$(read_field "$request_file" upgrade_id) || fail "upgrade_id is missing"
-version=$(read_field "$request_file" version) || fail "version is missing"
-state=$(read_field "$request_file" state) || fail "state is missing"
-requested_at=$(read_field "$request_file" requested_at) || fail "requested_at is missing"
-updated_at=$(read_field "$request_file" updated_at) || fail "updated_at is missing"
-message=$(read_field "$request_file" message) || fail "message is missing"
+finish_interrupted() {
+  local result=$?
+  trap - EXIT INT TERM HUP
+  if [ "$active" = 1 ]; then
+    write_status failed "升级进程中断"
+    rm -f "$running_file"
+    sync -f "$update_dir"
+  fi
+  exit "$result"
+}
+
+# A separate root-owned lock also serializes manual recovery with systemd.
+exec 8>"$install_dir/.updater.lock"
+flock -n 8 || exit 0
+source_file=$request_file
+if [ -e "$running_file" ] || [ -L "$running_file" ]; then
+  source_file=$running_file
+elif [ ! -e "$request_file" ] && [ ! -L "$request_file" ]; then
+  exit 0
+fi
+[ -f "$source_file" ] && [ ! -L "$source_file" ] || fail "upgrade request is missing or unsafe"
+[ "$(stat -c %a "$source_file")" = 600 ] || fail "upgrade request permissions must be 0600"
+[ "$(wc -l <"$source_file" | tr -d ' ')" = 6 ] || fail "upgrade request field count is invalid"
+upgrade_id=$(read_field "$source_file" upgrade_id) || fail "upgrade_id is missing"
+version=$(read_field "$source_file" version) || fail "version is missing"
+state=$(read_field "$source_file" state) || fail "state is missing"
+requested_at=$(read_field "$source_file" requested_at) || fail "requested_at is missing"
+updated_at=$(read_field "$source_file" updated_at) || fail "updated_at is missing"
+message=$(read_field "$source_file" message) || fail "message is missing"
 case "$upgrade_id" in ''|*[!A-Za-z0-9._:-]*) fail "upgrade_id is invalid" ;; esac
 [ "${#upgrade_id}" -le 64 ] || fail "upgrade_id is too long"
 validate_version "$version" || fail "version is invalid"
@@ -95,23 +116,42 @@ validate_version "$version" || fail "version is invalid"
   fail "upgrade request metadata is invalid"
 [ -f "$install_record" ] && [ ! -L "$install_record" ] || fail "installation record is missing"
 
+if [ "$source_file" = "$running_file" ]; then
+  # The installer commits its version only after the runtime passes health checks.
+  # Never replay an interrupted installation without a new Server command.
+  installed_version=$(read_field "$install_record" version)
+  if [ "$installed_version" = "$version" ]; then
+    write_status succeeded "升级已完成，中断后恢复状态"
+  else
+    write_status failed "升级中断，请重新发起升级"
+  fi
+  rm -f "$running_file"
+  sync -f "$update_dir"
+  exit 0
+fi
+
+trap finish_interrupted EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+active=1
 mv -f "$request_file" "$running_file"
 write_status running "升级开始"
-if curl -q --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-  --connect-timeout 10 --max-time 60 "$installer_url" |
-  /bin/bash -s -- --upgrade-existing --version "$version"; then
+if /bin/bash "$install_dir/install.sh" --upgrade "$version" >"$install_dir/last-upgrade.log" 2>&1; then
   write_status succeeded "升级完成"
   rm -f "$running_file"
+  active=0
   sync -f "$update_dir"
   exit 0
 fi
 write_status failed "升级失败"
 rm -f "$running_file"
+active=0
 sync -f "$update_dir"
 exit 1
 EOF
-  chown root:root "$UPDATER_FILE"
-  chmod 0700 "$UPDATER_FILE"
+  chown root:root "$updater_temporary"
+  chmod 0700 "$updater_temporary"
+  mv -f "$updater_temporary" "$UPDATER_FILE"
 
   cat >"$UPDATER_SERVICE_FILE" <<EOF
 [Unit]
@@ -121,8 +161,14 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+TimeoutStartSec=15min
+Restart=on-failure
+RestartSec=5s
 ExecStart=$UPDATER_FILE
 UMask=0077
+
+[Install]
+WantedBy=multi-user.target
 EOF
   chown root:root "$UPDATER_SERVICE_FILE"
   chmod 0644 "$UPDATER_SERVICE_FILE"
@@ -141,5 +187,6 @@ EOF
   chown root:root "$UPDATER_PATH_FILE"
   chmod 0644 "$UPDATER_PATH_FILE"
   systemctl daemon-reload
+  systemctl enable one-browser-egress-updater.service
   systemctl enable --now one-browser-egress-updater.path
 }

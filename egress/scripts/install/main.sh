@@ -93,6 +93,7 @@ installer_main() {
   fi
   ensure_install_directories
   install_host_updater
+  install_manager
   case "$installation_state" in
     fresh)
       log "No existing Egress installation detected; starting a fresh install for $HOST_PLATFORM"
@@ -166,6 +167,16 @@ installer_main() {
 }
 
 bootstrap() {
+  if [ "$#" -eq 0 ] && [ -f /opt/one-browser-egress/.installation ]; then
+    manager_main
+    return
+  fi
+  case "${1:-}" in
+    --status|--doctor|--upgrade|--restart|--logs|--uninstall)
+      manager_main "$@"
+      return
+      ;;
+  esac
   local environment_token_present=${ONE_BROWSER_ENROLLMENT_TOKEN+x}
   local enrollment_token=${ONE_BROWSER_ENROLLMENT_TOKEN-}
   local staged_token_file=${ONE_BROWSER_EGRESS_ENROLLMENT_TOKEN_FILE-}
@@ -311,7 +322,8 @@ bootstrap() {
     fingerprint_matches existing_enrollment_mode claim_matches_existing_config \
     load_partial_enrollment_identity refresh_existing_enrollment \
     install_unconfigured_enrollment \
-    write_service_env write_compose_file install_host_updater \
+    write_service_env write_compose_file install_host_updater install_manager \
+    manager_main manager_help manager_interactive manager_action manager_run_entrypoint \
     discover_public_ip canonicalize_ipv6 query_ipv4_records \
     query_public_dns_records query_public_ipv4_records resolve_ipv4 \
     query_ipv6_records query_public_ipv6_records resolve_ipv6 \

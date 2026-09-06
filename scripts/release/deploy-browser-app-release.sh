@@ -20,6 +20,8 @@ action_sha="$(git -C "$PROJECT_ROOT" rev-parse --verify "${ACTION_REF}^{commit}"
 validate_sha "$action_sha"
 require_tool jq
 
+printf 'One Browser App release: one-browser-app-v%s (tag created on One Action by CI)\n' "$VERSION" >&2
+
 payload="$(jq -cn --arg ref "$ACTION_REF" --arg action_sha "$action_sha" \
   --arg repository "$ONE_BROWSER_APP_REPOSITORY" \
   --arg source_ref "$ONE_BROWSER_APP_REF" --arg version "$VERSION" \
@@ -62,6 +64,7 @@ pnpm --dir "$ONE_BROWSER_APP_DIR" install --frozen-lockfile
 for script in "$ONE_BROWSER_APP_DIR"/scripts/*.mjs; do
   node --check "$script"
 done
+node --test "$ONE_BROWSER_APP_DIR"/scripts/tests/*.test.mjs
 cargo fmt --manifest-path "$ONE_BROWSER_APP_DIR/src-tauri/Cargo.toml" --all --check
 cargo clippy --manifest-path "$ONE_BROWSER_APP_DIR/src-tauri/Cargo.toml" \
   --all-targets --all-features --locked -- -D warnings

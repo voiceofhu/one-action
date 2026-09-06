@@ -33,6 +33,7 @@ ruby -ryaml -e '
   File.write("#{ARGV[1]}/stamp.sh", stamp.fetch("run"))
   publish = workflow.fetch("jobs").fetch("publish").fetch("steps").find { |s| s["name"] == "Publish release assets" }
   abort "immutable release guard removed" unless publish.fetch("run").include?("refusing to mutate it")
+  File.write("#{ARGV[1]}/publish.sh", publish.fetch("run"))
 ' "$PROJECT_ROOT/.github/workflows/app.yml" "$test_dir"
 
 mkdir -p "$test_dir/bin" "$test_dir/app/scripts"
@@ -86,4 +87,59 @@ SCRIPT
 (cd "$test_dir" && bash stamp.sh)
 node -e 'if (require(process.argv[1]).version !== process.argv[2]) process.exit(1)' \
   "$test_dir/app/package.json" "$VERSION"
-printf '%s\n' 'Browser App generated/explicit versions, CI stamping and early duplicate/error guards passed.'
+
+cat >"$test_dir/bin/gh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf '%s\n' "$*" >>"$API_LOG"
+case "$1 $2" in
+  'release view') exit 1 ;;
+  'release create')
+    [[ " $* " == *' --verify-tag '* && " $* " == *' --latest=false '* ]]
+    [[ "$3" == "$RELEASE_TAG" ]]
+    ;;
+  'api --method')
+    [[ "$*" == *"ref=refs/tags/$RELEASE_TAG"* && "$*" == *"sha=$GITHUB_SHA"* ]]
+    touch "$TAG_CREATED"
+    printf '{"object":{"type":"commit","sha":"%s"}}\n' "$GITHUB_SHA"
+    ;;
+  api*)
+    if [[ "$TAG_STATE" == denied ]]; then
+      printf '%s\n' '{"status":"403"}'; exit 1
+    elif [[ "$TAG_STATE" == transport ]]; then
+      exit 1
+    elif [[ "$TAG_STATE" == missing && ! -f "$TAG_CREATED" ]]; then
+      printf '%s\n' '{"status":"404"}'; exit 1
+    elif [[ "$TAG_STATE" == mismatch ]]; then
+      printf '{"object":{"type":"commit","sha":"%s"}}\n' "$APP_REF"
+    else
+      printf '{"object":{"type":"commit","sha":"%s"}}\n' "$GITHUB_SHA"
+    fi
+    ;;
+  *) exit 99 ;;
+esac
+SCRIPT
+export GITHUB_REPOSITORY=voiceofhu/one-action GITHUB_SHA="$ACTION_SHA" APP_SHA="$APP_REF"
+export RELEASE_TAG="one-browser-app-v$VERSION" TAG_CREATED="$test_dir/tag-created"
+for state in missing matching mismatch denied transport; do
+  export TAG_STATE="$state"
+  rm -f "$TAG_CREATED"
+  : >"$API_LOG"
+  work="$test_dir/publish-$state"
+  mkdir -p "$work/dist/one-browser-app-macos-arm64"
+  printf 'fixture' >"$work/dist/one-browser-app-macos-arm64/app.dmg"
+  if (cd "$work" && bash "$test_dir/publish.sh") >"$test_dir/stdout" 2>"$test_dir/stderr"; then
+    [[ "$state" == missing || "$state" == matching ]]
+    grep -q '^release create ' "$API_LOG"
+    if [[ "$state" == missing ]]; then
+      [[ -f "$TAG_CREATED" ]]
+    else
+      [[ ! -f "$TAG_CREATED" ]]
+    fi
+  else
+    [[ "$state" != missing && "$state" != matching ]]
+    [[ ! -f "$TAG_CREATED" ]]
+    ! grep -q '^release create ' "$API_LOG"
+  fi
+done
+printf '%s\n' 'Browser App version, CI stamping, duplicate guards and immutable tag publication tests passed.'

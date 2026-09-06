@@ -18,6 +18,7 @@ help:
 		"  make validate-user          Validate only One User release contracts" \
 		"  make validate-node          Validate only One Node Runtime release contracts" \
 		"  make validate-node-server   Validate only One Node Server release contracts" \
+		"  make validate-browser-app   Validate Browser App release version contracts" \
 		"  make validate-browser-egress Validate only Browser Egress release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \

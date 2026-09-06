@@ -35,7 +35,7 @@ ONE_BROWSER_BACKEND_DIR ?= $(SOURCE_ROOT)/one-browser/backend
 ONE_BROWSER_WEB_DIR ?= $(SOURCE_ROOT)/one-browser/web
 ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/app
 ONE_BROWSER_EGRESS_DIR ?= $(SOURCE_ROOT)/one-browser/egress
-BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(shell node -e "const p=require(process.argv[1]);process.stdout.write(p.version||'')" "$(ONE_BROWSER_APP_DIR)/package.json" 2>/dev/null))))
+BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 BROWSER_APP_SERVER_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(shell awk -F '"' '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{print $$2;exit}' "$(ONE_BROWSER_BACKEND_DIR)/Cargo.toml" 2>/dev/null))))
 BROWSER_EGRESS_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 BROWSER_RUNTIME_REPOSITORY ?=

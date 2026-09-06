@@ -54,8 +54,8 @@ case "$app_origin" in
 esac
 [[ -z "$(git -C "$ONE_BROWSER_APP_DIR" status --porcelain --untracked-files=all)" ]] ||
   die 'App worktree must be clean before release validation'
-[[ "$(node -p 'require(process.argv[1]).version' "$ONE_BROWSER_APP_DIR/package.json")" == "$VERSION" ]] ||
-  die 'App package version differs from release version'
+[[ -f "$ONE_BROWSER_APP_DIR/scripts/update-version.mjs" ]] ||
+  die 'App source must provide scripts/update-version.mjs for CI release version stamping'
 
 printf '%s\n' 'Validating One Browser App before dispatch...'
 pnpm --dir "$ONE_BROWSER_APP_DIR" install --frozen-lockfile

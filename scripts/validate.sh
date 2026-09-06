@@ -7,6 +7,7 @@ scope=${1:-all}
 case "$scope" in
   all)
     active_tests=(
+      "$PROJECT_ROOT/tests/browser-app-release-version_test.sh"
       "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh"
       "$PROJECT_ROOT/tests/browser-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/browser-server-publish-workflow_test.sh"
@@ -44,6 +45,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-browser-app-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
@@ -55,6 +57,7 @@ case "$scope" in
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
     )
     active_workflows=(
+      app.yml
       user.yml
       egress.yml
       node-server.yml
@@ -134,6 +137,15 @@ case "$scope" in
       "${active_tests[@]}"
     )
     active_workflows=(node-web.yml node-server.yml)
+    run_node_check=false
+    ;;
+  browser-app)
+    active_tests=("$PROJECT_ROOT/tests/browser-app-release-version_test.sh")
+    shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-browser-app-release.sh"
+      "${active_tests[@]}"
+    )
+    active_workflows=(app.yml)
     run_node_check=false
     ;;
   browser-server)

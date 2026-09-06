@@ -59,6 +59,15 @@ jobs:
             echo 'Invalid One Browser App dispatch inputs or Action trust root.' >&2
             exit 1
           }
+          release_tag="one-browser-app-v$VERSION"
+          release_file="$RUNNER_TEMP/one-browser-app-existing-release.json"
+          if gh api "repos/$ACTION_REPOSITORY/releases/tags/$release_tag" >"$release_file"; then
+            echo "Release $release_tag already exists; choose a new VERSION." >&2
+            exit 1
+          elif ! jq -e '.status == "404" or .status == 404' "$release_file" >/dev/null; then
+            echo 'Unable to verify App release availability; refusing to build.' >&2
+            exit 1
+          fi
           commit_file="$RUNNER_TEMP/one-browser-app-commit.json"
           [[ -n "$APP_REF" && ${#APP_REF} -le 256 ]]
           encoded_ref="$(jq -rn --arg ref "$APP_REF" '$ref | @uri')"
@@ -147,12 +156,13 @@ jobs:
         shell: bash
         run: pnpm --dir app install --frozen-lockfile
 
-      - name: Validate App version
+      - name: Set App release version
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -Eeuo pipefail
+          (cd app && node scripts/update-version.mjs "$VERSION")
           actual="$(node -e 'const p=require("./app/package.json");process.stdout.write(p.version||"")')"
           [[ "$actual" == "$VERSION" ]]
 

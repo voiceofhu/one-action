@@ -163,5 +163,22 @@ manager_main() { printf 'manager:%s\n' "$*"; }
 TEST
 printf '%s\n' 'Egress persisted manager tests passed.'
 
+# Recreate the function payload passed to the isolated second-stage Bash.
+ONE_BROWSER_INSTALLER_LIBRARY_ONLY=1 bash -s -- "$INSTALLER" <<'TEST'
+set -Eeuo pipefail
+source "$1"
+eval "$(sed -n '/^  stage_code=$(declare -f /,/installer_main)/p' "${1%/install.sh}/scripts/install/main.sh")"
+for existing in docker native; do
+  if [ "$existing" = docker ]; then requested=native; else requested=docker; fi
+  status=0
+  output=$(bash -c "${stage_code}"$'\n''die_runtime_switch "$@"' stage2 "$existing" "$requested" 2>&1) || status=$?
+  [[ "$status" = 1 ]]
+  [[ "$output" == *"installed in $existing mode; uninstall it before switching to $requested mode."* ]]
+  [[ "$output" == *'https://raw.githubusercontent.com/voiceofhu/one-action/main/egress/uninstall.sh'* ]]
+  [[ "$output" != *'command not found'* ]]
+done
+TEST
+printf '%s\n' 'Egress second-stage runtime switch tests passed.'
+
 require_text "$UPDATER" 'Restart=on-failure'
 require_text "$UPDATER" 'systemctl enable one-browser-egress-updater.service'

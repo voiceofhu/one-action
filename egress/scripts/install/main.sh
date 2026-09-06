@@ -302,6 +302,7 @@ bootstrap() {
   # command line contains only the token-file path, one-way fingerprint,
   # replacement bit, and validated non-secret options.
   stage_code=$(declare -f \
+    print_uninstall_command die_runtime_switch \
     die log validate_secret_token validate_domain validate_ipv4 validate_boolean validate_lower_sha256 \
     validate_install_mode normalize_version validate_control_url \
     normalize_control_url validate_egress_id validate_positive_integer \

@@ -111,7 +111,8 @@ done
 
 for text in \
   'make --no-print-directory -C "$PROJECT_ROOT" validate-node-server' \
-  'make --no-print-directory -C "$ONE_NODE_WEB_DIR" install lint' \
+  'pnpm --dir "$ONE_NODE_WEB_DIR" install --frozen-lockfile' \
+  'pnpm --dir "$ONE_NODE_WEB_DIR" lint' \
   'make --no-print-directory -C "$ONE_NODE_SERVER_DIR" test' \
   'go vet ./...' \
   'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-server.yml' \

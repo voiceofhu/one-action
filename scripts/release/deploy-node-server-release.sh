@@ -119,7 +119,8 @@ preflight_source() {
 preflight_source Server "$ONE_NODE_SERVER_DIR" "$server_branch"
 preflight_source Web "$ONE_NODE_WEB_DIR" "$web_branch"
 
-make --no-print-directory -C "$ONE_NODE_WEB_DIR" install lint
+pnpm --dir "$ONE_NODE_WEB_DIR" install --frozen-lockfile
+pnpm --dir "$ONE_NODE_WEB_DIR" lint
 make --no-print-directory -C "$ONE_NODE_SERVER_DIR" test
 (
   cd "$ONE_NODE_SERVER_DIR"

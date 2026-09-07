@@ -8,7 +8,7 @@ trap 'rm -rf "$test_dir"' EXIT
 fake_bin="$test_dir/bin"
 mkdir -p "$fake_bin"
 export LOCAL_GATE_LOG="$test_dir/local-gates.log"
-for command in make go; do
+for command in make go pnpm; do
   printf '%s\n' '#!/usr/bin/env bash' 'set -Eeuo pipefail' \
     '[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]' \
     "printf '$command' >>\"\$LOCAL_GATE_LOG\"" \
@@ -114,7 +114,8 @@ require_gate() {
   }
 }
 require_gate "make --no-print-directory -C $action_dir validate-node-server"
-require_gate "make --no-print-directory -C $ONE_NODE_WEB_DIR install lint"
+require_gate "pnpm --dir $ONE_NODE_WEB_DIR install --frozen-lockfile"
+require_gate "pnpm --dir $ONE_NODE_WEB_DIR lint"
 require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR test"
 require_gate 'go vet ./...'
 require_gate "make --no-print-directory -C $ONE_NODE_SERVER_DIR build VERSION=26.815.1234 COMMIT=$server_sha"

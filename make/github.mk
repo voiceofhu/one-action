@@ -32,3 +32,9 @@ validate-node-web:
 .PHONY: validate-user-web
 validate-user-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh user-web
+
+.PHONY: validate-object validate-object-web
+validate-object:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh object
+validate-object-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh object-web

@@ -7,6 +7,10 @@ scope=${1:-all}
 case "$scope" in
   all)
     active_tests=(
+      "$PROJECT_ROOT/tests/object-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/object-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/object-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/object-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/browser-app-release-version_test.sh"
       "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh"
       "$PROJECT_ROOT/tests/browser-web-deploy_test.sh"
@@ -30,6 +34,10 @@ case "$scope" in
       "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
     shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-object-release.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-object-web-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-object.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-object-web.sh"
       "$PROJECT_ROOT/install.sh"
       "$PROJECT_ROOT/uninstall.sh"
       "$PROJECT_ROOT/egress/install.sh"
@@ -63,6 +71,8 @@ case "$scope" in
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
     )
     active_workflows=(
+      object.yml
+      object-web.yml
       app.yml
       user.yml
       user-web.yml
@@ -94,6 +104,32 @@ case "$scope" in
     active_workflows=(
       user.yml
       user-web.yml
+      reusable-publish-web-backend.yml
+    )
+    run_node_check=false
+    ;;
+  object|object-web)
+    active_tests=(
+      "$PROJECT_ROOT/tests/object-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/object-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/object-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/object-release-version_test.sh"
+      "$PROJECT_ROOT/tests/object-publish-workflow_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-object-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-object-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-object.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-object-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      object.yml
+      object-web.yml
       reusable-publish-web-backend.yml
     )
     run_node_check=false
@@ -252,6 +288,7 @@ ruby -ryaml -e '
 
 legacy_name='aic''be'
 canonical_user_origin="https://oa.${legacy_name}.com"
+canonical_object_origin="https://object.${legacy_name}.com"
 canonical_browser_origin="https://browser.${legacy_name}.com"
 legacy_matches="$(
   grep -RniE "$legacy_name" \
@@ -264,7 +301,7 @@ legacy_matches="$(
 )"
 unexpected_legacy_matches="$(
   printf '%s\n' "$legacy_matches" \
-    | sed -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" \
+    | sed -e "s#${canonical_object_origin}##g" -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" \
     | grep -iE "$legacy_name" || true
 )"
 if [[ -n "$unexpected_legacy_matches" ]]; then

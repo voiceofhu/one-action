@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  user.yml|user-web.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+  object.yml|object-web.yml|user.yml|user-web.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -99,6 +99,13 @@ case "$workflow" in
     require_repository web_repository voiceofhu/one-user-web
     publish_supported=true
     ;;
+  object.yml)
+    require_inputs backend_repository backend_ref web_repository web_ref \
+      version publish
+    require_repository backend_repository voiceofhu/one-object-server
+    require_repository web_repository voiceofhu/one-object-web
+    publish_supported=true
+    ;;
   one-amz.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
@@ -123,6 +130,11 @@ case "$workflow" in
   user-web.yml)
     require_inputs web_repository web_ref version publish deploy
     require_repository web_repository voiceofhu/one-user-web
+    publish_supported=true
+    ;;
+  object-web.yml)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository voiceofhu/one-object-web
     publish_supported=true
     ;;
   node-web.yml)
@@ -185,7 +197,7 @@ fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml && "$workflow" != user-web.yml ]]; then
+if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml && "$workflow" != user-web.yml && "$workflow" != object-web.yml ]]; then
   die 'deployment is not implemented for this workflow'
 fi
 if [[ "$deploy" == true && "$publish" != true ]]; then
@@ -252,6 +264,8 @@ done
 if [[ "$publish" == true ]]; then
   if [[ "$workflow" == user.yml ]]; then
     workflow_base=one-user
+  elif [[ "$workflow" == object.yml ]]; then
+    workflow_base=one-object
   elif [[ "$workflow" == browser-server.yml ]]; then
     workflow_base=one-browser-server
   elif [[ "$workflow" == node-server.yml ]]; then

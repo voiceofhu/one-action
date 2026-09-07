@@ -262,3 +262,27 @@ systemd 单元，才能获得启动恢复能力。
 首次使用独立 Web 部署前，先执行一次 `make deploy-user-server`，建立 Web 目录和持久化挂载。
 `make validate-user-web` 检查独立发布合同，`make deploy-user-web DRY_RUN=true` 仅显示计划。
 Browser 已采用对应的 `make deploy-browser-server` / `make deploy-browser-web`，行为一致。
+
+## One Object Server / Web
+
+`make deploy-object-server` 仿照 One User：检查本地源码，提交并推送版本变更，
+以精确 Server/Web SHA dispatch `object.yml`，构建 amd64/arm64 镜像，
+随后按 OCI digest 部署 `ghcr.io/voiceofhu/one-object`。Server 发布同步激活镜像内的 Web。
+`make deploy-object-web` 仅检查并发布 Web，不依赖 Server checkout，不重启 Server。
+
+源码固定为 `voiceofhu/one-object-server` 和 `voiceofhu/one-object-web`，对应本地
+`../one-object/backend` 与 `../one-object/web`。源码与 Action 必须已提交并同步远端。
+命令默认生成版本，也可传 `VERSION=26.907.1800`；`DRY_RUN=true` 仅检查并显示计划。
+本地契约检查：`make validate-object`、`make validate-object-web`。
+
+首次先部署 Server，建立 `/opt/one-object/web` 持久化目录与挂载。
+GitHub Environment `one-object-prod` 需要：
+- Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`；
+  可选 `DEPLOY_PORT`（默认 22）；`GH_TOKEN` 必须能读取两个私有源仓库并发布 GHCR。
+- Variables：可选 `DEPLOY_URL`（默认 https://object.aicbe.com），可选 `DEPLOY_REMOTE_DIR`（默认 `/opt/one-object`）。
+- 服务器预置可写部署目录、`.env`、Docker Compose、curl、flock 和外部数据库网络
+  （默认 `db-networks`）。服务监听本机 `27525`，公网反向代理需指向该端口。
+- `.env` 配置专用数据库 `DB_URL`、OIDC 参数及 `STORAGE_ENCRYPTION_KEY`；
+  数据库须事先完成初始化/升级。部署不会自动运行 SQL，也不需要 One User 的 cert 目录。
+
+Server 与 Web 共享部署锁，保留旧静态资源，健康检查失败时回滚。

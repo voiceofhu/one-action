@@ -1,16 +1,16 @@
-name: One Object
+name: One Object Server
 
 "on":
   workflow_dispatch:
     inputs:
-      expected_action_sha: {required: true, type: string}
-      confirmation: {required: true, type: string}
-      backend_repository: {required: true, type: string}
-      backend_ref: {required: true, type: string}
-      web_repository: {required: true, type: string}
-      web_ref: {required: true, type: string}
-      version: {required: true, type: string}
-      publish: {required: true, type: boolean}
+      expected_action_sha: { required: true, type: string }
+      confirmation: { required: true, type: string }
+      backend_repository: { required: true, type: string }
+      backend_ref: { required: true, type: string }
+      web_repository: { required: true, type: string }
+      web_ref: { required: true, type: string }
+      version: { required: true, type: string }
+      publish: { required: true, type: boolean }
 
 permissions:
   contents: read

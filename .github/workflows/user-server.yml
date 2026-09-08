@@ -88,7 +88,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/reusable-publish-web-backend.yml
+    uses: ./.github/workflows/reusable-publish-server-image.yml
     with:
       workflow_name: one-user
       action_sha: ${{ github.sha }}

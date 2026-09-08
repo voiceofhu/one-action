@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-user_workflow="$PROJECT_ROOT/.github/workflows/object.yml"
-publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-web-backend.yml"
+user_workflow="$PROJECT_ROOT/.github/workflows/object-server.yml"
+publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-server-image.yml"
 release="$PROJECT_ROOT/scripts/release/deploy-object-release.sh"
 deployer="$PROJECT_ROOT/scripts/deploy/deploy-object.sh"
 
@@ -103,7 +103,7 @@ for text in \
   'pnpm --dir "$ONE_OBJECT_WEB_DIR" lint' \
   'pnpm --dir "$ONE_OBJECT_WEB_DIR" test' \
   'pnpm --dir "$ONE_OBJECT_WEB_DIR" build' \
-  'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" object.yml' \
+  'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" object-server.yml' \
   '"backend_ref=$backend_release_sha"' \
   '"web_ref=$web_release_sha"'; do
   require_text "$release" "$text"

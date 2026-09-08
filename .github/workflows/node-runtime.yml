@@ -1,4 +1,4 @@
-name: One Node
+name: One Node Runtime
 
 'on':
   workflow_dispatch:

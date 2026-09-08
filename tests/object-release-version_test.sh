@@ -145,7 +145,7 @@ git --git-dir="$web_bare" show refs/heads/main:package.json |
 backend_sha="$(git --git-dir="$backend_bare" rev-parse refs/heads/main)"
 web_sha="$(git --git-dir="$web_bare" rev-parse refs/heads/main)"
 for field in \
-  object.yml \
+  object-server.yml \
   "backend_ref=$backend_sha" \
   "web_ref=$web_sha" \
   version=26.815.1234 \

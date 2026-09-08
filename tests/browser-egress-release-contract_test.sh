@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKFLOW="$PROJECT_ROOT/.github/workflows/egress.yml"
+WORKFLOW="$PROJECT_ROOT/.github/workflows/browser-egress.yml"
 RELEASE_SCRIPT="$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
 INSTALLER="$PROJECT_ROOT/egress/install.sh"
 UPDATER="$PROJECT_ROOT/egress/scripts/install/updater.sh"
@@ -38,11 +38,11 @@ require_text "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" val
 require_text "$RELEASE_SCRIPT" 'cargo fmt --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml" --all --check'
 require_text "$RELEASE_SCRIPT" 'cargo clippy --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml"'
 require_text "$RELEASE_SCRIPT" 'cargo test --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml"'
-require_text "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" egress.yml'
+require_text "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml'
 require_text "$RELEASE_SCRIPT" '"egress_ref=$egress_ref"'
 
 test_line="$(line_number "$RELEASE_SCRIPT" 'cargo test --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml"')"
-dispatch_line="$(line_number "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" egress.yml')"
+dispatch_line="$(line_number "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml')"
 ((test_line < dispatch_line)) || fail 'Egress tests must finish before workflow dispatch'
 
 if grep -Fq -- 'git -C "$PROJECT_ROOT" tag' "$RELEASE_SCRIPT" ||
@@ -120,7 +120,7 @@ dispatch_output="$(
   DRY_RUN=true \
   ACTION_REPOSITORY=voiceofhu/one-action \
   ACTION_REF=main \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" egress.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml \
     egress_repository=voiceofhu/one-browser-egress \
     egress_ref=main \
     version=26.901.1200 \

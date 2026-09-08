@@ -1,4 +1,4 @@
-name: Publish Web and backend image
+name: Reusable Publish Server Image
 
 'on':
   workflow_call:

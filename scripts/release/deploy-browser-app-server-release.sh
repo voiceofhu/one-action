@@ -15,10 +15,10 @@ ACTION_REF=${ACTION_REF:-main}
 action_sha="$(GH_TOKEN="${GH_TOKEN:-}" \
   bash "$PROJECT_ROOT/scripts/github/resolve-ref.sh" "$ACTION_REPOSITORY" "$ACTION_REF")"
 
-CONFIRM_DISPATCH="dispatch:one-browser-backend.yml:$action_sha" \
-CONFIRM_MUTATION="mutate:one-browser-backend.yml:$action_sha" \
+CONFIRM_DISPATCH="dispatch:browser-server-publish.yml:$action_sha" \
+CONFIRM_MUTATION="mutate:browser-server-publish.yml:$action_sha" \
 ACTION_REPOSITORY="$ACTION_REPOSITORY" ACTION_REF="$ACTION_REF" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" one-browser-backend.yml \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-server-publish.yml \
   "backend_repository=$ONE_BROWSER_BACKEND_REPOSITORY" \
   "backend_ref=$ONE_BROWSER_BACKEND_REF" \
   "web_repository=$ONE_BROWSER_WEB_REPOSITORY" \

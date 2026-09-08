@@ -3,7 +3,7 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ruby -ryaml -e '
   root = ARGV.fetch(0)
-  server = YAML.load_file("#{root}/.github/workflows/object.yml")
+  server = YAML.load_file("#{root}/.github/workflows/object-server.yml")
   web = YAML.load_file("#{root}/.github/workflows/object-web.yml")
   abort "Server jobs" unless server.fetch("jobs").keys.sort == %w[deploy prepare publish]
   abort "Web jobs" unless web.fetch("jobs").keys.sort == %w[build deploy]

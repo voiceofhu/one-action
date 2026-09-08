@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  object.yml|object-web.yml|user.yml|user-web.yml|one-browser-backend.yml|app.yml|app-debug.yml|egress.yml|one-amz.yml|node.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+  object-server.yml|object-web.yml|user-server.yml|user-web.yml|browser-server-publish.yml|browser-app.yml|app-debug.yml|browser-egress.yml|one-amz.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -92,14 +92,14 @@ done
 
 publish_supported=false
 case "$workflow" in
-  user.yml)
+  user-server.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version publish
     require_repository backend_repository voiceofhu/one-user-backend
     require_repository web_repository voiceofhu/one-user-web
     publish_supported=true
     ;;
-  object.yml)
+  object-server.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version publish
     require_repository backend_repository voiceofhu/one-object-server
@@ -113,7 +113,7 @@ case "$workflow" in
     require_repository web_repository voiceofhu/one-amz-web-next
     publish_supported=true
     ;;
-  one-browser-backend.yml)
+  browser-server-publish.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
     require_repository backend_repository voiceofhu/one-browser-server
@@ -153,7 +153,7 @@ case "$workflow" in
     require_repository web_repository voiceofhu/one-browser-web
     publish_supported=true
     ;;
-  app.yml)
+  browser-app.yml)
     require_inputs app_repository app_ref version publish
     require_repository app_repository voiceofhu/one-browser-app
     publish_supported=true
@@ -162,12 +162,12 @@ case "$workflow" in
     require_inputs app_repository app_ref upload_artifact
     require_repository app_repository voiceofhu/one-browser-app
     ;;
-  egress.yml)
+  browser-egress.yml)
     require_inputs egress_repository egress_ref version environment publish deploy
     require_repository egress_repository voiceofhu/one-browser-egress
     publish_supported=true
     ;;
-  node.yml)
+  node-runtime.yml)
     require_inputs node_repository node_ref version
     require_repository node_repository voiceofhu/one-node-node
     publish_supported=true
@@ -191,7 +191,7 @@ esac
 publish="$(input_value publish || printf false)"
 deploy="$(input_value deploy || printf false)"
 upload_artifact="$(input_value upload_artifact || printf false)"
-if [[ "$workflow" == node.yml ]]; then
+if [[ "$workflow" == node-runtime.yml ]]; then
   publish=true
 fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
@@ -207,7 +207,7 @@ fi
 if [[ "$publish" == true ]]; then
   [[ "$publish_supported" == true ]] || die 'workflow publication is not implemented'
   [[ -n "$version" ]] || die 'publication requires a canonical version'
-  if [[ "$workflow" == egress.yml && "$environment" != prod ]]; then
+  if [[ "$workflow" == browser-egress.yml && "$environment" != prod ]]; then
     die 'Egress publication requires environment=prod'
   fi
 fi
@@ -262,14 +262,22 @@ for index in "${!input_keys[@]}"; do
   fi
 done
 if [[ "$publish" == true ]]; then
-  if [[ "$workflow" == user.yml ]]; then
+  if [[ "$workflow" == user-server.yml ]]; then
     workflow_base=one-user
-  elif [[ "$workflow" == object.yml ]]; then
+  elif [[ "$workflow" == object-server.yml ]]; then
     workflow_base=one-object
   elif [[ "$workflow" == browser-server.yml ]]; then
     workflow_base=one-browser-server
   elif [[ "$workflow" == node-server.yml ]]; then
     workflow_base=one-node-server
+  elif [[ "$workflow" == browser-server-publish.yml ]]; then
+    workflow_base=one-browser-backend
+  elif [[ "$workflow" == browser-app.yml ]]; then
+    workflow_base=app
+  elif [[ "$workflow" == browser-egress.yml ]]; then
+    workflow_base=egress
+  elif [[ "$workflow" == node-runtime.yml ]]; then
+    workflow_base=node
   else
     workflow_base="${workflow%.yml}"
   fi

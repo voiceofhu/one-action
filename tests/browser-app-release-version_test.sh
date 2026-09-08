@@ -34,7 +34,7 @@ ruby -ryaml -e '
   publish = workflow.fetch("jobs").fetch("publish").fetch("steps").find { |s| s["name"] == "Publish release assets" }
   abort "immutable release guard removed" unless publish.fetch("run").include?("refusing to mutate it")
   File.write("#{ARGV[1]}/publish.sh", publish.fetch("run"))
-' "$PROJECT_ROOT/.github/workflows/app.yml" "$test_dir"
+' "$PROJECT_ROOT/.github/workflows/browser-app.yml" "$test_dir"
 
 mkdir -p "$test_dir/bin" "$test_dir/app/scripts"
 cat >"$test_dir/bin/gh" <<'SCRIPT'

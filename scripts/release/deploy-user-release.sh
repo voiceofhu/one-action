@@ -296,13 +296,13 @@ printf '%s\n' \
   "Published Backend source: $ONE_USER_BACKEND_REPOSITORY@$backend_release_sha" \
   "Published Web source: $ONE_USER_WEB_REPOSITORY@$web_release_sha"
 
-CONFIRM_DISPATCH="dispatch:user.yml:$action_head" \
-CONFIRM_MUTATION="mutate:user.yml:$action_head" \
+CONFIRM_DISPATCH="dispatch:user-server.yml:$action_head" \
+CONFIRM_MUTATION="mutate:user-server.yml:$action_head" \
 DRY_RUN=false \
 ACTION_REPOSITORY="$ACTION_REPOSITORY" \
 ACTION_REF=main \
 GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user-server.yml \
   "backend_repository=$ONE_USER_BACKEND_REPOSITORY" \
   "backend_ref=$backend_release_sha" \
   "web_repository=$ONE_USER_WEB_REPOSITORY" \

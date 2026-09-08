@@ -106,13 +106,13 @@ make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
   exit 1
 }
 
-CONFIRM_DISPATCH="dispatch:node.yml:$action_head" \
-CONFIRM_MUTATION="mutate:node.yml:$action_head" \
+CONFIRM_DISPATCH="dispatch:node-runtime.yml:$action_head" \
+CONFIRM_MUTATION="mutate:node-runtime.yml:$action_head" \
 DRY_RUN=false \
 ACTION_REPOSITORY="$ACTION_REPOSITORY" \
 ACTION_REF=main \
 GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-runtime.yml \
   "node_repository=$ONE_NODE_REPOSITORY" \
   "node_ref=$node_ref" \
   "version=$VERSION"

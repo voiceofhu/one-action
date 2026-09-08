@@ -7,6 +7,7 @@ scope=${1:-all}
 case "$scope" in
   all)
     active_tests=(
+      "$PROJECT_ROOT/tests/workflow-naming_test.sh"
       "$PROJECT_ROOT/tests/object-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/object-web-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/object-web-trigger-only_test.sh"
@@ -70,17 +71,10 @@ case "$scope" in
       "$PROJECT_ROOT/node/tests/firewall_test.sh"
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
     )
-    active_workflows=(
-      object.yml
-      object-web.yml
-      app.yml
-      user.yml
-      user-web.yml
-      egress.yml
-      node-server.yml
-      node.yml
-      reusable-publish-web-backend.yml
-    )
+    active_workflows=()
+    for workflow_path in "$PROJECT_ROOT"/.github/workflows/*.yml; do
+      active_workflows+=("${workflow_path##*/}")
+    done
     run_node_check=true
     ;;
   user)
@@ -102,9 +96,9 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
-      user.yml
+      user-server.yml
       user-web.yml
-      reusable-publish-web-backend.yml
+      reusable-publish-server-image.yml
     )
     run_node_check=false
     ;;
@@ -128,9 +122,9 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
-      object.yml
+      object-server.yml
       object-web.yml
-      reusable-publish-web-backend.yml
+      reusable-publish-server-image.yml
     )
     run_node_check=false
     ;;
@@ -150,7 +144,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
-      node.yml
+      node-runtime.yml
     )
     run_node_check=true
     ;;
@@ -169,7 +163,7 @@ case "$scope" in
     )
     active_workflows=(
       node-server.yml
-      reusable-publish-web-backend.yml
+      reusable-publish-server-image.yml
     )
     run_node_check=false
     ;;
@@ -186,7 +180,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "${active_tests[@]}"
     )
-    active_workflows=(user-web.yml user.yml)
+    active_workflows=(user-web.yml user-server.yml)
     run_node_check=false
     ;;
   node-web)
@@ -211,7 +205,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/deploy-browser-app-release.sh"
       "${active_tests[@]}"
     )
-    active_workflows=(app.yml)
+    active_workflows=(browser-app.yml)
     run_node_check=false
     ;;
   browser-server)
@@ -224,7 +218,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "${active_tests[@]}"
     )
-    active_workflows=(browser-server.yml browser-web.yml reusable-publish-web-backend.yml)
+    active_workflows=(browser-server.yml browser-web.yml reusable-publish-server-image.yml)
     run_node_check=false
     ;;
   browser-egress)
@@ -244,7 +238,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
-      egress.yml
+      browser-egress.yml
     )
     run_node_check=false
     ;;

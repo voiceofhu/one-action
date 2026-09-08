@@ -14,22 +14,49 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 `egress/scripts/`。根目录 Egress 入口仅兼容历史命令；新生成的安装命令必须使用
 `egress/` 路径。
 
-所有产品最终都必须接入 One Action。当前已实现并保留八条活跃发布链；其他产品在这里
+所有产品最终都必须接入 One Action。当前本地发布入口如下；其他产品在这里
 补齐发布合同前，不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
+| `make deploy-object-server` | dispatch `object-server.yml` | 发布 One Object Server 镜像并部署，包含 Web |
+| `make deploy-object-web` | dispatch `object-web.yml` | 仅部署 One Object Web 静态文件 |
 | `make deploy-user-web` | dispatch `user-web.yml` | 仅部署 Web 静态文件，不重启 Server |
-| `make deploy-user-server` | dispatch `user.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
+| `make deploy-user-server` | dispatch `user-server.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
-| `make deploy-node` | dispatch `node.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
-| `make deploy-browser-app` | dispatch `app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-node-web` | dispatch `node-web.yml` | 仅部署 One Node Web 静态文件 |
+| `make deploy-node` | dispatch `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-browser-app` | dispatch `browser-app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-server` | dispatch `browser-server.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像及 SSH/Compose 部署 |
 | `make deploy-browser-web` | dispatch `browser-web.yml` | 独立构建 Web，切换服务器静态文件版本，不更新 Server 容器 |
-| `make deploy-browser-egress` | dispatch `egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
+| `make deploy-browser-egress` | dispatch `browser-egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
 `deploy-user-server` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
 `deploy-node` 只触发 Runtime 编译上传。Browser App/Egress 发布产物；Browser Server/Web 使用 SSH 部署。
+
+## Workflow 命名规则
+
+所有工作流直接放在 `.github/workflows/`，使用小写 kebab-case 和 `.yml` 后缀：
+
+- 产品入口：`<product>-<component>[-<purpose>].yml`。产品省略统一的 `one-` 前缀；
+  组件使用 `server`、`web`、`app`、`runtime`、`egress`。例如 `user-server.yml`、
+  `browser-app.yml`、`node-runtime.yml`；同一组件存在不同用途时才增加后缀。
+- 共用工作流：`reusable-<action>-<target>.yml`，通过 `workflow_call` 调用。
+  当前 `reusable-publish-server-image.yml` 负责构建 Web 和 Server 多架构镜像。
+- Actions 展示名称使用 `One <Product> <Component> [Purpose]`；共用流程使用
+  `Reusable <Action> <Target>`，与文件名对应。
+
+`browser-server.yml` 发布并部署 Server；`browser-server-publish.yml` 保留原先仅发布
+镜像的入口，要求 `environment=prod`、`publish=true`、`deploy=false`，两者不能互换。
+
+新增工作流时按同产品已有文件创建，更新对应 `scripts/release/` 入口、
+`scripts/github/dispatch-workflow.sh` 的固定输入/源码白名单，以及对应产品的测试和
+`scripts/validate.sh` 定向检查范围。`make validate` 和 `make check-token` 自动发现全部
+`.yml` 工作流；全量校验同时检查命名与本地 reusable 引用。新增产品入口也需补充上方表格。
+
+重命名时同步更新 dispatch 路径、`uses` 引用、脚本、测试和文档。文件名与发布合同分开：
+`confirmation`、`workflow_name`、镜像名、Release tag 和 concurrency 标识不能随文件名
+机械改写。新文件名须先进入目标 Action 分支，远端才能接收对应 dispatch。
 
 ## 发布边界
 
@@ -57,7 +84,7 @@ flowchart TD
     web --> stable[再次确认源码 HEAD 和工作区未变化]
     stable --> version[更新 Backend 和 Web 版本]
     version --> source[提交并推送两个版本文件 commit]
-    source --> control[dispatch user.yml<br/>传入 Backend/Web SHA]
+    source --> control[dispatch user-server.yml<br/>传入 Backend/Web SHA]
     control --> resolve[Action 校验两个精确源码 SHA]
     resolve --> amd64[amd64 原生构建<br/>复用独立 GHA layer cache]
     resolve --> arm64[arm64 原生构建<br/>复用独立 GHA layer cache]
@@ -67,7 +94,7 @@ flowchart TD
     deploy --> result[one-user-prod 健康检查通过]
 ```
 
-`validate-user` 只检查 One User 发布脚本、`user.yml` 和共享镜像发布合同，不运行
+`validate-user` 只检查 One User 发布脚本、`user-server.yml` 和共享镜像发布合同，不运行
 One Node/Node Server 合同、临时 tag 模拟发布或 One Node 安装生命周期 fixture。
 本地 `cargo test` 已编译 Backend 的库和二进制测试目标；release 二进制只在最终 Docker
 镜像中构建，避免触发前后重复执行 `cargo check` 和 `cargo build --release`。
@@ -85,7 +112,7 @@ make deploy-browser-server
 make deploy-browser-egress
 ```
 
-One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App 在 dispatch 前安装锁定依赖、检查 Node 脚本语法，并运行 Rust fmt、Clippy 和测试；失败即停止，成功后将本地校验过的源码 SHA 交给工作流构建。App 工作区须干净，HEAD 须匹配配置的源码 ref。App 默认使用与其他部署入口相同的上海时间版本（YY.MMDD.HHmm，去除各段前导零），也可通过 `VERSION=...` 显式指定；不再复用源码 package.json 的旧版本。CI 在各平台打包前调用 App 的 `scripts/update-version.mjs`，同步写入 package.json、Tauri 配置、Cargo.toml 和 Cargo.lock，版本修改仅发生在 CI 检出目录。构建前先检查同名 Release，已存在或无法确认时停止，发布阶段仍保留不可覆盖保护。同一分钟内重复发布时需等下一分钟或指定未使用的版本。 与 One Node 一样，App 发布时在 one-action 公共仓库显式创建 `one-browser-app-v<版本>` tag，绑定本次 Action SHA；已有 tag 必须指向相同提交，禁止移动或覆盖。创建 Release 使用 `--verify-tag --latest=false`，源码 SHA 记录在发布说明中，源码仓库不打发布 tag。Browser Server/Web 在本地校验后 dispatch。`deploy-browser-app` 从本地 Git 读取 Action SHA 作为校验参数，向 `ACTION_REF` 分支或标签（默认 `main`）直接发送 dispatch POST，不查询 Action 或私有源码 commit；`app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。生产页面地址由 App 的 `src-tauri/tauri.conf.json` 管理（`https://browser.aicbe.com`），无需设置 Action 后端地址变量。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
+One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App 在 dispatch 前安装锁定依赖、检查 Node 脚本语法，并运行 Rust fmt、Clippy 和测试；失败即停止，成功后将本地校验过的源码 SHA 交给工作流构建。App 工作区须干净，HEAD 须匹配配置的源码 ref。App 默认使用与其他部署入口相同的上海时间版本（YY.MMDD.HHmm，去除各段前导零），也可通过 `VERSION=...` 显式指定；不再复用源码 package.json 的旧版本。CI 在各平台打包前调用 App 的 `scripts/update-version.mjs`，同步写入 package.json、Tauri 配置、Cargo.toml 和 Cargo.lock，版本修改仅发生在 CI 检出目录。构建前先检查同名 Release，已存在或无法确认时停止，发布阶段仍保留不可覆盖保护。同一分钟内重复发布时需等下一分钟或指定未使用的版本。 与 One Node 一样，App 发布时在 one-action 公共仓库显式创建 `one-browser-app-v<版本>` tag，绑定本次 Action SHA；已有 tag 必须指向相同提交，禁止移动或覆盖。创建 Release 使用 `--verify-tag --latest=false`，源码 SHA 记录在发布说明中，源码仓库不打发布 tag。Browser Server/Web 在本地校验后 dispatch。`deploy-browser-app` 从本地 Git 读取 Action SHA 作为校验参数，向 `ACTION_REF` 分支或标签（默认 `main`）直接发送 dispatch POST，不查询 Action 或私有源码 commit；`browser-app.yml` 使用仓库 Secret 解析源码 ref，所有平台统一检出该 SHA。生产页面地址由 App 的 `src-tauri/tauri.conf.json` 管理（`https://browser.aicbe.com`），无需设置 Action 后端地址变量。修改 workflow 后须先将其推送到目标 Action 分支，新入口才能使用。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建标签，也不访问 GitHub API：
 
 ```bash
@@ -266,7 +293,7 @@ Browser 已采用对应的 `make deploy-browser-server` / `make deploy-browser-w
 ## One Object Server / Web
 
 `make deploy-object-server` 仿照 One User：检查本地源码，提交并推送版本变更，
-以精确 Server/Web SHA dispatch `object.yml`，构建 amd64/arm64 镜像，
+以精确 Server/Web SHA dispatch `object-server.yml`，构建 amd64/arm64 镜像，
 随后按 OCI digest 部署 `ghcr.io/voiceofhu/one-object`。Server 发布同步激活镜像内的 Web。
 `make deploy-object-web` 仅检查并发布 Web，不依赖 Server checkout，不重启 Server。
 

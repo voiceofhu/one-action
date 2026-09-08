@@ -83,7 +83,7 @@ payload_file="$(mktemp)"
 response_file="$(mktemp)"
 trap 'rm -f "$payload_file" "$response_file"' EXIT
 printf '%s' "$payload" >"$payload_file"
-github_post "repos/$FIXED_ACTION_REPOSITORY/actions/workflows/app.yml/dispatches" \
+github_post "repos/$FIXED_ACTION_REPOSITORY/actions/workflows/browser-app.yml/dispatches" \
   "$payload_file" "$response_file"
 unset GH_TOKEN
-printf 'Dispatched app.yml at %s; the workflow will resolve and build App source.\n' "$ACTION_REF"
+printf 'Dispatched browser-app.yml at %s; the workflow will resolve and build App source.\n' "$ACTION_REF"

@@ -1,4 +1,4 @@
-name: One Browser App Egress
+name: One Browser Egress
 
 'on':
   workflow_dispatch:

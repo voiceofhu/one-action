@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKFLOW="$PROJECT_ROOT/.github/workflows/node.yml"
+WORKFLOW="$PROJECT_ROOT/.github/workflows/node-runtime.yml"
 RELEASE_SCRIPT="$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
 
 fail() {
@@ -120,13 +120,13 @@ fi
 
 require_text "$RELEASE_SCRIPT" 'release_tag="one-node-v$VERSION"'
 require_text "$RELEASE_SCRIPT" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
-require_text "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml'
+require_text "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-runtime.yml'
 require_text "$RELEASE_SCRIPT" '"node_repository=$ONE_NODE_REPOSITORY"'
 require_text "$RELEASE_SCRIPT" '"node_ref=$node_ref"'
 require_text "$RELEASE_SCRIPT" '"version=$VERSION"'
 require_text "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" validate-node'
 upgrade_line="$(line_number "$RELEASE_SCRIPT" 'make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade')"
-dispatch_line="$(line_number "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml')"
+dispatch_line="$(line_number "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-runtime.yml')"
 ((upgrade_line < dispatch_line)) ||
   fail 'Node verify-upgrade must finish before workflow dispatch'
 if grep -Fq -- 'git -C "$PROJECT_ROOT" tag' "$RELEASE_SCRIPT" ||
@@ -151,7 +151,7 @@ dispatch_output="$(
   DRY_RUN=true \
   ACTION_REPOSITORY=voiceofhu/one-action \
   ACTION_REF=main \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-runtime.yml \
     node_repository=voiceofhu/one-node-node \
     node_ref=main \
     version=26.824.1500
@@ -177,7 +177,7 @@ dispatch_output="$(
   DRY_RUN=true \
   ACTION_REPOSITORY=voiceofhu/one-action \
   ACTION_REF=main \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node.yml \
+  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-runtime.yml \
     node_repository=voiceofhu/one-node-node \
     node_ref=main \
     version=26.824.1501

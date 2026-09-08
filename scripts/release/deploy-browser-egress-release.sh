@@ -106,13 +106,13 @@ cargo test --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml" \
   exit 1
 }
 
-CONFIRM_DISPATCH="dispatch:egress.yml:$action_head" \
-CONFIRM_MUTATION="mutate:egress.yml:$action_head" \
+CONFIRM_DISPATCH="dispatch:browser-egress.yml:$action_head" \
+CONFIRM_MUTATION="mutate:browser-egress.yml:$action_head" \
 DRY_RUN=false \
 ACTION_REPOSITORY="$ACTION_REPOSITORY" \
 ACTION_REF=main \
 GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" egress.yml \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml \
   "egress_repository=$ONE_BROWSER_EGRESS_REPOSITORY" \
   "egress_ref=$egress_ref" \
   "version=$VERSION" \

@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-user="$PROJECT_ROOT/.github/workflows/user.yml"
+user="$PROJECT_ROOT/.github/workflows/user-server.yml"
 node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
-publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-web-backend.yml"
+publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-server-image.yml"
 user_release="$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
 user_deployer="$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
 node_server_release="$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
@@ -179,7 +179,7 @@ for caller in "$user" "$node_server"; do
   require_text "$caller" 'wait "$backend_pid"'
   require_text "$caller" 'wait "$web_pid"'
   require_text "$caller" "created_at=\"\$(jq -er '.commit.committer.date' \"\$web_commit_file\")\""
-  require_text "$caller" 'uses: ./.github/workflows/reusable-publish-web-backend.yml'
+  require_text "$caller" 'uses: ./.github/workflows/reusable-publish-server-image.yml'
   require_text "$caller" 'contents: read'
   require_text "$caller" 'packages: write'
   require_text "$caller" 'source_read_token: ${{ secrets.GH_TOKEN }}'
@@ -252,7 +252,7 @@ require_text "$user_release" 'cargo fmt --all -- --check'
 require_text "$user_release" 'make --no-print-directory -C "$ONE_USER_BACKEND_DIR" test'
 require_text "$user_release" 'pnpm --dir "$ONE_USER_WEB_DIR" install --frozen-lockfile'
 require_text "$user_release" 'pnpm --dir "$ONE_USER_WEB_DIR" test'
-require_text "$user_release" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user.yml'
+require_text "$user_release" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user-server.yml'
 reject_text "$user_release" 'git -C "$PROJECT_ROOT" tag'
 reject_text "$user_release" 'git -C "$ONE_USER_BACKEND_DIR" tag'
 reject_text "$user_release" 'git -C "$ONE_USER_WEB_DIR" tag'

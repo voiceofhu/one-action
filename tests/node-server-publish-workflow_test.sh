@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
-publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-web-backend.yml"
+publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-server-image.yml"
 release="$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
 deployer="$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
 
@@ -80,7 +80,7 @@ for text in \
   'BACKEND_SHA: ${{ inputs.backend_ref }}' \
   'WEB_SHA: ${{ inputs.web_ref }}' \
   'CONFIRMATION: ${{ inputs.confirmation }}' \
-  'uses: ./.github/workflows/reusable-publish-web-backend.yml' \
+  'uses: ./.github/workflows/reusable-publish-server-image.yml' \
   'name: Deploy One Node Server image' \
   'name: one-node-prod' \
   'group: one-node-server-prod-deploy' \

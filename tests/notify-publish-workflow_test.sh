@@ -70,7 +70,7 @@ for text in \
   "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-notify' }}" \
   'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}' \
   'COMPOSE_FILE: backend/deploy/docker/docker-compose.yml' \
-  'PUBLIC_URL: ${{ vars.DEPLOY_URL }}' \
+  "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://notify.aicbe.com' }}" \
   'run: exec bash action/scripts/deploy/deploy-notify.sh'; do
   require_text "$user_workflow" "$text"
 done
@@ -116,5 +116,12 @@ reject_text "$release" 'make --no-print-directory -C "$ONE_NOTIFY_BACKEND_DIR" b
 reject_text "$release" 'git -C "$ONE_NOTIFY_BACKEND_DIR" tag'
 reject_text "$release" 'git -C "$ONE_NOTIFY_WEB_DIR" tag'
 reject_text "$release" 'git -C "$PROJECT_ROOT" tag'
+
+for workflow in notify-server.yml notify-web.yml; do
+  require_text "$PROJECT_ROOT/.github/workflows/$workflow" \
+    "url: \${{ vars.DEPLOY_URL || 'https://notify.aicbe.com' }}"
+  require_text "$PROJECT_ROOT/.github/workflows/$workflow" \
+    "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://notify.aicbe.com' }}"
+done
 
 printf '%s\n' 'One Notify focused publication workflow contract passed.'

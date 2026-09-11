@@ -73,7 +73,7 @@ jobs:
     timeout-minutes: 15
     environment:
       name: one-notify-prod
-      url: ${{ vars.DEPLOY_URL }}
+      url: ${{ vars.DEPLOY_URL || 'https://notify.aicbe.com' }}
     concurrency:
       group: one-notify-prod-deploy
       cancel-in-progress: false
@@ -104,5 +104,5 @@ jobs:
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-notify' }}
           WEB_ARCHIVE: dist/notify-web.tar.gz
           WEB_SHA: ${{ inputs.web_ref }}
-          PUBLIC_URL: ${{ vars.DEPLOY_URL }}
+          PUBLIC_URL: ${{ vars.DEPLOY_URL || 'https://notify.aicbe.com' }}
         run: exec bash action/scripts/deploy/deploy-notify-web.sh

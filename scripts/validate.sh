@@ -354,6 +354,7 @@ legacy_name='aic''be'
 canonical_user_origin="https://oa.${legacy_name}.com"
 canonical_object_origin="https://object.${legacy_name}.com"
 canonical_browser_origin="https://browser.${legacy_name}.com"
+canonical_notify_origin="https://notify.${legacy_name}.com"
 legacy_matches="$(
   grep -RniE "$legacy_name" \
     "$PROJECT_ROOT/.github" \
@@ -365,13 +366,13 @@ legacy_matches="$(
 )"
 unexpected_legacy_matches="$(
   printf '%s\n' "$legacy_matches" \
-    | sed -e "s#${canonical_object_origin}##g" -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" \
+    | sed -e "s#${canonical_object_origin}##g" -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" -e "s#${canonical_notify_origin}##g" \
     | grep -iE "$legacy_name" || true
 )"
 if [[ -n "$unexpected_legacy_matches" ]]; then
   printf '%s\n' "$unexpected_legacy_matches"
   printf '%s\n' \
-    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User/Browser origins.' >&2
+    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User/Object/Browser/Notify origins.' >&2
   exit 1
 fi
 

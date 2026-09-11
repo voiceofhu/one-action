@@ -70,7 +70,7 @@ for text in \
   "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-pay' }}" \
   'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}' \
   'COMPOSE_FILE: backend/deploy/docker/docker-compose.yml' \
-  'PUBLIC_URL: ${{ vars.DEPLOY_URL }}' \
+  "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://pay.aicbe.com' }}" \
   'run: exec bash action/scripts/deploy/deploy-pay.sh'; do
   require_text "$user_workflow" "$text"
 done

@@ -7,6 +7,16 @@ scope=${1:-all}
 case "$scope" in
   all)
     active_tests=(
+      "$PROJECT_ROOT/tests/pay-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/pay-release-version_test.sh"
+      "$PROJECT_ROOT/tests/pay-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/pay-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/pay-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/notify-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/notify-release-version_test.sh"
+      "$PROJECT_ROOT/tests/notify-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/notify-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/notify-web-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
       "$PROJECT_ROOT/tests/object-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/object-web-publish-workflow_test.sh"
@@ -35,6 +45,14 @@ case "$scope" in
       "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
     shell_files=(
+      "$PROJECT_ROOT/scripts/release/deploy-pay-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-pay.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-pay-web-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-pay-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-notify-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-notify.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-notify-web-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-notify-web.sh"
       "$PROJECT_ROOT/scripts/release/deploy-object-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-object-web-release.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-object.sh"
@@ -124,6 +142,58 @@ case "$scope" in
     active_workflows=(
       object-server.yml
       object-web.yml
+      reusable-publish-server-image.yml
+    )
+    run_node_check=false
+    ;;
+  notify|notify-web)
+    active_tests=(
+      "$PROJECT_ROOT/tests/notify-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/notify-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/notify-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/notify-release-version_test.sh"
+      "$PROJECT_ROOT/tests/notify-publish-workflow_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-notify-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-notify-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-notify.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-notify-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      notify-server.yml
+      notify-web.yml
+      reusable-publish-server-image.yml
+    )
+    run_node_check=false
+    ;;
+  pay|pay-web)
+    active_tests=(
+      "$PROJECT_ROOT/tests/pay-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/pay-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/pay-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/pay-release-version_test.sh"
+      "$PROJECT_ROOT/tests/pay-publish-workflow_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-pay-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-pay-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-pay.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-pay-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      pay-server.yml
+      pay-web.yml
       reusable-publish-server-image.yml
     )
     run_node_check=false

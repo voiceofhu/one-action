@@ -51,9 +51,9 @@ ONE_NODE_WEB_REPOSITORY ?= voiceofhu/one-node-web
 ONE_NODE_WEB_REF ?= main
 ONE_NODE_WEB_DIR ?= $(SOURCE_ROOT)/one-node/web
 
-ONE_AMZ_BACKEND_REPOSITORY ?= voiceofhu/one-amz-backend-next
+ONE_AMZ_BACKEND_REPOSITORY ?= voiceofhu/one-amz-backend
 ONE_AMZ_BACKEND_REF ?= main
-ONE_AMZ_WEB_REPOSITORY ?= voiceofhu/one-amz-web-next
+ONE_AMZ_WEB_REPOSITORY ?= voiceofhu/one-amz-web
 ONE_AMZ_WEB_REF ?= main
 
 VERSION ?=
@@ -99,3 +99,19 @@ ONE_OBJECT_WEB_DIR ?= $(SOURCE_ROOT)/one-object/web
 OBJECT_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 export ONE_OBJECT_BACKEND_REPOSITORY ONE_OBJECT_WEB_REPOSITORY
 export ONE_OBJECT_BACKEND_DIR ONE_OBJECT_WEB_DIR
+
+ONE_NOTIFY_BACKEND_REPOSITORY ?= voiceofhu/one-notify-server
+ONE_NOTIFY_WEB_REPOSITORY ?= voiceofhu/one-notify-web
+ONE_NOTIFY_BACKEND_DIR ?= $(SOURCE_ROOT)/one-notify/backend
+ONE_NOTIFY_WEB_DIR ?= $(SOURCE_ROOT)/one-notify/web
+NOTIFY_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
+export ONE_NOTIFY_BACKEND_REPOSITORY ONE_NOTIFY_WEB_REPOSITORY
+export ONE_NOTIFY_BACKEND_DIR ONE_NOTIFY_WEB_DIR
+
+ONE_PAY_BACKEND_REPOSITORY ?= voiceofhu/one-pay-server
+ONE_PAY_WEB_REPOSITORY ?= voiceofhu/one-pay-web
+ONE_PAY_BACKEND_DIR ?= $(SOURCE_ROOT)/one-pay/backend
+ONE_PAY_WEB_DIR ?= $(SOURCE_ROOT)/one-pay/web
+PAY_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
+export ONE_PAY_BACKEND_REPOSITORY ONE_PAY_WEB_REPOSITORY
+export ONE_PAY_BACKEND_DIR ONE_PAY_WEB_DIR

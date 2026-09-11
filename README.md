@@ -21,6 +21,10 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 |---|---|---|
 | `make deploy-object-server` | dispatch `object-server.yml` | 发布 One Object Server 镜像并部署，包含 Web |
 | `make deploy-object-web` | dispatch `object-web.yml` | 仅部署 One Object Web 静态文件 |
+| `make deploy-notify-server` | dispatch `notify-server.yml` | 发布 Server 镜像并部署，包含 Web |
+| `make deploy-notify-web` | dispatch `notify-web.yml` | 仅部署 Web 静态文件，不重启 Server |
+| `make deploy-pay-server` | dispatch `pay-server.yml` | 发布 Server 镜像并部署，包含 Web |
+| `make deploy-pay-web` | dispatch `pay-web.yml` | 仅部署 Web 静态文件，不重启 Server |
 | `make deploy-user-web` | dispatch `user-web.yml` | 仅部署 Web 静态文件，不重启 Server |
 | `make deploy-user-server` | dispatch `user-server.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
@@ -313,3 +317,29 @@ GitHub Environment `one-object-prod` 需要：
   数据库须事先完成初始化/升级。部署不会自动运行 SQL，也不需要 One User 的 cert 目录。
 
 Server 与 Web 共享部署锁，保留旧静态资源，健康检查失败时回滚。
+
+
+## One Notify / One Pay 部署
+
+四个入口沿用 One Object 的发布流程：Server 发布检查源码、提交并推送版本变更，
+按精确 Server/Web SHA 构建 amd64/arm64 镜像并按 digest 部署；Web 发布只检查前端，
+切换持久化静态目录，不重启 Server。均支持 `VERSION=26.912.1200` 和
+`DRY_RUN=true`（只显示计划）。本地检查为 `make validate-notify`、
+`make validate-notify-web`、`make validate-pay`、`make validate-pay-web`。
+
+| 配置 | Notify | Pay |
+| --- | --- | --- |
+| 源仓库 | `voiceofhu/one-notify-server`、`voiceofhu/one-notify-web` | `voiceofhu/one-pay-server`、`voiceofhu/one-pay-web` |
+| 本地源码 | `../one-notify/backend`、`../one-notify/web` | `../one-pay/backend`、`../one-pay/web` |
+| GitHub Environment | `one-notify-prod` | `one-pay-prod` |
+| 默认部署目录 | `/opt/one-notify` | `/opt/one-pay` |
+| 本机端口 / readiness | `27520/readyz` | `27521/health/ready` |
+| 镜像 | `ghcr.io/voiceofhu/one-notify` | `ghcr.io/voiceofhu/one-pay` |
+
+两个 Environment 都必须设置 Variable `DEPLOY_URL` 为实际 HTTPS origin，
+可选 `DEPLOY_REMOTE_DIR`。Secrets 与 Object 一致：`DEPLOY_HOST`、
+`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`、`GH_TOKEN`，
+可选 `DEPLOY_PORT`。首次部署前准备可写部署目录、服务 `.env`、已初始化数据库、
+Docker Compose、curl、flock 和外部网络（默认 `db-networks`）。
+服务环境配置以各 Backend README 和 `.env.example` 为准；部署不会初始化数据库。
+首次先部署 Server 建立 Web 挂载，随后可独立部署 Web。

@@ -10,7 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  object-server.yml|object-web.yml|user-server.yml|user-web.yml|browser-server-publish.yml|browser-app.yml|app-debug.yml|browser-egress.yml|one-amz.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+  notify-server.yml|notify-web.yml|pay-server.yml|pay-web.yml|object-server.yml|object-web.yml|user-server.yml|user-web.yml|browser-server-publish.yml|browser-app.yml|app-debug.yml|browser-egress.yml|one-amz.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
   browser-runtime.yml)
     die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
     ;;
@@ -106,11 +106,25 @@ case "$workflow" in
     require_repository web_repository voiceofhu/one-object-web
     publish_supported=true
     ;;
+  pay-server.yml)
+    require_inputs backend_repository backend_ref web_repository web_ref \
+      version publish
+    require_repository backend_repository voiceofhu/one-pay-server
+    require_repository web_repository voiceofhu/one-pay-web
+    publish_supported=true
+    ;;
+  notify-server.yml)
+    require_inputs backend_repository backend_ref web_repository web_ref \
+      version publish
+    require_repository backend_repository voiceofhu/one-notify-server
+    require_repository web_repository voiceofhu/one-notify-web
+    publish_supported=true
+    ;;
   one-amz.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
-    require_repository backend_repository voiceofhu/one-amz-backend-next
-    require_repository web_repository voiceofhu/one-amz-web-next
+    require_repository backend_repository voiceofhu/one-amz-backend
+    require_repository web_repository voiceofhu/one-amz-web
     publish_supported=true
     ;;
   browser-server-publish.yml)
@@ -135,6 +149,16 @@ case "$workflow" in
   object-web.yml)
     require_inputs web_repository web_ref version publish deploy
     require_repository web_repository voiceofhu/one-object-web
+    publish_supported=true
+    ;;
+  pay-web.yml)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository voiceofhu/one-pay-web
+    publish_supported=true
+    ;;
+  notify-web.yml)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository voiceofhu/one-notify-web
     publish_supported=true
     ;;
   node-web.yml)
@@ -197,7 +221,7 @@ fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml && "$workflow" != user-web.yml && "$workflow" != object-web.yml ]]; then
+if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml && "$workflow" != user-web.yml && "$workflow" != notify-web.yml && "$workflow" != pay-web.yml && "$workflow" != object-web.yml ]]; then
   die 'deployment is not implemented for this workflow'
 fi
 if [[ "$deploy" == true && "$publish" != true ]]; then
@@ -264,6 +288,10 @@ done
 if [[ "$publish" == true ]]; then
   if [[ "$workflow" == user-server.yml ]]; then
     workflow_base=one-user
+  elif [[ "$workflow" == notify-server.yml ]]; then
+    workflow_base=one-notify
+  elif [[ "$workflow" == pay-server.yml ]]; then
+    workflow_base=one-pay
   elif [[ "$workflow" == object-server.yml ]]; then
     workflow_base=one-object
   elif [[ "$workflow" == browser-server.yml ]]; then

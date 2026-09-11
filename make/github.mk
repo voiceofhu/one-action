@@ -38,3 +38,15 @@ validate-object:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh object
 validate-object-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh object-web
+
+.PHONY: validate-notify validate-notify-web
+validate-notify:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh notify
+validate-notify-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh notify-web
+
+.PHONY: validate-pay validate-pay-web
+validate-pay:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh pay
+validate-pay-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh pay-web

@@ -49,14 +49,14 @@ case "$WORKFLOW_NAME:$PUBLISH_IMAGE" in
     expected_backend_repository=voiceofhu/one-user-backend
     expected_web_repository=voiceofhu/one-user-web
     ;;
-  one-amz:ghcr.io/voiceofhu/one-amz-backend-next)
+  one-amz:ghcr.io/voiceofhu/one-amz-backend)
     source_kind=combined
-    expected_backend_repository=voiceofhu/one-amz-backend-next
-    expected_web_repository=voiceofhu/one-amz-web-next
+    expected_backend_repository=voiceofhu/one-amz-backend
+    expected_web_repository=voiceofhu/one-amz-web
     ;;
-  one-browser-backend:ghcr.io/voiceofhu/one-browser-backend-next)
+  one-browser-backend:ghcr.io/voiceofhu/one-browser-backend)
     source_kind=backend
-    expected_source_repository=voiceofhu/one-browser-backend-next
+    expected_source_repository=voiceofhu/one-browser-backend
     ;;
   *)
     die 'workflow/image pair is not a fixed publication trust anchor'

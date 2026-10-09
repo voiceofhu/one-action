@@ -8,3 +8,4 @@
 /scripts/deploy/verify-user-ssh-local.sh
 **/node_modules/
 **/target/
+.claude/

@@ -83,6 +83,7 @@ install_host_firewall
 [ -x "$FIREWALL_FILE" ]
 [ -f "$TABLE_STATE" ]
 grep -F 'one-node-unused-tcp' "$TEST_LOG" >/dev/null
+grep -F 'iifname "lo" accept comment "one-node-loopback"' "$TEST_LOG" >/dev/null
 grep -F 'one-node-unused-udp' "$TEST_LOG" >/dev/null
 grep -F 'elements = { 20000-60000 }' "$TEST_LOG" >/dev/null
 grep -F "PathExists=${FIREWALL_REQUEST_FILE}" "$FIREWALL_PATH_FILE" >/dev/null

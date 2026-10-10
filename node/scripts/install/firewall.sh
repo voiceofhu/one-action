@@ -109,6 +109,7 @@ add table inet one_node
 add set inet one_node tcp_ports { type inet_service; flags interval; elements = { 20000-60000 }; }
 add set inet one_node udp_ports { type inet_service; flags interval; elements = { 20000-60000 }; }
 add chain inet one_node input { type filter hook input priority -10; policy accept; }
+add rule inet one_node input iifname "lo" accept comment "one-node-loopback"
 add rule inet one_node input ct state established,related accept comment "one-node-established"
 add rule inet one_node input tcp dport @tcp_ports accept comment "one-node-active-tcp"
 add rule inet one_node input udp dport @udp_ports accept comment "one-node-active-udp"
@@ -136,6 +137,11 @@ validate_table() {
 initialize_table() {
 	if table=$(nft -nn list table "$table_family" "$table_name" 2>/dev/null); then
 		validate_table "$table" || die "existing nftables table inet one_node is not managed by One Node"
+		# Tables from older installs dropped loopback too, hiding local services (nginx upstreams) in 20000-60000.
+		case "$table" in
+		*'comment "one-node-loopback"'*) ;;
+		*) nft insert rule inet one_node input iifname '"lo"' accept comment '"one-node-loopback"' || die "unable to exempt loopback in nftables table inet one_node" ;;
+		esac
 		return
 	fi
 	temporary=$(mktemp "${firewall_dir}/.table.XXXXXX")

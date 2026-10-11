@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
+# Publishes a products.json Web archive without touching the Server container;
+# the previous Web release is restored if the public revision check fails.
 set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/product.sh
+source "$SCRIPT_DIR/../lib/product.sh"
+
+: "${PRODUCT:?PRODUCT is required}"
 : "${SSH_HOST:?SSH_HOST is required}"
-: "${REMOTE_DIR:?REMOTE_DIR is required}"
 : "${WEB_ARCHIVE:?WEB_ARCHIVE is required}"
 : "${WEB_SHA:?WEB_SHA is required}"
-: "${PUBLIC_URL:?PUBLIC_URL is required}"
+load_product "$PRODUCT"
+REMOTE_DIR=${REMOTE_DIR:-$PRODUCT_REMOTE_DIR}
+PUBLIC_URL=${PUBLIC_URL:-$PRODUCT_PUBLIC_URL}
+
 [[ "$SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]
 [[ "$REMOTE_DIR" =~ ^/opt/[A-Za-z0-9._/-]*[A-Za-z0-9._-]$ && "$REMOTE_DIR" != *..* && "$REMOTE_DIR" != *//* ]]
 [[ "$WEB_SHA" =~ ^[0-9a-f]{40}$ ]]
 [[ "$PUBLIC_URL" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$ ]]
 [[ -f "$WEB_ARCHIVE" && ! -L "$WEB_ARCHIVE" ]]
 archive_sha="$(sha256sum "$WEB_ARCHIVE" | cut -d ' ' -f1)"
+# shellcheck disable=SC2029 # REMOTE_DIR was validated above.
 ssh "$SSH_HOST" "test -L '$REMOTE_DIR/web/current' && test -f '$REMOTE_DIR/web/current/index.html'" || {
-  echo 'Deploy Pay Server with the persistent Web mount before publishing Web separately.' >&2
+  printf 'Deploy %s Server with the persistent Web mount before publishing Web separately.\n' "$PRODUCT_TITLE" >&2
   exit 1
 }
 scp "$WEB_ARCHIVE" "$SSH_HOST:$REMOTE_DIR/web/$WEB_SHA.tar.gz"

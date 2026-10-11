@@ -7,11 +7,11 @@ scope=${1:-all}
 case "$scope" in
   all)
     active_tests=(
-      "$PROJECT_ROOT/tests/pay-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/pay-release-version_test.sh"
-      "$PROJECT_ROOT/tests/pay-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/pay-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/pay-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/products_test.sh"
+      "$PROJECT_ROOT/tests/release-server_test.sh"
+      "$PROJECT_ROOT/tests/release-web_test.sh"
+      "$PROJECT_ROOT/tests/deploy-server_test.sh"
+      "$PROJECT_ROOT/tests/deploy-web_test.sh"
       "$PROJECT_ROOT/tests/vps-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/vps-release-version_test.sh"
       "$PROJECT_ROOT/tests/vps-web-deploy_test.sh"
@@ -50,10 +50,11 @@ case "$scope" in
       "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
     shell_files=(
-      "$PROJECT_ROOT/scripts/release/deploy-pay-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-pay.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-pay-web-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-pay-web.sh"
+      "$PROJECT_ROOT/scripts/lib/product.sh"
+      "$PROJECT_ROOT/scripts/release/release-server.sh"
+      "$PROJECT_ROOT/scripts/release/release-web.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
       "$PROJECT_ROOT/scripts/release/deploy-vps-release.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-vps.sh"
       "$PROJECT_ROOT/scripts/release/deploy-vps-web-release.sh"
@@ -183,26 +184,29 @@ case "$scope" in
     ;;
   pay|pay-web)
     active_tests=(
-      "$PROJECT_ROOT/tests/pay-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/pay-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/pay-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/pay-release-version_test.sh"
-      "$PROJECT_ROOT/tests/pay-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/products_test.sh"
+      "$PROJECT_ROOT/tests/release-server_test.sh"
+      "$PROJECT_ROOT/tests/release-web_test.sh"
+      "$PROJECT_ROOT/tests/deploy-server_test.sh"
+      "$PROJECT_ROOT/tests/deploy-web_test.sh"
     )
     shell_files=(
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-pay-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-pay-web-release.sh"
+      "$PROJECT_ROOT/scripts/lib/product.sh"
+      "$PROJECT_ROOT/scripts/release/release-server.sh"
+      "$PROJECT_ROOT/scripts/release/release-web.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-pay.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-pay-release.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
       pay-server.yml
       pay-web.yml
+      reusable-deploy-server.yml
+      reusable-deploy-web.yml
       reusable-publish-server-image.yml
     )
     run_node_check=false
@@ -384,6 +388,16 @@ ruby -ryaml -e '
       document["jobs"].is_a?(Hash) && !document["jobs"].empty?
   end
 ' "${active_workflows[@]/#/$PROJECT_ROOT/.github/workflows/}"
+
+for tool in actionlint zizmor; do
+  command -v "$tool" >/dev/null || {
+    printf '%s is required for workflow checks: brew install actionlint zizmor\n' "$tool" >&2
+    exit 1
+  }
+done
+active_workflow_paths=("${active_workflows[@]/#/$PROJECT_ROOT/.github/workflows/}")
+actionlint -config-file "$PROJECT_ROOT/.github/actionlint.yaml" "${active_workflow_paths[@]}"
+env -u GH_TOKEN -u GITHUB_TOKEN -u ZIZMOR_GITHUB_TOKEN zizmor --offline --quiet --config "$PROJECT_ROOT/.github/zizmor.yml" "${active_workflow_paths[@]}"
 
 legacy_name='aic''be'
 canonical_user_origin="https://oa.${legacy_name}.com"

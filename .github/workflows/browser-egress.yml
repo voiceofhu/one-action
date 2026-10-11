@@ -13,8 +13,7 @@ name: One Browser Egress
       deploy: {required: true, type: boolean}
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
   group: one-browser-app-egress-publish-${{ inputs.version }}
@@ -69,6 +68,9 @@ jobs:
 
   build:
     name: Build and upload linux/${{ matrix.arch }}
+    permissions:
+      contents: read
+      packages: write
     needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
@@ -86,7 +88,7 @@ jobs:
             rust_target: aarch64-unknown-linux-musl
     steps:
       - name: Checkout exact Egress source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: voiceofhu/one-browser-egress
           ref: ${{ needs.prepare.outputs.egress_sha }}
@@ -138,7 +140,7 @@ jobs:
           file "dist/one-browser-egress-linux-$ARCH" | grep -q 'static'
 
       - name: Upload native asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: one-browser-egress-linux-${{ matrix.arch }}
           path: dist/one-browser-egress-linux-${{ matrix.arch }}
@@ -146,7 +148,7 @@ jobs:
           retention-days: 2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Resolve registry token owner
         id: registry
@@ -156,14 +158,14 @@ jobs:
         run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ steps.registry.outputs.login }}
           password: ${{ secrets.GH_TOKEN }}
 
       - name: Build architecture image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: egress
           file: egress/Dockerfile
@@ -182,6 +184,8 @@ jobs:
 
   release:
     name: Publish immutable Egress release
+    permissions:
+      contents: write
     needs:
       - prepare
       - build
@@ -189,7 +193,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download native assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: one-browser-egress-linux-*
           path: dist
@@ -221,6 +225,9 @@ jobs:
 
   manifest:
     name: Publish immutable Egress image
+    permissions:
+      contents: read
+      packages: write
     needs:
       - prepare
       - build
@@ -228,7 +235,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Resolve registry token owner
         id: registry
@@ -238,7 +245,7 @@ jobs:
         run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ steps.registry.outputs.login }}

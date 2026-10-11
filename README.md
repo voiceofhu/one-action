@@ -14,8 +14,9 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 `egress/scripts/`。根目录 Egress 入口仅兼容历史命令；新生成的安装命令必须使用
 `egress/` 路径。
 
-所有产品最终都必须接入 One Action。当前本地发布入口如下；其他产品在这里
-补齐发布合同前，不应视为已经具备正式分发或部署能力：
+所有产品最终都必须接入 One Action。当前本地发布入口如下；One IP、One AMZ、One Mail
+尚未接入（One IP 仍由自身仓库 `make deploy-server` 部署）。其他产品在这里补齐发布合同前，
+不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
@@ -134,6 +135,12 @@ make deploy-browser-egress DRY_RUN=true
 
 ## 本地门禁
 
+本地需要 `shellcheck`、`actionlint`、`zizmor`、`ruby`、`node` 和 `python3`：
+
+```bash
+brew install shellcheck actionlint zizmor
+```
+
 基础检查：
 
 ```bash
@@ -147,6 +154,9 @@ make node-bundle-installers
 ```
 
 `make validate` 检查全部活跃 shell、workflow YAML 和发布契约，并运行 One Node 生命周期 fixture。
+每个范围都会对相关 workflow 运行 actionlint（含 shellcheck）和 zizmor 离线安全审计；
+规则例外分别记录在 `.github/actionlint.yaml` 和 `.github/zizmor.yml`，单个步骤的例外使用
+`# zizmor: ignore[...]` 注释并写明原因。
 `make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user-server` 使用这一范围，
 不运行其他产品的模拟发布和生命周期 fixture。
 `make validate-node` 只检查 One Node Runtime 的安装生命周期、dispatch、构建和 Release 合同；
@@ -184,6 +194,14 @@ Action 中没有 fmt、lint、test、race、e2e 或 installer lifecycle；双架
 SSH/Compose 部署步骤。
 不同版本可并行；相同产品、相同版本的重复触发由 concurrency group 串行保护。
 
+## Workflow 安全约定
+
+- 所有第三方 Action 固定到完整 commit SHA，并以 `# vX.Y.Z` 注释标注版本；
+  `.github/dependabot.yml` 每周合并提交一个更新 PR（新版本发布 7 天后才提出）。
+- Workflow 顶层只授予 `contents: read`；`contents: write`、`packages: write` 只写在需要的 job 上。
+- `actions/checkout` 一律 `persist-credentials: false`；dispatch 输入先进入 `env`，
+  再在 shell 中校验，不直接拼接 `${{ inputs.* }}`。
+
 ## GitHub 配置
 
 `one-action` 仓库需要配置 Repository Secret `GH_TOKEN`，用于：
@@ -192,9 +210,6 @@ SSH/Compose 部署步骤。
 - 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index；
 - 在 `voiceofhu/one-action@one-node-v<version>` 创建并上传公开 One Node Release。
 - 在 One Action 创建 One Browser App 与 Egress 的产品前缀 Release。
-
-App workflow 还需要 Repository Variable `ONE_BROWSER_BACKEND_URL`，值为生产 Backend 的
-HTTPS origin；该值在 Tauri 打包时写入远程能力和登录来源白名单。
 
 One Node 的构建使用 `contents: read`；Release job 使用仓库 `GITHUB_TOKEN` 的 `contents: write`。
 
@@ -232,12 +247,12 @@ PID、内存、运行时长和服务/容器状态。
 ## 目录
 
 ```text
-.github/workflows/   六个产品入口和一个 Web+Backend 复用发布工作流
+.github/workflows/   产品入口和一个 Web+Backend 复用发布工作流
 node/                One Node 安装、升级、卸载和本地 fixture
 scripts/release/     本地发布入口与上传辅助脚本
-scripts/deploy/      One User / One Node Server SSH、Registry 和 Compose 部署脚本
-scripts/github/      GitHub 只读检查和历史调度辅助代码
-tests/               当前六条发布链的本地契约测试
+scripts/deploy/      各产品 SSH、Registry、Compose 和 Web 部署脚本
+scripts/github/      Token 检查、ref 解析和 workflow dispatch
+tests/               各发布链的本地契约测试
 make/                Makefile 子模块
 ```
 
@@ -320,6 +335,28 @@ GitHub Environment `one-object-prod` 需要：
 
 Server 与 Web 共享部署锁，保留旧静态资源，健康检查失败时回滚。
 
+
+## 产品清单（products.json）
+
+Server + Web 两件套的产品逐步迁到 `products.json`，目前已迁移 **One Pay**。每个产品一条记录，
+只写无法推导的值：源码仓库、Cargo/npm 包名、默认公网地址、容器端口、readiness 路径、
+部署目录内必须存在的子目录，以及本地 Web 检查命令。镜像 `ghcr.io/voiceofhu/one-<key>`、
+Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose 项目 `one-<key>`、
+服务名 `<key>` 由 `scripts/lib/product.sh` 统一推导。
+
+已迁移产品共用同一套实现：
+
+| 层 | 文件 |
+| --- | --- |
+| 本地入口 | `scripts/release/release-server.sh <key>`、`scripts/release/release-web.sh <key>` |
+| Workflow | `<key>-server.yml` / `<key>-web.yml` 仅转发 dispatch 输入，逻辑在 `reusable-deploy-server.yml` / `reusable-deploy-web.yml` |
+| 服务器部署 | `scripts/deploy/deploy-server.sh`、`scripts/deploy/deploy-web.sh`（`PRODUCT=<key>`） |
+| 测试 | `tests/products_test.sh`（清单与入口一致），`release-*_test.sh`、`deploy-*_test.sh` 对清单中每个产品实跑 |
+
+可复用 workflow 会校验调用方必须是 `voiceofhu/one-action/.github/workflows/<key>-server.yml`
+（或 `-web.yml`），dispatch 的仓库必须与清单一致。Environment 名、部署锁和 Secret 名称与迁移前相同，
+GitHub 侧无需改配置。迁移新产品：在 `products.json` 加一条，把两个入口改成同样的薄壳，
+删除该产品专属的 release/deploy 脚本和测试，并更新 `scripts/validate.sh` 的对应范围。
 
 ## One Notify / One Pay / One VPS 部署
 

@@ -1,0 +1,14 @@
+{
+  "pay": {
+    "title": "One Pay",
+    "backend_repository": "voiceofhu/one-pay-server",
+    "backend_package": "one-pay-backend",
+    "web_repository": "voiceofhu/one-pay-web",
+    "web_package": "one-pay-web",
+    "public_url": "https://pay.aicbe.com",
+    "service_port": 27521,
+    "ready_path": "/health/ready",
+    "remote_required_dirs": [],
+    "web_gates": ["lint", "build"]
+  }
+}

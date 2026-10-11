@@ -97,7 +97,7 @@ for text in \
   'pnpm --dir web install --frozen-lockfile' \
   'pnpm --dir web build' \
   'mkdir backend/web-dist' \
-  'uses: docker/build-push-action@v6' \
+  'uses: docker/build-push-action@' \
   'platforms: ${{ matrix.platform }}' \
   'push: true' \
   'org.opencontainers.image.revision=${{ inputs.backend_sha }}' \

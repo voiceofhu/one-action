@@ -52,7 +52,7 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Checkout exact backend source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-server' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-server' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-server' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-server' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}
           ref: ${{ inputs.backend_sha }}
@@ -62,7 +62,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout exact Web source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-web' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-web' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-web' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-web' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-web' || 'voiceofhu/one-node-web' }}
           ref: ${{ inputs.web_sha }}
@@ -72,13 +72,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: ${{ (inputs.workflow_name == 'one-node-server' || inputs.workflow_name == 'one-object' || inputs.workflow_name == 'one-notify' || inputs.workflow_name == 'one-pay' || inputs.workflow_name == 'one-vps') && '11.7.0' || '10.32.1' }}
           run_install: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      # Only maintainers dispatch this workflow; setup-node v4 caches nothing without `cache:`.
+      - name: Set up Node.js # zizmor: ignore[cache-poisoning]
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
@@ -100,7 +101,7 @@ jobs:
           cp -R web/dist/. backend/web-dist/
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Resolve registry token owner
         id: registry
@@ -110,14 +111,14 @@ jobs:
         run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ steps.registry.outputs.login }}
           password: ${{ secrets.package_write_token }}
 
       - name: Build and push architecture image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: backend
           file: backend/${{ (inputs.workflow_name == 'one-user' || inputs.workflow_name == 'one-object' || inputs.workflow_name == 'one-notify' || inputs.workflow_name == 'one-pay' || inputs.workflow_name == 'one-vps') && 'deploy/docker/Dockerfile' || 'Dockerfile' }}
@@ -151,7 +152,7 @@ jobs:
       image_ref: ${{ steps.publish.outputs.image_ref }}
     steps:
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Resolve registry token owner
         id: registry
@@ -161,7 +162,7 @@ jobs:
         run: echo "login=$(gh api user --jq .login)" >>"$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ steps.registry.outputs.login }}

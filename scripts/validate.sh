@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 scope=${1:-all}
+test_args=()
 
 case "$scope" in
   all)
@@ -96,9 +97,10 @@ case "$scope" in
       reusable-deploy-web.yml
       reusable-publish-server-image.yml
     )
-    for product in $(jq -r 'keys[]' "$PROJECT_ROOT/products.json"); do
-      active_workflows+=("$product-server.yml" "$product-web.yml")
-    done
+    # Only the product being released: the shared tests take its key.
+    product_key=${scope%-web}
+    test_args=("$product_key")
+    active_workflows+=("$product_key-server.yml" "$product_key-web.yml")
     run_node_check=false
     ;;
   node)
@@ -287,7 +289,7 @@ while IFS= read -r workflow; do
 done < <(printf '%s\n' "${active_workflows[@]/#/$PROJECT_ROOT/.github/workflows/}")
 
 for test_script in "${active_tests[@]}"; do
-  bash "$test_script"
+  bash "$test_script" ${test_args[@]+"${test_args[@]}"}
 done
 if [[ "$run_node_check" == true ]]; then
   make --no-print-directory -C "$PROJECT_ROOT" node-check

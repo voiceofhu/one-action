@@ -8,8 +8,15 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/product.sh
 source "$PROJECT_ROOT/scripts/lib/product.sh"
 
+# Checks the given products.json products (default: every product).
+requested=("$@")
+if [[ "${#requested[@]}" -eq 0 ]]; then
+  while IFS= read -r product; do
+    requested+=("$product")
+  done < <(jq -r 'keys[]' "$PROJECT_ROOT/products.json")
+fi
 products=()
-for product in $(jq -r 'keys[]' "$PROJECT_ROOT/products.json"); do
+for product in "${requested[@]}"; do
   (load_product "$product")
   products+=("$product")
 done

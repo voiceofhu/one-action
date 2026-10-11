@@ -38,6 +38,9 @@ jobs:
       title: ${{ steps.product.outputs.title }}
       name: ${{ steps.product.outputs.name }}
       backend_repository: ${{ steps.product.outputs.backend_repository }}
+      web_repository: ${{ steps.product.outputs.web_repository }}
+      image: ${{ steps.product.outputs.image }}
+      pnpm_version: ${{ steps.product.outputs.pnpm_version }}
       public_url: ${{ steps.product.outputs.public_url }}
       remote_dir: ${{ steps.product.outputs.remote_dir }}
     steps:
@@ -130,6 +133,11 @@ jobs:
     uses: ./.github/workflows/reusable-publish-server-image.yml
     with:
       workflow_name: ${{ needs.prepare.outputs.name }}
+      backend_repository: ${{ needs.prepare.outputs.backend_repository }}
+      web_repository: ${{ needs.prepare.outputs.web_repository }}
+      image: ${{ needs.prepare.outputs.image }}
+      dockerfile: deploy/docker/Dockerfile
+      pnpm_version: ${{ needs.prepare.outputs.pnpm_version }}
       action_sha: ${{ github.sha }}
       backend_sha: ${{ needs.prepare.outputs.backend_sha }}
       web_sha: ${{ needs.prepare.outputs.web_sha }}

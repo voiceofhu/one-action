@@ -54,6 +54,7 @@ load_product() {
   PRODUCT_PUBLIC_URL="$(product_field public_url)"
   PRODUCT_SERVICE_PORT="$(product_field service_port)"
   PRODUCT_READY_PATH="$(product_field ready_path)"
+  PRODUCT_PNPM_VERSION="$(product_field pnpm_version)"
 
   product_require "$PRODUCT_TITLE" '^One [A-Za-z0-9 ]+$' title
   product_require "$PRODUCT_BACKEND_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' backend_repository
@@ -63,6 +64,7 @@ load_product() {
   product_require "$PRODUCT_PUBLIC_URL" '^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' public_url
   product_require "$PRODUCT_SERVICE_PORT" '^[1-9][0-9]{0,4}$' service_port
   product_require "$PRODUCT_READY_PATH" '^(/[A-Za-z0-9._-]+)+$' ready_path
+  product_require "$PRODUCT_PNPM_VERSION" '^[0-9]+\.[0-9]+\.[0-9]+$' pnpm_version
 
   PRODUCT_REMOTE_REQUIRED_DIRS=()
   items="$(product_list remote_required_dirs)" || exit 1
@@ -101,5 +103,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     public_url "$PRODUCT_PUBLIC_URL" \
     image "$PRODUCT_IMAGE" \
     environment "$PRODUCT_ENVIRONMENT" \
-    remote_dir "$PRODUCT_REMOTE_DIR"
+    remote_dir "$PRODUCT_REMOTE_DIR" \
+    pnpm_version "$PRODUCT_PNPM_VERSION"
 fi

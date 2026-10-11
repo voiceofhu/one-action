@@ -9,10 +9,22 @@ source "$SCRIPT_DIR/common.sh"
 workflow="$1"
 shift
 
-case "$workflow" in
-  notify-server.yml|notify-web.yml|pay-server.yml|pay-web.yml|vps-server.yml|vps-web.yml|object-server.yml|object-web.yml|user-server.yml|user-web.yml|browser-server-publish.yml|browser-app.yml|browser-egress.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
-  *) die 'workflow is outside the fixed dispatcher allowlist' ;;
-esac
+require_tool jq
+# <product>-server.yml and <product>-web.yml come from products.json; the
+# repositories and confirmation names are read from the same manifest.
+product_component=
+if [[ "$workflow" =~ ^([a-z][a-z0-9]*)-(server|web)\.yml$ ]] \
+  && jq -e --arg key "${BASH_REMATCH[1]}" 'has($key)' "$SCRIPT_DIR/../../products.json" >/dev/null 2>&1; then
+  product_component=${BASH_REMATCH[2]}
+  # shellcheck source=scripts/lib/product.sh
+  source "$SCRIPT_DIR/../lib/product.sh"
+  load_product "${BASH_REMATCH[1]}"
+else
+  case "$workflow" in
+    browser-server-publish.yml|browser-app.yml|browser-egress.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+    *) die 'workflow is outside the fixed dispatcher allowlist' ;;
+  esac
+fi
 
 require_tool curl
 require_tool jq
@@ -88,42 +100,21 @@ for assignment in "$@"; do
 done
 
 publish_supported=false
+case "$product_component" in
+  server)
+    require_inputs backend_repository backend_ref web_repository web_ref \
+      version publish
+    require_repository backend_repository "$PRODUCT_BACKEND_REPOSITORY"
+    require_repository web_repository "$PRODUCT_WEB_REPOSITORY"
+    publish_supported=true
+    ;;
+  web)
+    require_inputs web_repository web_ref version publish deploy
+    require_repository web_repository "$PRODUCT_WEB_REPOSITORY"
+    publish_supported=true
+    ;;
+esac
 case "$workflow" in
-  user-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version publish
-    require_repository backend_repository voiceofhu/one-user-backend
-    require_repository web_repository voiceofhu/one-user-web
-    publish_supported=true
-    ;;
-  object-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version publish
-    require_repository backend_repository voiceofhu/one-object-server
-    require_repository web_repository voiceofhu/one-object-web
-    publish_supported=true
-    ;;
-  pay-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version publish
-    require_repository backend_repository voiceofhu/one-pay-server
-    require_repository web_repository voiceofhu/one-pay-web
-    publish_supported=true
-    ;;
-  vps-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version publish
-    require_repository backend_repository voiceofhu/one-vps-server
-    require_repository web_repository voiceofhu/one-vps-web
-    publish_supported=true
-    ;;
-  notify-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version publish
-    require_repository backend_repository voiceofhu/one-notify-server
-    require_repository web_repository voiceofhu/one-notify-web
-    publish_supported=true
-    ;;
   browser-server-publish.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
@@ -136,31 +127,6 @@ case "$workflow" in
       version publish deploy
     require_repository backend_repository voiceofhu/one-node-server
     require_repository web_repository voiceofhu/one-node-web
-    publish_supported=true
-    ;;
-  user-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-user-web
-    publish_supported=true
-    ;;
-  object-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-object-web
-    publish_supported=true
-    ;;
-  pay-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-pay-web
-    publish_supported=true
-    ;;
-  vps-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-vps-web
-    publish_supported=true
-    ;;
-  notify-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-notify-web
     publish_supported=true
     ;;
   node-web.yml)
@@ -219,7 +185,7 @@ fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml && "$workflow" != user-web.yml && "$workflow" != notify-web.yml && "$workflow" != pay-web.yml && "$workflow" != vps-web.yml && "$workflow" != object-web.yml ]]; then
+if [[ "$deploy" == true && "$product_component" != web && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml ]]; then
   die 'deployment is not implemented for this workflow'
 fi
 if [[ "$deploy" == true && "$publish" != true ]]; then
@@ -284,16 +250,8 @@ for index in "${!input_keys[@]}"; do
   fi
 done
 if [[ "$publish" == true ]]; then
-  if [[ "$workflow" == user-server.yml ]]; then
-    workflow_base=one-user
-  elif [[ "$workflow" == notify-server.yml ]]; then
-    workflow_base=one-notify
-  elif [[ "$workflow" == pay-server.yml ]]; then
-    workflow_base=one-pay
-  elif [[ "$workflow" == vps-server.yml ]]; then
-    workflow_base=one-vps
-  elif [[ "$workflow" == object-server.yml ]]; then
-    workflow_base=one-object
+  if [[ "$product_component" == server ]]; then
+    workflow_base=$PRODUCT_NAME
   elif [[ "$workflow" == browser-server.yml ]]; then
     workflow_base=one-browser-server
   elif [[ "$workflow" == node-server.yml ]]; then

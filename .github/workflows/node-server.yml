@@ -93,6 +93,11 @@ jobs:
     uses: ./.github/workflows/reusable-publish-server-image.yml
     with:
       workflow_name: one-node-server
+      backend_repository: voiceofhu/one-node-server
+      web_repository: voiceofhu/one-node-web
+      image: ghcr.io/voiceofhu/node-server
+      dockerfile: Dockerfile
+      pnpm_version: 11.7.0
       action_sha: ${{ github.sha }}
       backend_sha: ${{ needs.prepare.outputs.backend_sha }}
       web_sha: ${{ needs.prepare.outputs.web_sha }}

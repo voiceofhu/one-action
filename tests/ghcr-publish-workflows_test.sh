@@ -142,9 +142,12 @@ for caller in "$node_server" "$product_server"; do
 done
 require_text "$node_server" '[[ "$(jq -er .sha "$backend_commit_file")" == "$BACKEND_SHA"'
 
-require_text "$publisher" "repository: \${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-server' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-server' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-server' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-server' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}"
-require_text "$publisher" "repository: \${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-web' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-web' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-web' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-web' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-web' || 'voiceofhu/one-node-web' }}"
-require_text "$publisher" "org.opencontainers.image.source=https://github.com/\${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-server' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-server' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-server' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-server' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}"
+require_text "$publisher" 'repository: ${{ inputs.backend_repository }}'
+require_text "$publisher" 'repository: ${{ inputs.web_repository }}'
+require_text "$publisher" 'version: ${{ inputs.pnpm_version }}'
+require_text "$publisher" 'file: backend/${{ inputs.dockerfile }}'
+require_text "$publisher" 'org.opencontainers.image.source=https://github.com/${{ inputs.backend_repository }}'
+reject_text "$publisher" "inputs.workflow_name =="
 require_text "$publisher" 'ref: ${{ inputs.backend_sha }}'
 require_text "$publisher" 'ref: ${{ inputs.web_sha }}'
 require_text "$publisher" 'token: ${{ secrets.source_read_token }}'

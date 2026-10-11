@@ -1,0 +1,44 @@
+name: One Mail Server
+
+"on":
+  workflow_dispatch:
+    inputs:
+      expected_action_sha: { required: true, type: string }
+      confirmation: { required: true, type: string }
+      backend_repository: { required: true, type: string }
+      backend_ref: { required: true, type: string }
+      web_repository: { required: true, type: string }
+      web_ref: { required: true, type: string }
+      version: { required: true, type: string }
+      publish: { required: true, type: boolean }
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-mail-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-deploy-server.yml
+    with:
+      product: mail
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      confirmation: ${{ inputs.confirmation }}
+      backend_repository: ${{ inputs.backend_repository }}
+      backend_ref: ${{ inputs.backend_ref }}
+      web_repository: ${{ inputs.web_repository }}
+      web_ref: ${{ inputs.web_ref }}
+      version: ${{ inputs.version }}
+      publish: ${{ inputs.publish }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

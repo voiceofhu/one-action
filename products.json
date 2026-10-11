@@ -1,4 +1,30 @@
 {
+  "amz": {
+    "title": "One AMZ",
+    "backend_repository": "voiceofhu/one-amz-server",
+    "backend_package": "one-amz-backend",
+    "web_repository": "voiceofhu/one-amz-web",
+    "web_package": "one-amz-web",
+    "public_url": "https://amz.aicbe.com",
+    "service_port": 27512,
+    "ready_path": "/healthz",
+    "pnpm_version": "10.32.1",
+    "remote_required_dirs": [],
+    "web_gates": ["lint", "build"]
+  },
+  "mail": {
+    "title": "One Mail",
+    "backend_repository": "voiceofhu/one-mail-backend",
+    "backend_package": "onemail-backend",
+    "web_repository": "voiceofhu/one-mail-web",
+    "web_package": "onemail-web",
+    "public_url": "https://mail.aicbe.com",
+    "service_port": 27540,
+    "ready_path": "/readyz",
+    "pnpm_version": "10.34.1",
+    "remote_required_dirs": [],
+    "web_gates": ["format:check", "lint", "test", "build"]
+  },
   "notify": {
     "title": "One Notify",
     "backend_repository": "voiceofhu/one-notify-server",
@@ -8,6 +34,7 @@
     "public_url": "https://notify.aicbe.com",
     "service_port": 27520,
     "ready_path": "/readyz",
+    "pnpm_version": "11.7.0",
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]
   },
@@ -20,6 +47,7 @@
     "public_url": "https://object.aicbe.com",
     "service_port": 27525,
     "ready_path": "/readyz",
+    "pnpm_version": "11.7.0",
     "remote_required_dirs": [],
     "web_gates": ["format:check", "lint", "test", "build"]
   },
@@ -32,6 +60,7 @@
     "public_url": "https://pay.aicbe.com",
     "service_port": 27521,
     "ready_path": "/health/ready",
+    "pnpm_version": "11.7.0",
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]
   },
@@ -44,6 +73,7 @@
     "public_url": "https://oa.aicbe.com",
     "service_port": 27510,
     "ready_path": "/readyz",
+    "pnpm_version": "10.32.1",
     "remote_required_dirs": ["cert"],
     "web_gates": ["format:check", "lint", "test", "build"]
   },
@@ -56,6 +86,7 @@
     "public_url": "https://vps.aicbe.com",
     "service_port": 27545,
     "ready_path": "/readyz",
+    "pnpm_version": "11.7.0",
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]
   }

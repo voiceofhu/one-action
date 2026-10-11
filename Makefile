@@ -8,6 +8,8 @@ include $(PROJECT_ROOT)/make/user.mk
 include $(PROJECT_ROOT)/make/object.mk
 include $(PROJECT_ROOT)/make/notify.mk
 include $(PROJECT_ROOT)/make/pay.mk
+include $(PROJECT_ROOT)/make/amz.mk
+include $(PROJECT_ROOT)/make/mail.mk
 include $(PROJECT_ROOT)/make/vps.mk
 include $(PROJECT_ROOT)/make/node.mk
 include $(PROJECT_ROOT)/make/browser.mk
@@ -22,6 +24,8 @@ help:
 		"  make validate-object-web    Validate One Object Web deployment contracts" \
 		"  make validate-notify        Validate One Notify Server/Web release contracts" \
 		"  make validate-pay           Validate One Pay Server/Web release contracts" \
+		"  make validate-amz           Validate One AMZ Server/Web release contracts" \
+		"  make validate-mail          Validate One Mail Server/Web release contracts" \
 		"  make validate-vps           Validate One VPS Server/Web release contracts" \
 		"  make validate               Validate active shell and workflow contracts locally" \
 		"  make validate-user          Validate only One User release contracts" \
@@ -39,6 +43,10 @@ help:
 		"  make deploy-object-web      Deploy Web without restarting Object Server" \
 		"  make deploy-pay-server      Publish and deploy One Pay with Web" \
 		"  make deploy-pay-web         Deploy Web without restarting Pay Server" \
+		"  make deploy-amz-server      Publish and deploy One AMZ with Web" \
+		"  make deploy-amz-web         Deploy Web without restarting AMZ Server" \
+		"  make deploy-mail-server     Publish and deploy One Mail with Web" \
+		"  make deploy-mail-web        Deploy Web without restarting Mail Server" \
 		"  make deploy-vps-server      Publish and deploy One VPS with Web" \
 		"  make deploy-vps-web         Deploy Web without restarting VPS Server" \
 		"  make deploy-notify-server   Publish and deploy One Notify with Web" \

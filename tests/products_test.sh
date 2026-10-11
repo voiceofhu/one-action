@@ -82,4 +82,31 @@ ruby -ryaml -e '
     jobs.fetch("deploy").fetch("needs") == %w[prepare publish]
 ' "$PROJECT_ROOT" "${products[@]}"
 
+# The dispatcher must derive repositories and confirmations from the manifest.
+test_dir="$(mktemp -d)"
+trap 'rm -rf "$test_dir"' EXIT
+dispatch() {
+  PATH="$PROJECT_ROOT/tests/fakes:$PATH" FAKE_CURL_LOG="$test_dir/curl.log" \
+    FAKE_EXPECTED_AUTH=abcdefghijklmnopqrstuvwxyz123456 GH_TOKEN=abcdefghijklmnopqrstuvwxyz123456 \
+    ACTION_REPOSITORY=voiceofhu/one-action DRY_RUN=true \
+    bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" "$@" 2>&1
+}
+action_sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+for product in "${products[@]}"; do
+  load_product "$product"
+  server="$(dispatch "$PRODUCT_SERVER_WORKFLOW" \
+    "backend_repository=$PRODUCT_BACKEND_REPOSITORY" backend_ref=main \
+    "web_repository=$PRODUCT_WEB_REPOSITORY" web_ref=main version=1.2.3 publish=true)"
+  grep -Fq "\"confirmation\": \"enable:$PRODUCT_NAME:$action_sha\"" <<<"$server" ||
+    product_die "$PRODUCT_SERVER_WORKFLOW dispatch has the wrong confirmation: $server"
+  web="$(dispatch "$PRODUCT_WEB_WORKFLOW" "web_repository=$PRODUCT_WEB_REPOSITORY" web_ref=main \
+    version=1.2.3 publish=true deploy=true)"
+  grep -Fq "\"confirmation\": \"enable:$PRODUCT_KEY-web:$action_sha\"" <<<"$web" ||
+    product_die "$PRODUCT_WEB_WORKFLOW dispatch has the wrong confirmation: $web"
+  if dispatch "$PRODUCT_WEB_WORKFLOW" web_repository=voiceofhu/not-this-product web_ref=main \
+    version=1.2.3 publish=true deploy=true >/dev/null; then
+    product_die "$PRODUCT_WEB_WORKFLOW accepted a foreign Web repository"
+  fi
+done
+
 printf 'Product manifest and %s entry workflow pairs are consistent.\n' "${#products[@]}"

@@ -1,0 +1,20 @@
+{
+  "browser": {
+    "title": "One Browser App",
+    "repository": "voiceofhu/one-browser-app",
+    "source_dir": "one-browser/app",
+    "cargo_package": "one-browser",
+    "pnpm_version": "10.32.1",
+    "macos_config": "src-tauri/tauri.macos.conf.json",
+    "confirmation": "app"
+  },
+  "mail": {
+    "title": "One Mail App",
+    "repository": "voiceofhu/one-mail-app",
+    "source_dir": "one-mail/app",
+    "cargo_package": "onemail",
+    "pnpm_version": "10.34.1",
+    "macos_config": "",
+    "confirmation": "mail-app"
+  }
+}

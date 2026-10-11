@@ -45,6 +45,16 @@ validate-notify:
 validate-notify-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh notify-web
 
+.PHONY: validate-amz validate-amz-web validate-mail validate-mail-web
+validate-amz:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh amz
+validate-amz-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh amz-web
+validate-mail:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh mail
+validate-mail-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh mail-web
+
 .PHONY: validate-pay validate-pay-web
 validate-pay:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh pay

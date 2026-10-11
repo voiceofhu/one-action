@@ -82,6 +82,8 @@ else
     */repos/voiceofhu/one-node-node/commits/*) sha=3333333333333333333333333333333333333333 ;;
     */repos/voiceofhu/one-node-server/commits/*) sha=4444444444444444444444444444444444444444 ;;
     */repos/voiceofhu/one-node-web/commits/*) sha=5555555555555555555555555555555555555555 ;;
+    # Any other products.json source repository.
+    */repos/voiceofhu/*/commits/*) sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ;;
     *) printf '{"message":"not found"}' >"$output_file"; printf 404; exit 0 ;;
   esac
 fi

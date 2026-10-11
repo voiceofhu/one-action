@@ -6,6 +6,21 @@ name: Reusable Publish Server Image
       workflow_name:
         required: true
         type: string
+      backend_repository:
+        required: true
+        type: string
+      web_repository:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+      pnpm_version:
+        required: true
+        type: string
       action_sha:
         required: true
         type: string
@@ -54,7 +69,7 @@ jobs:
       - name: Checkout exact backend source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-server' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-server' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-server' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-server' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}
+          repository: ${{ inputs.backend_repository }}
           ref: ${{ inputs.backend_sha }}
           path: backend
           token: ${{ secrets.source_read_token }}
@@ -64,7 +79,7 @@ jobs:
       - name: Checkout exact Web source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-web' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-web' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-web' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-web' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-web' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-web' || 'voiceofhu/one-node-web' }}
+          repository: ${{ inputs.web_repository }}
           ref: ${{ inputs.web_sha }}
           path: web
           token: ${{ secrets.source_read_token }}
@@ -74,7 +89,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          version: ${{ (inputs.workflow_name == 'one-node-server' || inputs.workflow_name == 'one-object' || inputs.workflow_name == 'one-notify' || inputs.workflow_name == 'one-pay' || inputs.workflow_name == 'one-vps') && '11.7.0' || '10.32.1' }}
+          version: ${{ inputs.pnpm_version }}
           run_install: false
 
       # Only maintainers dispatch this workflow; setup-node v4 caches nothing without `cache:`.
@@ -88,13 +103,8 @@ jobs:
         env:
           BUILD_TIME: ${{ inputs.created_at }}
           VITE_APP_VERSION: ${{ inputs.version }}
-          WORKFLOW_NAME: ${{ inputs.workflow_name }}
         run: |
           set -Eeuo pipefail
-          case "$WORKFLOW_NAME" in
-            one-user|one-object|one-notify|one-pay|one-vps|one-node-server|one-browser-app-server|one-browser-server) ;;
-            *) echo "Unsupported workflow: $WORKFLOW_NAME" >&2; exit 1 ;;
-          esac
           pnpm --dir web install --frozen-lockfile
           VITE_BUILD_TIME="$BUILD_TIME" pnpm --dir web build
           mkdir backend/web-dist
@@ -121,13 +131,13 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: backend
-          file: backend/${{ (inputs.workflow_name == 'one-user' || inputs.workflow_name == 'one-object' || inputs.workflow_name == 'one-notify' || inputs.workflow_name == 'one-pay' || inputs.workflow_name == 'one-vps') && 'deploy/docker/Dockerfile' || 'Dockerfile' }}
+          file: backend/${{ inputs.dockerfile }}
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || inputs.workflow_name == 'one-object' && 'ghcr.io/voiceofhu/one-object' || inputs.workflow_name == 'one-pay' && 'ghcr.io/voiceofhu/one-pay' || inputs.workflow_name == 'one-vps' && 'ghcr.io/voiceofhu/one-vps' || inputs.workflow_name == 'one-notify' && 'ghcr.io/voiceofhu/one-notify' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'ghcr.io/voiceofhu/one-browser-backend' || 'ghcr.io/voiceofhu/node-server' }}:build-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          tags: ${{ inputs.image }}:build-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.created=${{ inputs.created_at }}
-            org.opencontainers.image.source=https://github.com/${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-server' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-server' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-server' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-server' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}
+            org.opencontainers.image.source=https://github.com/${{ inputs.backend_repository }}
             org.opencontainers.image.revision=${{ inputs.backend_sha }}
             org.opencontainers.image.version=${{ inputs.version }}
             one.action.revision=${{ inputs.action_sha }}
@@ -174,7 +184,7 @@ jobs:
         env:
           ACTION_SHA: ${{ inputs.action_sha }}
           BACKEND_SHA: ${{ inputs.backend_sha }}
-          IMAGE: ${{ inputs.workflow_name == 'one-user' && 'ghcr.io/voiceofhu/one-user' || inputs.workflow_name == 'one-object' && 'ghcr.io/voiceofhu/one-object' || inputs.workflow_name == 'one-pay' && 'ghcr.io/voiceofhu/one-pay' || inputs.workflow_name == 'one-vps' && 'ghcr.io/voiceofhu/one-vps' || inputs.workflow_name == 'one-notify' && 'ghcr.io/voiceofhu/one-notify' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'ghcr.io/voiceofhu/one-browser-backend' || 'ghcr.io/voiceofhu/node-server' }}
+          IMAGE: ${{ inputs.image }}
           VERSION: ${{ inputs.version }}
           WEB_SHA: ${{ inputs.web_sha }}
         run: |

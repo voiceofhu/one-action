@@ -32,7 +32,8 @@ help:
 		"  make validate-user-web      Validate One User Web deployment contracts" \
 		"  make validate-node          Validate only One Node Runtime release contracts" \
 		"  make validate-node-server   Validate only One Node Server release contracts" \
-		"  make validate-browser-app   Validate Browser App release version contracts" \
+		"  make validate-browser-app   Validate desktop App (Tauri) release contracts" \
+		"  make validate-mail-app      Validate desktop App (Tauri) release contracts" \
 		"  make validate-browser-egress Validate only Browser Egress release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \
@@ -57,6 +58,7 @@ help:
 		"  make deploy-node-web        Check and deploy Web without restarting Node Server" \
 		"  make deploy-node            Check One Node source and dispatch compile/upload" \
 		"  make deploy-browser-app     Check One Browser App and dispatch installer publication" \
+		"  make deploy-mail-app        Check One Mail App and dispatch installer publication" \
 		"  make deploy-browser-server  Check, publish, and deploy Browser Server with Web" \
 		"  make deploy-browser-web     Check and deploy Web without restarting Server" \
 		"  make deploy-browser-egress  Check Browser Egress and dispatch package/image publication"

@@ -14,26 +14,17 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 `egress/scripts/`。根目录 Egress 入口仅兼容历史命令；新生成的安装命令必须使用
 `egress/` 路径。
 
-所有产品最终都必须接入 One Action。当前本地发布入口如下；One IP、One AMZ、One Mail
-尚未接入（One IP 仍由自身仓库 `make deploy-server` 部署）。其他产品在这里补齐发布合同前，
-不应视为已经具备正式分发或部署能力：
+所有产品都通过 One Action 发布；One IP 是独立项目，不接入（由自身仓库 `make deploy-server`
+部署）。当前本地发布入口如下，未在这里列出的产品不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
-| `make deploy-object-server` | dispatch `object-server.yml` | 发布 One Object Server 镜像并部署，包含 Web |
-| `make deploy-object-web` | dispatch `object-web.yml` | 仅部署 One Object Web 静态文件 |
-| `make deploy-notify-server` | dispatch `notify-server.yml` | 发布 Server 镜像并部署，包含 Web |
-| `make deploy-notify-web` | dispatch `notify-web.yml` | 仅部署 Web 静态文件，不重启 Server |
-| `make deploy-pay-server` | dispatch `pay-server.yml` | 发布 Server 镜像并部署，包含 Web |
-| `make deploy-pay-web` | dispatch `pay-web.yml` | 仅部署 Web 静态文件，不重启 Server |
-| `make deploy-vps-server` | dispatch `vps-server.yml` | 发布 Server 镜像并部署，包含 Web |
-| `make deploy-vps-web` | dispatch `vps-web.yml` | 仅部署 Web 静态文件，不重启 Server |
-| `make deploy-user-web` | dispatch `user-web.yml` | 仅部署 Web 静态文件，不重启 Server |
-| `make deploy-user-server` | dispatch `user-server.yml` | `ghcr.io/voiceofhu/one-user:<version>`，随后部署该精确 OCI digest |
+| `make deploy-<key>-server` | dispatch `<key>-server.yml` | user、object、notify、pay、vps、amz、mail：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
+| `make deploy-<key>-web` | dispatch `<key>-web.yml` | 同上七个产品：仅部署 Web 静态文件，不重启 Server |
+| `make deploy-<key>-app` | dispatch `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
 | `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
 | `make deploy-node-web` | dispatch `node-web.yml` | 仅部署 One Node Web 静态文件 |
 | `make deploy-node` | dispatch `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
-| `make deploy-browser-app` | dispatch `browser-app.yml` | Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-server` | dispatch `browser-server.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像及 SSH/Compose 部署 |
 | `make deploy-browser-web` | dispatch `browser-web.yml` | 独立构建 Web，切换服务器静态文件版本，不更新 Server 容器 |
 | `make deploy-browser-egress` | dispatch `browser-egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
@@ -81,7 +72,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 ## Server + Web 产品（products.json）
 
-One User、One Object、One Notify、One Pay、One VPS 共用同一套发布实现，差异只记录在
+One User、One Object、One Notify、One Pay、One VPS、One AMZ、One Mail 共用同一套发布实现，差异只记录在
 `products.json`：源码仓库、Cargo/npm 包名、默认公网地址、容器端口、readiness 路径、
 部署目录内必须存在的子目录，以及本地 Web 检查命令。镜像 `ghcr.io/voiceofhu/one-<key>`、
 Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose 项目 `one-<key>`、
@@ -94,6 +85,13 @@ Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose �
 | notify | `one-notify-server` | `27520/readyz` | `https://notify.aicbe.com` | — | lint、build |
 | pay | `one-pay-server` | `27521/health/ready` | `https://pay.aicbe.com` | — | lint、build |
 | vps | `one-vps-server` | `27545/readyz` | `https://vps.aicbe.com` | — | lint、build |
+| amz | `one-amz-server` | `27512/healthz` | `https://amz.aicbe.com` | — | lint、build |
+| mail | `one-mail-backend` | `27540/readyz` | `https://mail.aicbe.com` | — | format:check、lint、test、build |
+
+各 Backend 仓库提供 `deploy/docker/Dockerfile` 与 `deploy/docker/docker-compose.yml`；Compose 服务名为
+`<key>`，镜像内 Web 位于 `/opt/one-<key>/web-dist`，运行时从挂载的 `/opt/one-<key>/web/current` 托管。
+One AMZ 以单容器 `all` 模式同时运行 API 与全部后台 Worker；One Mail 的镜像需要 OpenSSL（IMAP/SMTP 的 native-tls）。
+每个产品的 pnpm 版本也记录在 `products.json`，镜像构建与独立 Web 构建使用同一版本。
 
 ```mermaid
 flowchart TD
@@ -129,6 +127,23 @@ flowchart TD
   数据库须事先初始化，部署不会运行 SQL。服务环境配置以各 Backend README 和 `.env.example` 为准。
 - 新增同类产品：在 `products.json` 加一条，复制一对入口 workflow 并改 `product:`，在 `make/` 加两个目标，
   并把 `<key>|<key>-web` 加到 `scripts/validate.sh` 的产品范围。
+
+## 桌面客户端（apps.json）
+
+One Browser 与 One Mail 的 Tauri 客户端共用 `reusable-publish-tauri-app.yml`。`apps.json` 记录源码仓库、
+本地目录、Cargo 包名、pnpm 版本、macOS 专用配置和 dispatch 确认名；Release 标签统一为
+`one-<key>-app-v<version>`，入口为 `<key>-app.yml`。
+
+| 客户端 | 源码仓库 | 本地目录 | 确认名 | 正式版连接地址 |
+| --- | --- | --- | --- | --- |
+| browser | `voiceofhu/one-browser-app` | `../one-browser/app` | `app` | `https://browser.aicbe.com` |
+| mail | `voiceofhu/one-mail-app` | `../one-mail/app` | `mail-app` | `https://mail.aicbe.com` |
+
+- `make deploy-<key>-app` 要求客户端仓库干净且 HEAD 与 `main` 一致，本地运行依赖安装、`scripts/*.mjs` 语法检查、
+  `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后 dispatch 精确源码 SHA。
+- 客户端仓库须提供 `scripts/update-version.mjs`；CI 在各平台打包前写入 package.json、`tauri.conf.json`、Cargo.toml 与 Cargo.lock 的版本。
+- 已存在的 Release 或标签不会被覆盖；源码仓库不打发布标签，标签只在 One Action 上绑定本次 Action SHA。
+- 客户端只加载远端页面：正式版连接上表地址，开发版连接本机 Backend；对应的 Server/Web 先按「Server + Web 产品」部署。
 
 ## 使用
 

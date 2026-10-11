@@ -13,7 +13,14 @@ require_tool jq
 # <product>-server.yml and <product>-web.yml come from products.json; the
 # repositories and confirmation names are read from the same manifest.
 product_component=
-if [[ "$workflow" =~ ^([a-z][a-z0-9]*)-(server|web)\.yml$ ]] \
+app_component=
+if [[ "$workflow" =~ ^([a-z][a-z0-9]*)-app\.yml$ ]] \
+  && jq -e --arg key "${BASH_REMATCH[1]}" 'has($key)' "$SCRIPT_DIR/../../apps.json" >/dev/null 2>&1; then
+  app_component=app
+  # shellcheck source=scripts/lib/app.sh
+  source "$SCRIPT_DIR/../lib/app.sh"
+  load_app "${BASH_REMATCH[1]}"
+elif [[ "$workflow" =~ ^([a-z][a-z0-9]*)-(server|web)\.yml$ ]] \
   && jq -e --arg key "${BASH_REMATCH[1]}" 'has($key)' "$SCRIPT_DIR/../../products.json" >/dev/null 2>&1; then
   product_component=${BASH_REMATCH[2]}
   # shellcheck source=scripts/lib/product.sh
@@ -21,7 +28,7 @@ if [[ "$workflow" =~ ^([a-z][a-z0-9]*)-(server|web)\.yml$ ]] \
   load_product "${BASH_REMATCH[1]}"
 else
   case "$workflow" in
-    browser-server-publish.yml|browser-app.yml|browser-egress.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+    browser-server-publish.yml|browser-egress.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
     *) die 'workflow is outside the fixed dispatcher allowlist' ;;
   esac
 fi
@@ -100,6 +107,11 @@ for assignment in "$@"; do
 done
 
 publish_supported=false
+if [[ "$app_component" == app ]]; then
+  require_inputs app_repository app_ref version publish
+  require_repository app_repository "$APP_REPOSITORY"
+  publish_supported=true
+fi
 case "$product_component" in
   server)
     require_inputs backend_repository backend_ref web_repository web_ref \
@@ -143,11 +155,6 @@ case "$workflow" in
     require_inputs backend_repository backend_ref web_repository web_ref version publish deploy
     require_repository backend_repository voiceofhu/one-browser-server
     require_repository web_repository voiceofhu/one-browser-web
-    publish_supported=true
-    ;;
-  browser-app.yml)
-    require_inputs app_repository app_ref version publish
-    require_repository app_repository voiceofhu/one-browser-app
     publish_supported=true
     ;;
   browser-egress.yml)
@@ -258,8 +265,8 @@ if [[ "$publish" == true ]]; then
     workflow_base=one-node-server
   elif [[ "$workflow" == browser-server-publish.yml ]]; then
     workflow_base=one-browser-backend
-  elif [[ "$workflow" == browser-app.yml ]]; then
-    workflow_base=app
+  elif [[ "$app_component" == app ]]; then
+    workflow_base=$APP_CONFIRMATION
   elif [[ "$workflow" == browser-egress.yml ]]; then
     workflow_base=egress
   elif [[ "$workflow" == node-runtime.yml ]]; then

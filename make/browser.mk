@@ -3,7 +3,7 @@
 deploy-browser-app: DRY_RUN = false
 deploy-browser-app:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(BROWSER_APP_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-browser-app-release.sh
+		bash $(PROJECT_ROOT)/scripts/release/release-app.sh browser
 
 .PHONY: deploy-browser-server deploy-browser-web
 deploy-app-server: deploy-browser-server

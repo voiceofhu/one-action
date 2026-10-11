@@ -13,7 +13,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/deploy-server_test.sh"
       "$PROJECT_ROOT/tests/deploy-web_test.sh"
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
-      "$PROJECT_ROOT/tests/browser-app-release-version_test.sh"
+      "$PROJECT_ROOT/tests/app-release_test.sh"
       "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh"
       "$PROJECT_ROOT/tests/browser-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/browser-server-publish-workflow_test.sh"
@@ -54,7 +54,8 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-browser-app-release.sh"
+      "$PROJECT_ROOT/scripts/lib/app.sh"
+      "$PROJECT_ROOT/scripts/release/release-app.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
@@ -155,13 +156,17 @@ case "$scope" in
     active_workflows=(node-web.yml node-server.yml)
     run_node_check=false
     ;;
-  browser-app)
-    active_tests=("$PROJECT_ROOT/tests/browser-app-release-version_test.sh")
+  browser-app|mail-app)
+    active_tests=("$PROJECT_ROOT/tests/app-release_test.sh")
     shell_files=(
-      "$PROJECT_ROOT/scripts/release/deploy-browser-app-release.sh"
+      "$PROJECT_ROOT/scripts/lib/app.sh"
+      "$PROJECT_ROOT/scripts/release/release-app.sh"
       "${active_tests[@]}"
     )
-    active_workflows=(browser-app.yml)
+    active_workflows=(reusable-publish-tauri-app.yml)
+    for app in $(jq -r 'keys[]' "$PROJECT_ROOT/apps.json"); do
+      active_workflows+=("$app-app.yml")
+    done
     run_node_check=false
     ;;
   browser-server)
@@ -247,12 +252,11 @@ actionlint -config-file "$PROJECT_ROOT/.github/actionlint.yaml" "${active_workfl
 env -u GH_TOKEN -u GITHUB_TOKEN -u ZIZMOR_GITHUB_TOKEN zizmor --offline --quiet --config "$PROJECT_ROOT/.github/zizmor.yml" "${active_workflow_paths[@]}"
 
 legacy_name='aic''be'
-canonical_user_origin="https://oa.${legacy_name}.com"
-canonical_object_origin="https://object.${legacy_name}.com"
-canonical_browser_origin="https://browser.${legacy_name}.com"
-canonical_notify_origin="https://notify.${legacy_name}.com"
-canonical_pay_origin="https://pay.${legacy_name}.com"
-canonical_vps_origin="https://vps.${legacy_name}.com"
+# Canonical public origins: every products.json product plus One Browser.
+canonical_origins=("https://browser.${legacy_name}.com")
+while IFS= read -r origin; do
+  canonical_origins+=("$origin")
+done < <(jq -r '.[].public_url' "$PROJECT_ROOT/products.json")
 legacy_matches="$(
   grep -RniE "$legacy_name" \
     "$PROJECT_ROOT/.github" \
@@ -262,15 +266,14 @@ legacy_matches="$(
     "$PROJECT_ROOT/Makefile" \
     "$PROJECT_ROOT/README.md" || true
 )"
-unexpected_legacy_matches="$(
-  printf '%s\n' "$legacy_matches" \
-    | sed -e "s#${canonical_object_origin}##g" -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" -e "s#${canonical_notify_origin}##g" -e "s#${canonical_pay_origin}##g" -e "s#${canonical_vps_origin}##g" \
-    | grep -iE "$legacy_name" || true
-)"
+for origin in "${canonical_origins[@]}"; do
+  legacy_matches="${legacy_matches//"$origin"/}"
+done
+unexpected_legacy_matches="$(printf '%s\n' "$legacy_matches" | grep -iE "$legacy_name" || true)"
 if [[ -n "$unexpected_legacy_matches" ]]; then
   printf '%s\n' "$unexpected_legacy_matches"
   printf '%s\n' \
-    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User/Object/Browser/Notify/Pay/VPS origins.' >&2
+    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical origins in products.json (plus One Browser).' >&2
   exit 1
 fi
 

@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# Runs the shared Tauri release entry and workflow scripts for one apps.json
+# client (default: every client).
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "$#" -eq 0 ]]; then
+  for app in $(jq -r 'keys[]' "$PROJECT_ROOT/apps.json"); do
+    bash "${BASH_SOURCE[0]}" "$app"
+  done
+  exit 0
+fi
+# shellcheck source=scripts/lib/app.sh
+source "$PROJECT_ROOT/scripts/lib/app.sh"
+load_app "$1"
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
 for input in '' v26.907.101; do
   expected=${input#v}
   expected=${expected:-26.906.1234}
-  make --no-print-directory -s -C "$PROJECT_ROOT" deploy-browser-app \
+  make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-app" \
     ENV_FILE=/dev/null DRY_RUN=true VERSION="$input" GENERATED_VERSION=26.906.1234 \
     >"$test_dir/plan"
   sed '/DRY_RUN=true:/,$d' "$test_dir/plan" | \
-    jq -e --arg version "$expected" '.inputs.version == $version and .inputs.publish == true' >/dev/null
+    jq -e --arg version "$expected" --arg repository "$APP_REPOSITORY" --arg confirmation "enable:$APP_CONFIRMATION:" '
+      .inputs.version == $version and .inputs.publish == true
+      and .inputs.app_repository == $repository and (.inputs.confirmation | startswith($confirmation))' >/dev/null
 done
 
 ruby -ryaml -e '
@@ -34,7 +47,14 @@ ruby -ryaml -e '
   publish = workflow.fetch("jobs").fetch("publish").fetch("steps").find { |s| s["name"] == "Publish release assets" }
   abort "immutable release guard removed" unless publish.fetch("run").include?("refusing to mutate it")
   File.write("#{ARGV[1]}/publish.sh", publish.fetch("run"))
-' "$PROJECT_ROOT/.github/workflows/browser-app.yml" "$test_dir"
+  caller = YAML.load_file(ARGV.fetch(2))
+  release = caller.fetch("jobs").fetch("release")
+  abort "#{ARGV[2]} must call the shared Tauri publisher" unless
+    release.fetch("uses") == "./.github/workflows/reusable-publish-tauri-app.yml" &&
+    release.fetch("with").fetch("app") == ARGV.fetch(3) &&
+    release.fetch("permissions") == { "contents" => "write" }
+' "$PROJECT_ROOT/.github/workflows/reusable-publish-tauri-app.yml" "$test_dir" \
+  "$PROJECT_ROOT/.github/workflows/$APP_WORKFLOW" "$APP_KEY"
 
 mkdir -p "$test_dir/bin" "$test_dir/app/scripts"
 cat >"$test_dir/bin/gh" <<'SCRIPT'
@@ -58,17 +78,28 @@ export PATH="$test_dir/bin:$PATH"
 export RUNNER_TEMP="$test_dir" GITHUB_OUTPUT="$test_dir/output" API_LOG="$test_dir/api"
 export ACTION_REPOSITORY=voiceofhu/one-action ACTION_SERVER_URL=https://github.com
 export ACTION_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa EXPECTED_ACTION_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-export CONFIRMATION="enable:app:$ACTION_SHA" APP_REPOSITORY=voiceofhu/one-browser-app
+export CALLER_WORKFLOW="voiceofhu/one-action/.github/workflows/$APP_WORKFLOW@refs/heads/main"
+export APP_KEY APP_TITLE EXPECTED_APP_REPOSITORY="$APP_REPOSITORY" CONFIRMATION_NAME="$APP_CONFIRMATION"
+export RELEASE_PREFIX="$APP_RELEASE_PREFIX"
+export CONFIRMATION="enable:$APP_CONFIRMATION:$ACTION_SHA" APP_REPOSITORY
 export APP_REF=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb VERSION=26.906.1234 PUBLISH=true
 export GH_TOKEN=fixture-token
 
+for bad in CALLER_WORKFLOW CONFIRMATION; do
+  export RELEASE_STATE=missing
+  : >"$GITHUB_OUTPUT"
+  if env "$bad=wrong" bash "$test_dir/prepare.sh" >/dev/null 2>&1; then
+    printf '%s accepted a wrong %s\n' "$APP_WORKFLOW" "$bad" >&2
+    exit 1
+  fi
+done
 for state in missing exists denied transport; do
   export RELEASE_STATE="$state"
   : >"$GITHUB_OUTPUT"
   : >"$API_LOG"
   if bash "$test_dir/prepare.sh" >"$test_dir/stdout" 2>"$test_dir/stderr"; then
     [[ "$state" == missing ]]
-    grep -q 'release_tag=one-browser-app-v26.906.1234' "$GITHUB_OUTPUT"
+    grep -q "release_tag=$APP_RELEASE_PREFIX-v26.906.1234" "$GITHUB_OUTPUT"
   else
     [[ "$state" != missing ]]
     [[ ! -s "$GITHUB_OUTPUT" ]]
@@ -120,14 +151,14 @@ case "$1 $2" in
 esac
 SCRIPT
 export GITHUB_REPOSITORY=voiceofhu/one-action GITHUB_SHA="$ACTION_SHA" APP_SHA="$APP_REF"
-export RELEASE_TAG="one-browser-app-v$VERSION" TAG_CREATED="$test_dir/tag-created"
+export RELEASE_TAG="$APP_RELEASE_PREFIX-v$VERSION" TAG_CREATED="$test_dir/tag-created"
 for state in missing matching mismatch denied transport; do
   export TAG_STATE="$state"
   rm -f "$TAG_CREATED"
   : >"$API_LOG"
   work="$test_dir/publish-$state"
-  mkdir -p "$work/dist/one-browser-app-macos-arm64"
-  printf 'fixture' >"$work/dist/one-browser-app-macos-arm64/app.dmg"
+  mkdir -p "$work/dist/$APP_RELEASE_PREFIX-macos-arm64"
+  printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-macos-arm64/app.dmg"
   if (cd "$work" && bash "$test_dir/publish.sh") >"$test_dir/stdout" 2>"$test_dir/stderr"; then
     [[ "$state" == missing || "$state" == matching ]]
     grep -q '^release create ' "$API_LOG"
@@ -142,4 +173,4 @@ for state in missing matching mismatch denied transport; do
     ! grep -q '^release create ' "$API_LOG"
   fi
 done
-printf '%s\n' 'Browser App version, CI stamping, duplicate guards and immutable tag publication tests passed.'
+printf '%s version, CI stamping, duplicate guards and immutable tag publication tests passed.\n' "$APP_TITLE"

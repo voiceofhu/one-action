@@ -1,4 +1,4 @@
-.PHONY: deploy-mail-server deploy-mail-web
+.PHONY: deploy-mail-server deploy-mail-web deploy-mail-app
 
 deploy-mail-server: DRY_RUN = false
 deploy-mail-server:
@@ -9,3 +9,8 @@ deploy-mail-web: DRY_RUN = false
 deploy-mail-web:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(MAIL_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/release-web.sh mail
+
+deploy-mail-app: DRY_RUN = false
+deploy-mail-app:
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(MAIL_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/release-app.sh mail

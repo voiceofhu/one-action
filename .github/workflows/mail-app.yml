@@ -1,0 +1,34 @@
+name: One Mail App
+
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_action_sha: {required: true, type: string}
+      confirmation: {required: true, type: string}
+      app_repository: {required: true, type: string}
+      app_ref: {required: true, type: string}
+      version: {required: true, type: string}
+      publish: {required: true, type: boolean}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-mail-app-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/reusable-publish-tauri-app.yml
+    with:
+      app: mail
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      confirmation: ${{ inputs.confirmation }}
+      app_repository: ${{ inputs.app_repository }}
+      app_ref: ${{ inputs.app_ref }}
+      version: ${{ inputs.version }}
+      publish: ${{ inputs.publish }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

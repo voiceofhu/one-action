@@ -18,6 +18,10 @@ validate-browser-egress:
 validate-browser-app:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-app
 
+.PHONY: validate-mail-app
+validate-mail-app:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh mail-app
+
 check-token:
 	@bash $(PROJECT_ROOT)/scripts/github/check-token.sh
 

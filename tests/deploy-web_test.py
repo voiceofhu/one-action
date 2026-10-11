@@ -1,6 +1,6 @@
 from pathlib import Path
 import tempfile,os,subprocess,tarfile,hashlib
-source=(Path(__file__).resolve().parents[1] / 'scripts/deploy/deploy-pay-web.sh').read_text()
+source=(Path(__file__).resolve().parents[1] / 'scripts/deploy/deploy-web.sh').read_text()
 body=source.split("<<'REMOTE_DEPLOY'\n",1)[1].rsplit('\nREMOTE_DEPLOY',1)[0]
 with tempfile.TemporaryDirectory() as tmp:
  p=Path(tmp);binary=p/'bin';binary.mkdir()

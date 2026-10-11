@@ -5,12 +5,20 @@ unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTION_REPOSITORY='voiceofhu/one-action'
+# shellcheck source=scripts/lib/product.sh
+source "$PROJECT_ROOT/scripts/lib/product.sh"
 
+[[ "$#" -eq 1 ]] || product_die 'usage: release-server.sh PRODUCT'
+load_product "$1"
 : "${VERSION:?VERSION is required}"
-: "${ONE_PAY_BACKEND_DIR:?ONE_PAY_BACKEND_DIR is required}"
-: "${ONE_PAY_WEB_DIR:?ONE_PAY_WEB_DIR is required}"
-: "${ONE_PAY_BACKEND_REPOSITORY:?ONE_PAY_BACKEND_REPOSITORY is required}"
-: "${ONE_PAY_WEB_REPOSITORY:?ONE_PAY_WEB_REPOSITORY is required}"
+SOURCE_ROOT=${SOURCE_ROOT:-$(cd -- "$PROJECT_ROOT/.." && pwd)}
+product_env_prefix="ONE_$(printf '%s' "$PRODUCT_KEY" | tr '[:lower:]' '[:upper:]')"
+backend_dir_variable="${product_env_prefix}_BACKEND_DIR"
+web_dir_variable="${product_env_prefix}_WEB_DIR"
+backend_dir=${!backend_dir_variable:-$SOURCE_ROOT/$PRODUCT_NAME/backend}
+web_dir=${!web_dir_variable:-$SOURCE_ROOT/$PRODUCT_NAME/web}
+backend_repository=$PRODUCT_BACKEND_REPOSITORY
+web_repository=$PRODUCT_WEB_REPOSITORY
 
 [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
   printf '%s\n' 'VERSION must contain three numeric components without leading zeroes' >&2
@@ -94,9 +102,9 @@ validate_action_repository() {
 }
 
 backend_state="$(validate_source_repository \
-  Backend "$ONE_PAY_BACKEND_DIR" "$ONE_PAY_BACKEND_REPOSITORY" Cargo.toml)"
+  Backend "$backend_dir" "$backend_repository" Cargo.toml)"
 web_state="$(validate_source_repository \
-  Web "$ONE_PAY_WEB_DIR" "$ONE_PAY_WEB_REPOSITORY" package.json)"
+  Web "$web_dir" "$web_repository" package.json)"
 backend_branch=${backend_state%%|*}
 backend_head=${backend_state#*|}
 web_branch=${web_state%%|*}
@@ -104,10 +112,10 @@ web_head=${web_state#*|}
 action_head="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
 
 printf '%s\n' \
-  'One Pay release plan:' \
+  "$PRODUCT_TITLE release plan:" \
   "  version:          $VERSION" \
-  "  backend:          $ONE_PAY_BACKEND_REPOSITORY@$backend_head" \
-  "  web:              $ONE_PAY_WEB_REPOSITORY@$web_head" \
+  "  backend:          $backend_repository@$backend_head" \
+  "  web:              $web_repository@$web_head" \
   "  backend branch:   $backend_branch" \
   "  web branch:       $web_branch" \
   "  action:           $ACTION_REPOSITORY@$action_head" \
@@ -141,7 +149,7 @@ action_remote_head="$(git -C "$PROJECT_ROOT" rev-parse --verify refs/remotes/ori
     'Push or synchronize the Action main branch, then retry; no source repositories were changed.' >&2
   exit 1
 }
-make --no-print-directory -C "$PROJECT_ROOT" validate-pay
+make --no-print-directory -C "$PROJECT_ROOT" "validate-$PRODUCT_KEY"
 [[ "$(validate_action_repository)" == "$action_head" ]] || {
   printf '%s\n' 'Action source changed during local validation.' >&2
   exit 1
@@ -164,32 +172,33 @@ preflight_release_repository() {
   }
 }
 
-preflight_release_repository Backend "$ONE_PAY_BACKEND_DIR" "$backend_branch"
-preflight_release_repository Web "$ONE_PAY_WEB_DIR" "$web_branch"
+preflight_release_repository Backend "$backend_dir" "$backend_branch"
+preflight_release_repository Web "$web_dir" "$web_branch"
 
 (
-  cd "$ONE_PAY_BACKEND_DIR"
+  cd "$backend_dir"
   cargo fmt --all -- --check
 )
-make --no-print-directory -C "$ONE_PAY_BACKEND_DIR" test
-pnpm --dir "$ONE_PAY_WEB_DIR" install --frozen-lockfile
-pnpm --dir "$ONE_PAY_WEB_DIR" lint
-pnpm --dir "$ONE_PAY_WEB_DIR" build
+make --no-print-directory -C "$backend_dir" test
+pnpm --dir "$web_dir" install --frozen-lockfile
+for gate in "${PRODUCT_WEB_GATES[@]}"; do
+  pnpm --dir "$web_dir" "$gate"
+done
 
-[[ "$(git -C "$ONE_PAY_BACKEND_DIR" rev-parse HEAD)" == "$backend_head" \
-  && -z "$(git -C "$ONE_PAY_BACKEND_DIR" status --porcelain --untracked-files=all)" ]] || {
+[[ "$(git -C "$backend_dir" rev-parse HEAD)" == "$backend_head" \
+  && -z "$(git -C "$backend_dir" status --porcelain --untracked-files=all)" ]] || {
   printf '%s\n' 'Backend source changed during local validation.' >&2
   exit 1
 }
-[[ "$(git -C "$ONE_PAY_WEB_DIR" rev-parse HEAD)" == "$web_head" \
-  && -z "$(git -C "$ONE_PAY_WEB_DIR" status --porcelain --untracked-files=all)" ]] || {
+[[ "$(git -C "$web_dir" rev-parse HEAD)" == "$web_head" \
+  && -z "$(git -C "$web_dir" status --porcelain --untracked-files=all)" ]] || {
   printf '%s\n' 'Web source changed during local validation.' >&2
   exit 1
 }
 
 update_backend_version() {
-  local manifest="$ONE_PAY_BACKEND_DIR/Cargo.toml"
-  local lockfile="$ONE_PAY_BACKEND_DIR/Cargo.lock"
+  local manifest="$backend_dir/Cargo.toml"
+  local lockfile="$backend_dir/Cargo.lock"
   local temp
 
   temp="$(mktemp "$manifest.tmp.XXXXXX")"
@@ -213,10 +222,10 @@ update_backend_version() {
   mv -f -- "$temp" "$manifest"
 
   temp="$(mktemp "$lockfile.tmp.XXXXXX")"
-  awk -v version="$VERSION" '
+  awk -v version="$VERSION" -v package="$PRODUCT_BACKEND_PACKAGE" '
     BEGIN { in_package=0; is_target=0; changed=0 }
     /^\[\[package\]\][[:space:]]*$/ { in_package=1; is_target=0; print; next }
-    in_package && /^name = "one-pay-backend"[[:space:]]*$/ { is_target=1; print; next }
+    in_package && $0 == "name = \"" package "\"" { is_target=1; print; next }
     in_package && is_target && /^version = / {
       if (changed != 0) exit 42
       print "version = \"" version "\""
@@ -234,12 +243,12 @@ update_backend_version() {
 }
 
 update_web_version() {
-  VERSION="$VERSION" node - <<'NODE' "$ONE_PAY_WEB_DIR/package.json"
+  VERSION="$VERSION" WEB_PACKAGE="$PRODUCT_WEB_PACKAGE" node - <<'NODE' "$web_dir/package.json"
 const fs = require('node:fs');
 const file = process.argv[2];
 const document = JSON.parse(fs.readFileSync(file, 'utf8'));
-if (document.name !== 'one-pay-web' || typeof document.version !== 'string') {
-  throw new Error('package.json does not describe one-pay-web');
+if (document.name !== process.env.WEB_PACKAGE || typeof document.version !== 'string') {
+  throw new Error(`package.json does not describe ${process.env.WEB_PACKAGE}`);
 }
 document.version = process.env.VERSION;
 fs.writeFileSync(file, `${JSON.stringify(document, null, 2)}\n`);
@@ -260,27 +269,27 @@ verify_changed_paths() {
 
 update_backend_version
 update_web_version
-verify_changed_paths Backend "$ONE_PAY_BACKEND_DIR" 'Cargo.lock Cargo.toml'
-verify_changed_paths Web "$ONE_PAY_WEB_DIR" 'package.json'
+verify_changed_paths Backend "$backend_dir" 'Cargo.lock Cargo.toml'
+verify_changed_paths Web "$web_dir" 'package.json'
 
-git -C "$ONE_PAY_BACKEND_DIR" add -- Cargo.toml Cargo.lock
-if ! git -C "$ONE_PAY_BACKEND_DIR" diff --cached --quiet; then
-  git -C "$ONE_PAY_BACKEND_DIR" commit -m \
-    "chore: bump one-pay-backend version to $VERSION"
+git -C "$backend_dir" add -- Cargo.toml Cargo.lock
+if ! git -C "$backend_dir" diff --cached --quiet; then
+  git -C "$backend_dir" commit -m \
+    "chore: bump $PRODUCT_BACKEND_PACKAGE version to $VERSION"
 fi
 
-git -C "$ONE_PAY_WEB_DIR" add -- package.json
-if ! git -C "$ONE_PAY_WEB_DIR" diff --cached --quiet; then
-  git -C "$ONE_PAY_WEB_DIR" commit -m \
-    "chore: bump one-pay-web version to $VERSION"
+git -C "$web_dir" add -- package.json
+if ! git -C "$web_dir" diff --cached --quiet; then
+  git -C "$web_dir" commit -m \
+    "chore: bump $PRODUCT_WEB_PACKAGE version to $VERSION"
 fi
 
-if ! git -C "$ONE_PAY_BACKEND_DIR" push origin \
+if ! git -C "$backend_dir" push origin \
   "HEAD:refs/heads/$backend_branch"; then
   printf '%s\n' 'Backend version commit push failed; dispatch was not attempted.' >&2
   exit 1
 fi
-if ! git -C "$ONE_PAY_WEB_DIR" push origin \
+if ! git -C "$web_dir" push origin \
   "HEAD:refs/heads/$web_branch"; then
   printf '%s\n' \
     'Web version commit push failed; dispatch was not attempted.' \
@@ -288,24 +297,24 @@ if ! git -C "$ONE_PAY_WEB_DIR" push origin \
   exit 1
 fi
 
-backend_release_sha="$(git -C "$ONE_PAY_BACKEND_DIR" rev-parse HEAD)"
-web_release_sha="$(git -C "$ONE_PAY_WEB_DIR" rev-parse HEAD)"
+backend_release_sha="$(git -C "$backend_dir" rev-parse HEAD)"
+web_release_sha="$(git -C "$web_dir" rev-parse HEAD)"
 printf '%s\n' \
-  "Published Backend source: $ONE_PAY_BACKEND_REPOSITORY@$backend_release_sha" \
-  "Published Web source: $ONE_PAY_WEB_REPOSITORY@$web_release_sha"
+  "Published Backend source: $backend_repository@$backend_release_sha" \
+  "Published Web source: $web_repository@$web_release_sha"
 
-CONFIRM_DISPATCH="dispatch:pay-server.yml:$action_head" \
-CONFIRM_MUTATION="mutate:pay-server.yml:$action_head" \
+CONFIRM_DISPATCH="dispatch:$PRODUCT_SERVER_WORKFLOW:$action_head" \
+CONFIRM_MUTATION="mutate:$PRODUCT_SERVER_WORKFLOW:$action_head" \
 DRY_RUN=false \
 ACTION_REPOSITORY="$ACTION_REPOSITORY" \
 ACTION_REF=main \
 GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" pay-server.yml \
-  "backend_repository=$ONE_PAY_BACKEND_REPOSITORY" \
+bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" "$PRODUCT_SERVER_WORKFLOW" \
+  "backend_repository=$backend_repository" \
   "backend_ref=$backend_release_sha" \
-  "web_repository=$ONE_PAY_WEB_REPOSITORY" \
+  "web_repository=$web_repository" \
   "web_ref=$web_release_sha" \
   "version=$VERSION" \
   'publish=true'
-printf 'Dispatched One Pay image publication and server deployment at Action %s.\n' \
-  "$action_head"
+printf 'Dispatched %s image publication and server deployment at Action %s.\n' \
+  "$PRODUCT_TITLE" "$action_head"

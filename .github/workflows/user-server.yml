@@ -118,7 +118,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout exact deployment tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           path: action
@@ -126,7 +126,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout exact Backend deployment file
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: voiceofhu/one-user-backend
           ref: ${{ needs.prepare.outputs.backend_sha }}

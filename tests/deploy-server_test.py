@@ -1,4 +1,7 @@
-"""Runs the remote half of scripts/deploy/deploy-server.sh against fake Docker.
+"""Runs scripts/deploy/deploy-server.sh end to end against fake SSH and Docker.
+
+The fake ssh joins its arguments into one string and re-parses it with a shell,
+exactly like OpenSSH, so argument quoting bugs fail here instead of in CI.
 
 For every products.json product it checks a successful release (new image
 running, bundled Web activated, Compose file promoted) and a failed public
@@ -12,8 +15,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = (ROOT / 'scripts/deploy/deploy-server.sh').read_text()
-REMOTE = SCRIPT.split("<<'REMOTE_DEPLOY'\n", 1)[1].rsplit('\nREMOTE_DEPLOY', 1)[0]
+SCRIPT = ROOT / 'scripts/deploy/deploy-server.sh'
+# deploy-server.sh only accepts /opt paths; the fakes map this one to a temp dir.
+REMOTE_ALIAS = '/opt/fake-remote'
 DIGEST = 'sha256:' + 'a' * 64
 
 FAKE_DOCKER = r'''#!/usr/bin/env python3
@@ -51,7 +55,7 @@ elif args[0] == 'port':
     if args[2] != os.environ['EXPECTED_PORT'] + '/tcp':
         sys.exit(1)
     print('127.0.0.1:32768')
-elif args[0] in ('rm', 'logs'):
+elif args[0] in ('rm', 'logs', 'info'):
     pass
 else:
     sys.exit('unexpected docker command: ' + ' '.join(args))
@@ -65,7 +69,21 @@ esac
 exit 0
 '''
 
+FAKE_SSH = r'''#!/usr/bin/env python3
+import os, sys
+command = ' '.join(sys.argv[2:]).replace(os.environ['REMOTE_ALIAS'], os.environ['FAKE_REMOTE'])
+os.execvp('bash', ['bash', '-c', command])
+'''
+
+FAKE_SCP = r'''#!/usr/bin/env python3
+import os, shutil, sys
+source, target = sys.argv[1], sys.argv[2].split(':', 1)[1]
+shutil.copyfile(source, target.replace(os.environ['REMOTE_ALIAS'], os.environ['FAKE_REMOTE']))
+'''
+
 FAKES = {
+    'ssh': FAKE_SSH,
+    'scp': FAKE_SCP,
     'docker': FAKE_DOCKER,
     'curl': FAKE_CURL,
     'flock': '#!/bin/sh\nexit 0\n',
@@ -97,7 +115,9 @@ def run(key, product, tmp, fail_public):
     (old_web / 'index.html').write_text('old')
     (remote / 'web/current').symlink_to('releases/old')
     (remote / 'docker-compose.yml').write_text('current compose\n')
-    (remote / 'docker-compose.yml.next').write_text('next compose\n')
+    (remote / '.env').write_text('')
+    compose_file = tmp / 'docker-compose.yml'
+    compose_file.write_text('next compose\n')
     dist = tmp / 'dist'
     dist.mkdir()
     (dist / 'index.html').write_text('new')
@@ -110,29 +130,29 @@ def run(key, product, tmp, fail_public):
                FAKE_DOCKER_LOG=str(tmp / 'docker.log'), FAKE_CURL_LOG=str(tmp / 'curl.log'),
                FAKE_WEB_DIST=str(dist), EXPECTED_WEB_DIST=product['WEB_DIST'],
                EXPECTED_PORT=product['SERVICE_PORT'], PUBLIC_URL=product['PUBLIC_URL'],
-               FAIL_PUBLIC='1' if fail_public else '0')
-    args = [str(remote), image, product['PUBLIC_URL'], product['TITLE'], product['IMAGE'],
-            product['CONTAINER'], product['SERVICE'], product['NAME'], product['WEB_DIST'],
-            product['SERVICE_PORT'], product['READY_PATH']]
-    result = subprocess.run(['bash', '-s', '--', *args], input=REMOTE, text=True,
-                            capture_output=True, env=env, cwd=tmp)
+               FAIL_PUBLIC='1' if fail_public else '0', REMOTE_ALIAS=REMOTE_ALIAS,
+               FAKE_REMOTE=str(remote), PRODUCT=key, SSH_HOST='fake-deploy',
+               REMOTE_DIR=REMOTE_ALIAS, DOCKER_IMAGE=image, COMPOSE_FILE=str(compose_file))
+    result = subprocess.run(['bash', str(SCRIPT)], text=True, capture_output=True, env=env, cwd=tmp)
     running = json.loads(state.read_text())['running']
     web = (remote / 'web/current/index.html').read_text()
     compose = (remote / 'docker-compose.yml').read_text()
-    docker_log = (tmp / 'docker.log').read_text()
-    curl_log = (tmp / 'curl.log').read_text()
+    read = lambda name: (tmp / name).read_text() if (tmp / name).exists() else ''
+    docker_log, curl_log = read('docker.log'), read('curl.log')
     context = (key, fail_public, result.returncode, result.stdout, result.stderr)
 
     assert f"--project-name {product['NAME']}" in docker_log, context
     assert f"http://127.0.0.1:32768{product['READY_PATH']}" in curl_log, context
     if fail_public:
         assert result.returncode != 0, context
+        assert f"{product['TITLE']} deployment failed" in result.stderr, context
         assert running == previous, (running, context)
         assert web == 'old', context
         assert compose == 'current compose\n', context
         assert not (remote / 'docker-compose.yml.next').exists(), context
     else:
         assert result.returncode == 0, context
+        assert f"{product['TITLE']} public endpoint is ready" in result.stdout, context
         assert running == image, (running, context)
         assert web == 'new', context
         assert compose == 'next compose\n', context

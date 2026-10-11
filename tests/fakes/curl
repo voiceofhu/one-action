@@ -76,8 +76,6 @@ else
     */repos/voiceofhu/one-action/commits/*) sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
     */repos/voiceofhu/one-user-backend/commits/*) sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
     */repos/voiceofhu/one-user-web/commits/*) sha=cccccccccccccccccccccccccccccccccccccccc ;;
-    */repos/voiceofhu/one-amz-backend/commits/*) sha=dddddddddddddddddddddddddddddddddddddddd ;;
-    */repos/voiceofhu/one-amz-web/commits/*) sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ;;
     */repos/voiceofhu/one-browser-backend/commits/*) sha=ffffffffffffffffffffffffffffffffffffffff ;;
     */repos/voiceofhu/one-browser-app/commits/*) sha=1111111111111111111111111111111111111111 ;;
     */repos/voiceofhu/one-browser-egress/commits/*) sha=2222222222222222222222222222222222222222 ;;

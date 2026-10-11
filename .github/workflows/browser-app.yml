@@ -11,7 +11,7 @@ name: One Browser App
       publish: {required: true, type: boolean}
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: one-browser-app-publish-${{ inputs.version }}
@@ -117,7 +117,7 @@ jobs:
             assets: app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
     steps:
       - name: Checkout exact App source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: voiceofhu/one-browser-app
           ref: ${{ needs.prepare.outputs.app_sha }}
@@ -127,21 +127,22 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
+          toolchain: stable
           targets: ${{ matrix.rust_target }}
 
       - name: Install Linux desktop dependencies
@@ -180,7 +181,7 @@ jobs:
           pnpm --dir app tauri:build -- "${args[@]}"
 
       - name: Upload verified bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: one-browser-app-${{ matrix.name }}
           path: ${{ matrix.assets }}
@@ -189,6 +190,8 @@ jobs:
 
   publish:
     name: Publish immutable App release
+    permissions:
+      contents: write
     needs:
       - prepare
       - build
@@ -196,7 +199,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download platform bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: one-browser-app-*
           path: dist

@@ -1,0 +1,5 @@
+rules:
+  # Workflows pin the fixed trust root voiceofhu/one-action on purpose; a renamed
+  # or forked repository must fail rather than silently become trusted.
+  self-repository:
+    disable: true

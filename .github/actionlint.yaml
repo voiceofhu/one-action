@@ -1,0 +1,5 @@
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      # Separate printf lines to $GITHUB_OUTPUT keep each output key reviewable.
+      - 'SC2129:'

@@ -10,10 +10,7 @@ workflow="$1"
 shift
 
 case "$workflow" in
-  notify-server.yml|notify-web.yml|pay-server.yml|pay-web.yml|vps-server.yml|vps-web.yml|object-server.yml|object-web.yml|user-server.yml|user-web.yml|browser-server-publish.yml|browser-app.yml|app-debug.yml|browser-egress.yml|one-amz.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
-  browser-runtime.yml)
-    die 'Browser Runtime source repository trust root is unresolved; dispatch is blocked'
-    ;;
+  notify-server.yml|notify-web.yml|pay-server.yml|pay-web.yml|vps-server.yml|vps-web.yml|object-server.yml|object-web.yml|user-server.yml|user-web.yml|browser-server-publish.yml|browser-app.yml|browser-egress.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
   *) die 'workflow is outside the fixed dispatcher allowlist' ;;
 esac
 
@@ -127,13 +124,6 @@ case "$workflow" in
     require_repository web_repository voiceofhu/one-notify-web
     publish_supported=true
     ;;
-  one-amz.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version environment publish deploy
-    require_repository backend_repository voiceofhu/one-amz-backend
-    require_repository web_repository voiceofhu/one-amz-web
-    publish_supported=true
-    ;;
   browser-server-publish.yml)
     require_inputs backend_repository backend_ref web_repository web_ref \
       version environment publish deploy
@@ -193,10 +183,6 @@ case "$workflow" in
     require_inputs app_repository app_ref version publish
     require_repository app_repository voiceofhu/one-browser-app
     publish_supported=true
-    ;;
-  app-debug.yml)
-    require_inputs app_repository app_ref upload_artifact
-    require_repository app_repository voiceofhu/one-browser-app
     ;;
   browser-egress.yml)
     require_inputs egress_repository egress_ref version environment publish deploy

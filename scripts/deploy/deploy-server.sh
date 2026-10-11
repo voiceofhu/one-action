@@ -55,11 +55,16 @@ ssh "$SSH_HOST" "$remote_checks && command -v curl >/dev/null && docker info >/d
 
 scp "$COMPOSE_FILE" "$SSH_HOST:$REMOTE_DIR/docker-compose.yml.next"
 
-# shellcheck disable=SC2029 # Arguments are validated and passed positionally.
-ssh "$SSH_HOST" bash -s -- \
-  "$REMOTE_DIR" "$DOCKER_IMAGE" "$PUBLIC_URL" "$PRODUCT_TITLE" "$PRODUCT_IMAGE" \
-  "$PRODUCT_CONTAINER" "$PRODUCT_SERVICE" "$PRODUCT_NAME" "$PRODUCT_WEB_DIST" \
-  "$PRODUCT_SERVICE_PORT" "$PRODUCT_READY_PATH" <<'REMOTE_DEPLOY'
+remote_arguments=(
+  "$REMOTE_DIR" "$DOCKER_IMAGE" "$PUBLIC_URL" "$PRODUCT_TITLE" "$PRODUCT_IMAGE"
+  "$PRODUCT_CONTAINER" "$PRODUCT_SERVICE" "$PRODUCT_NAME" "$PRODUCT_WEB_DIST"
+  "$PRODUCT_SERVICE_PORT" "$PRODUCT_READY_PATH"
+)
+# ssh joins its arguments into one string for the remote shell, so quote each
+# value (the title contains a space) to keep the positional arguments intact.
+remote_command="bash -s --$(printf ' %q' "${remote_arguments[@]}")"
+# shellcheck disable=SC2029 # The command is built from validated, quoted values.
+ssh "$SSH_HOST" "$remote_command" <<'REMOTE_DEPLOY'
 set -Eeuo pipefail
 
 remote_dir=$1

@@ -1,108 +1,35 @@
 name: One VPS Web
-'on':
+
+"on":
   workflow_dispatch:
     inputs:
-      expected_action_sha: {required: true, type: string}
-      confirmation: {required: true, type: string}
-      web_repository: {required: true, type: string}
-      web_ref: {required: true, type: string}
-      version: {required: true, type: string}
-      publish: {required: true, type: boolean}
-      deploy: {required: true, type: boolean}
+      expected_action_sha: { required: true, type: string }
+      confirmation: { required: true, type: string }
+      web_repository: { required: true, type: string }
+      web_ref: { required: true, type: string }
+      version: { required: true, type: string }
+      publish: { required: true, type: boolean }
+      deploy: { required: true, type: boolean }
+
 permissions:
   contents: read
+
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Validate dispatch
-        shell: bash
-        env:
-          ACTION_REPOSITORY: ${{ github.repository }}
-          ACTION_SHA: ${{ github.sha }}
-          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
-          CONFIRMATION: ${{ inputs.confirmation }}
-          WEB_REPOSITORY: ${{ inputs.web_repository }}
-          WEB_SHA: ${{ inputs.web_ref }}
-          VERSION: ${{ inputs.version }}
-          PUBLISH: ${{ inputs.publish }}
-          DEPLOY: ${{ inputs.deploy }}
-        run: |
-          set -Eeuo pipefail
-          [[ "$ACTION_REPOSITORY" == voiceofhu/one-action \
-            && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
-            && "$CONFIRMATION" == "enable:vps-web:$ACTION_SHA" \
-            && "$WEB_REPOSITORY" == voiceofhu/one-vps-web \
-            && "$WEB_SHA" =~ ^[0-9a-f]{40}$ \
-            && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
-            && "$PUBLISH" == true && "$DEPLOY" == true ]]
-      - name: Checkout exact Web source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: voiceofhu/one-vps-web
-          ref: ${{ inputs.web_ref }}
-          path: web
-          token: ${{ secrets.GH_TOKEN }}
-          persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: 11.7.0
-          run_install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-      - name: Build production Web
-        shell: bash
-        env:
-          WEB_SHA: ${{ inputs.web_ref }}
-        run: |
-          pnpm --dir web install --frozen-lockfile
-          pnpm --dir web build
-          printf '%s\n' "$WEB_SHA" > web/dist/one-web-revision.txt
-          tar -czf vps-web.tar.gz -C web/dist .
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: vps-web
-          path: vps-web.tar.gz
-          if-no-files-found: error
-          retention-days: 2
-  deploy:
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    environment:
-      name: one-vps-prod
-      url: ${{ vars.DEPLOY_URL || 'https://vps.aicbe.com' }}
-    concurrency:
-      group: one-vps-prod-deploy
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          path: action
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: vps-web
-          path: dist
-      - name: Configure SSH
-        shell: bash
-        env:
-          SSH_ALIAS: one-vps-deploy
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: exec bash action/scripts/deploy/configure-ssh.sh
-      - name: Deploy Web without replacing Server
-        shell: bash
-        env:
-          SSH_HOST: one-vps-deploy
-          REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-vps' }}
-          WEB_ARCHIVE: dist/vps-web.tar.gz
-          WEB_SHA: ${{ inputs.web_ref }}
-          PUBLIC_URL: ${{ vars.DEPLOY_URL || 'https://vps.aicbe.com' }}
-        run: exec bash action/scripts/deploy/deploy-vps-web.sh
+  release:
+    uses: ./.github/workflows/reusable-deploy-web.yml
+    with:
+      product: vps
+      expected_action_sha: ${{ inputs.expected_action_sha }}
+      confirmation: ${{ inputs.confirmation }}
+      web_repository: ${{ inputs.web_repository }}
+      web_ref: ${{ inputs.web_ref }}
+      version: ${{ inputs.version }}
+      publish: ${{ inputs.publish }}
+      deploy: ${{ inputs.deploy }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

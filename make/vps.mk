@@ -3,9 +3,9 @@
 deploy-vps-server: DRY_RUN = false
 deploy-vps-server:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(VPS_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-vps-release.sh
+		bash $(PROJECT_ROOT)/scripts/release/release-server.sh vps
 
 deploy-vps-web: DRY_RUN = false
 deploy-vps-web:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(VPS_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-vps-web-release.sh
+		bash $(PROJECT_ROOT)/scripts/release/release-web.sh vps

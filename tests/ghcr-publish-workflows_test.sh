@@ -2,11 +2,9 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-user="$PROJECT_ROOT/.github/workflows/user-server.yml"
 node_server="$PROJECT_ROOT/.github/workflows/node-server.yml"
 publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-server-image.yml"
-user_release="$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
-user_deployer="$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
+product_server="$PROJECT_ROOT/.github/workflows/reusable-deploy-server.yml"
 node_server_release="$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
 node_server_deployer="$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
 
@@ -71,16 +69,14 @@ assert_native_matrix() {
   ' "$file"
 }
 
-for file in "$user" "$node_server" "$publisher" "$user_release" "$user_deployer" "$node_server_release" "$node_server_deployer"; do
+for file in "$node_server" "$publisher" "$product_server" "$node_server_release" "$node_server_deployer"; do
   [[ -f "$file" ]] || {
     printf 'Required publication contract file is missing: %s\n' "$file" >&2
     exit 1
   }
 done
 
-assert_dispatch_only "$user" 'backend_ref,backend_repository,confirmation,expected_action_sha,publish,version,web_ref,web_repository'
 assert_dispatch_only "$node_server" 'backend_ref,backend_repository,confirmation,deploy,expected_action_sha,publish,version,web_ref,web_repository'
-assert_jobs "$user" 'deploy,prepare,publish'
 assert_jobs "$node_server" 'deploy,prepare,publish'
 assert_jobs "$publisher" 'build,manifest'
 ruby -ryaml -e '
@@ -97,53 +93,12 @@ ruby -ryaml -e '
       "group" => "one-node-server-prod-deploy", "cancel-in-progress" => false
     }
 ' "$node_server"
-ruby -ryaml -e '
-  workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
-  deploy = workflow.fetch("jobs").fetch("deploy")
-  abort("One User deploy must wait for prepare and publish") unless
-    deploy.fetch("needs") == ["prepare", "publish"]
-  abort("One User deploy permissions changed") unless
-    deploy.fetch("permissions") == {"contents" => "read", "packages" => "read"}
-  abort("One User deploy environment changed") unless
-    deploy.fetch("environment").fetch("name") == "one-user-prod"
-  abort("One User deploy concurrency changed") unless
-    deploy.fetch("concurrency") == {
-      "group" => "one-user-prod-deploy", "cancel-in-progress" => false
-    }
-' "$user"
-assert_timeout_at_most "$user" prepare 2
-assert_timeout_at_most "$user" deploy 20
 assert_timeout_at_most "$node_server" prepare 2
 assert_timeout_at_most "$node_server" deploy 20
 assert_timeout_at_most "$publisher" build 20
 assert_timeout_at_most "$publisher" manifest 3
 assert_native_matrix "$publisher"
 
-require_text "$user" 'group: one-user-publish-${{ inputs.version }}'
-require_text "$user" 'workflow_name: one-user'
-require_text "$user" 'gh api "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA"'
-require_text "$user" 'gh api "repos/$WEB_REPOSITORY/commits/$WEB_SHA"'
-require_text "$user" 'backend_sha: ${{ needs.prepare.outputs.backend_sha }}'
-require_text "$user" 'web_sha: ${{ needs.prepare.outputs.web_sha }}'
-require_text "$user" 'name: Deploy One User image'
-require_text "$user" 'name: one-user-prod'
-require_text "$user" 'group: one-user-prod-deploy'
-require_text "$user" 'ref: ${{ github.sha }}'
-require_text "$user" 'ref: ${{ needs.prepare.outputs.backend_sha }}'
-require_text "$user" 'SSH_ALIAS: one-user-deploy'
-require_text "$user" 'DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}'
-require_text "$user" "DEPLOY_PORT: \${{ secrets.DEPLOY_PORT || '22' }}"
-require_text "$user" 'DEPLOY_USER: ${{ secrets.DEPLOY_USER }}'
-require_text "$user" 'DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}'
-require_text "$user" 'DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}'
-require_text "$user" "REMOTE_DIR: \${{ vars.DEPLOY_REMOTE_DIR || '/opt/one-user' }}"
-require_text "$user" 'DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}'
-require_text "$user" 'COMPOSE_FILE: backend/deploy/docker/docker-compose.yml'
-require_text "$user" "PUBLIC_URL: \${{ vars.DEPLOY_URL || 'https://oa.aicbe.com' }}"
-require_text "$user" 'run: exec bash action/scripts/deploy/configure-ssh.sh'
-require_text "$user" 'run: exec bash action/scripts/deploy/registry-auth.sh'
-require_text "$user" 'run: exec bash action/scripts/deploy/deploy-user.sh'
-require_text "$user" "if: \${{ always() && steps.registry_login.outcome == 'success' }}"
 
 require_text "$node_server" 'group: one-node-server-publish-${{ inputs.version }}'
 require_text "$node_server" 'workflow_name: one-node-server'
@@ -171,7 +126,7 @@ require_text "$node_server" 'run: exec bash action/scripts/deploy/registry-auth.
 require_text "$node_server" 'run: exec bash action/scripts/deploy/deploy-node-server.sh'
 require_text "$node_server" "if: \${{ always() && steps.registry_login.outcome == 'success' }}"
 
-for caller in "$user" "$node_server"; do
+for caller in "$node_server" "$product_server"; do
   require_text "$caller" 'timeout-minutes: 2'
   require_text "$caller" '&& "$ACTION_SHA" == "$EXPECTED_ACTION_SHA"'
   require_text "$caller" 'backend_pid=$!'
@@ -185,7 +140,6 @@ for caller in "$user" "$node_server"; do
   require_text "$caller" 'source_read_token: ${{ secrets.GH_TOKEN }}'
   require_text "$caller" 'package_write_token: ${{ secrets.GH_TOKEN }}'
 done
-require_text "$user" '[[ "$backend_sha" == "$BACKEND_SHA" && "$web_sha" == "$WEB_SHA" ]]'
 require_text "$node_server" '[[ "$(jq -er .sha "$backend_commit_file")" == "$BACKEND_SHA"'
 
 require_text "$publisher" "repository: \${{ inputs.workflow_name == 'one-user' && 'voiceofhu/one-user-backend' || inputs.workflow_name == 'one-object' && 'voiceofhu/one-object-server' || inputs.workflow_name == 'one-pay' && 'voiceofhu/one-pay-server' || inputs.workflow_name == 'one-vps' && 'voiceofhu/one-vps-server' || inputs.workflow_name == 'one-notify' && 'voiceofhu/one-notify-server' || (inputs.workflow_name == 'one-browser-app-server' || inputs.workflow_name == 'one-browser-server') && 'voiceofhu/one-browser-server' || 'voiceofhu/one-node-server' }}"
@@ -234,7 +188,7 @@ reject_text "$publisher" '  deploy:'
 reject_text "$publisher" 'scripts/deploy/'
 reject_text "$publisher" 'ssh'
 
-for workflow in "$user" "$node_server" "$publisher"; do
+for workflow in "$node_server" "$product_server" "$publisher"; do
   reject_text "$workflow" 'cargo test'
   reject_text "$workflow" 'go test'
   reject_text "$workflow" 'make test'
@@ -245,17 +199,6 @@ for workflow in "$user" "$node_server" "$publisher"; do
   reject_text "$workflow" 'download-artifact'
 done
 
-require_text "$user_release" 'status --porcelain --untracked-files=all'
-require_text "$user_release" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
-require_text "$user_release" 'make --no-print-directory -C "$PROJECT_ROOT" validate-user'
-require_text "$user_release" 'cargo fmt --all -- --check'
-require_text "$user_release" 'make --no-print-directory -C "$ONE_USER_BACKEND_DIR" test'
-require_text "$user_release" 'pnpm --dir "$ONE_USER_WEB_DIR" install --frozen-lockfile'
-require_text "$user_release" 'pnpm --dir "$ONE_USER_WEB_DIR" test'
-require_text "$user_release" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" user-server.yml'
-reject_text "$user_release" 'git -C "$PROJECT_ROOT" tag'
-reject_text "$user_release" 'git -C "$ONE_USER_BACKEND_DIR" tag'
-reject_text "$user_release" 'git -C "$ONE_USER_WEB_DIR" tag'
 require_text "$publisher" 'cache-from: type=gha,scope=${{ inputs.workflow_name }}-${{ matrix.arch }}'
 require_text "$publisher" 'cache-to: type=gha,mode=max,scope=${{ inputs.workflow_name }}-${{ matrix.arch }}'
 
@@ -284,11 +227,5 @@ require_text "$node_server_deployer" '"$public_url/api/healthz"'
 require_text "$node_server_deployer" '"$public_url/"'
 require_text "$node_server_deployer" 'attempting to restore the previous container'
 
-require_text "$user_deployer" '^ghcr\.io/voiceofhu/one-user:'
-require_text "$user_deployer" 'docker-compose.yml.next'
-require_text "$user_deployer" '"http://127.0.0.1:$published_port/readyz"'
-require_text "$user_deployer" '"$public_url/readyz"'
-require_text "$user_deployer" '"$public_url/"'
-require_text "$user_deployer" 'attempting to restore the previous container'
 
 printf '%s\n' 'Active GHCR publication workflow contracts passed.'

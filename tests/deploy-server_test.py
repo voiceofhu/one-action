@@ -96,13 +96,16 @@ FAKES = {
 def load_product(key):
     fields = ('TITLE IMAGE CONTAINER SERVICE NAME WEB_DIST SERVICE_PORT READY_PATH PUBLIC_URL').split()
     program = 'source scripts/lib/product.sh; load_product "$1"; ' + '; '.join(
-        f'printf "%s\\n" "$PRODUCT_{field}"' for field in fields)
+        f'printf "%s\\n" "$PRODUCT_{field}"' for field in fields) + \
+        '; printf "%s\\n" "${PRODUCT_REMOTE_REQUIRED_DIRS[*]:-}"'
     output = subprocess.run(['bash', '-c', program, '-', key], cwd=ROOT, check=True,
                             text=True, capture_output=True).stdout.splitlines()
-    return dict(zip(fields, output))
+    product = dict(zip(fields, output))
+    product['REQUIRED_DIRS'] = output[len(fields)].split()
+    return product
 
 
-def run(key, product, tmp, fail_public):
+def run(key, product, tmp, fail_public, missing_dir=None):
     bin_dir = tmp / 'bin'
     bin_dir.mkdir()
     for name, body in FAKES.items():
@@ -116,6 +119,9 @@ def run(key, product, tmp, fail_public):
     (remote / 'web/current').symlink_to('releases/old')
     (remote / 'docker-compose.yml').write_text('current compose\n')
     (remote / '.env').write_text('')
+    for directory in product['REQUIRED_DIRS']:
+        if directory != missing_dir:
+            (remote / directory).mkdir()
     compose_file = tmp / 'docker-compose.yml'
     compose_file.write_text('next compose\n')
     dist = tmp / 'dist'
@@ -141,6 +147,11 @@ def run(key, product, tmp, fail_public):
     docker_log, curl_log = read('docker.log'), read('curl.log')
     context = (key, fail_public, result.returncode, result.stdout, result.stderr)
 
+    if missing_dir:
+        assert result.returncode != 0 and f'{missing_dir}/' in result.stderr, context
+        assert running == previous and web == 'old' and compose == 'current compose\n', context
+        assert 'compose' not in docker_log, context
+        return
     assert f"--project-name {product['NAME']}" in docker_log, context
     assert f"http://127.0.0.1:32768{product['READY_PATH']}" in curl_log, context
     if fail_public:
@@ -166,6 +177,9 @@ def main():
         for fail_public in (False, True):
             with tempfile.TemporaryDirectory() as tmp:
                 run(key, product, Path(tmp), fail_public)
+        for directory in product['REQUIRED_DIRS']:
+            with tempfile.TemporaryDirectory() as tmp:
+                run(key, product, Path(tmp), False, missing_dir=directory)
         print(f'PASS: {product["TITLE"]} Server deploy activates the new image and rolls back on failure')
 
 

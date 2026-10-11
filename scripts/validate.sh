@@ -12,21 +12,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/release-web_test.sh"
       "$PROJECT_ROOT/tests/deploy-server_test.sh"
       "$PROJECT_ROOT/tests/deploy-web_test.sh"
-      "$PROJECT_ROOT/tests/vps-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/vps-release-version_test.sh"
-      "$PROJECT_ROOT/tests/vps-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/vps-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/vps-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/notify-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/notify-release-version_test.sh"
-      "$PROJECT_ROOT/tests/notify-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/notify-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/notify-web-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
-      "$PROJECT_ROOT/tests/object-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/object-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/object-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/object-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/browser-app-release-version_test.sh"
       "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh"
       "$PROJECT_ROOT/tests/browser-web-deploy_test.sh"
@@ -43,11 +29,6 @@ case "$scope" in
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
       "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/user-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/user-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/user-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/user-release-version_test.sh"
     )
     shell_files=(
       "$PROJECT_ROOT/scripts/lib/product.sh"
@@ -55,18 +36,6 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-vps-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-vps.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-vps-web-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-vps-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-notify-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-notify.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-notify-web-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-notify-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-object-release.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-object-web-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-object.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-object-web.sh"
       "$PROJECT_ROOT/install.sh"
       "$PROJECT_ROOT/uninstall.sh"
       "$PROJECT_ROOT/egress/install.sh"
@@ -82,16 +51,12 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/common.sh"
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-user-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-user-web-release.sh"
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-app-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/tests/fakes/curl"
@@ -105,84 +70,7 @@ case "$scope" in
     done
     run_node_check=true
     ;;
-  user)
-    active_tests=(
-      "$PROJECT_ROOT/tests/user-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/user-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/user-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/user-publish-workflow_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-user-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-user-web-release.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
-      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-user-release.sh"
-      "${active_tests[@]}"
-      "$PROJECT_ROOT/scripts/validate.sh"
-    )
-    active_workflows=(
-      user-server.yml
-      user-web.yml
-      reusable-publish-server-image.yml
-    )
-    run_node_check=false
-    ;;
-  object|object-web)
-    active_tests=(
-      "$PROJECT_ROOT/tests/object-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/object-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/object-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/object-release-version_test.sh"
-      "$PROJECT_ROOT/tests/object-publish-workflow_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-object-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-object-web-release.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-object.sh"
-      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-object-release.sh"
-      "${active_tests[@]}"
-      "$PROJECT_ROOT/scripts/validate.sh"
-    )
-    active_workflows=(
-      object-server.yml
-      object-web.yml
-      reusable-publish-server-image.yml
-    )
-    run_node_check=false
-    ;;
-  notify|notify-web)
-    active_tests=(
-      "$PROJECT_ROOT/tests/notify-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/notify-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/notify-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/notify-release-version_test.sh"
-      "$PROJECT_ROOT/tests/notify-publish-workflow_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-notify-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-notify-web-release.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-notify.sh"
-      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-notify-release.sh"
-      "${active_tests[@]}"
-      "$PROJECT_ROOT/scripts/validate.sh"
-    )
-    active_workflows=(
-      notify-server.yml
-      notify-web.yml
-      reusable-publish-server-image.yml
-    )
-    run_node_check=false
-    ;;
-  pay|pay-web)
+  notify|notify-web|object|object-web|pay|pay-web|user|user-web|vps|vps-web)
     active_tests=(
       "$PROJECT_ROOT/tests/products_test.sh"
       "$PROJECT_ROOT/tests/release-server_test.sh"
@@ -203,38 +91,13 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
-      pay-server.yml
-      pay-web.yml
       reusable-deploy-server.yml
       reusable-deploy-web.yml
       reusable-publish-server-image.yml
     )
-    run_node_check=false
-    ;;
-  vps|vps-web)
-    active_tests=(
-      "$PROJECT_ROOT/tests/vps-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/vps-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/vps-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/vps-release-version_test.sh"
-      "$PROJECT_ROOT/tests/vps-publish-workflow_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-vps-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-vps-web-release.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-vps.sh"
-      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-vps-release.sh"
-      "${active_tests[@]}"
-      "$PROJECT_ROOT/scripts/validate.sh"
-    )
-    active_workflows=(
-      vps-server.yml
-      vps-web.yml
-      reusable-publish-server-image.yml
-    )
+    for product in $(jq -r 'keys[]' "$PROJECT_ROOT/products.json"); do
+      active_workflows+=("$product-server.yml" "$product-web.yml")
+    done
     run_node_check=false
     ;;
   node)
@@ -274,22 +137,6 @@ case "$scope" in
       node-server.yml
       reusable-publish-server-image.yml
     )
-    run_node_check=false
-    ;;
-  user-web)
-    active_tests=(
-      "$PROJECT_ROOT/tests/user-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/user-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/user-web-deploy_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/release/deploy-user-web-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-user-web.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-user.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "${active_tests[@]}"
-    )
-    active_workflows=(user-web.yml user-server.yml)
     run_node_check=false
     ;;
   node-web)

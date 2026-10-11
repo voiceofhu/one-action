@@ -79,32 +79,56 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 本地 Git 凭据用于源码 `fetch/push` 和 workflow dispatch；dispatch 依次复用显式 `GH_TOKEN`、`gh auth` 登录或 Git HTTPS credential helper，凭据只进入最终 dispatch 子进程，不进入格式、测试或构建命令。仓库 Secret 只在 workflow 启动后读取私有源码和发布产物。所有发布 workflow 都校验固定的 Action commit 和源码 commit，不读取可变的远端分支头。
 
-## One User 发布流程
+## Server + Web 产品（products.json）
+
+One User、One Object、One Notify、One Pay、One VPS 共用同一套发布实现，差异只记录在
+`products.json`：源码仓库、Cargo/npm 包名、默认公网地址、容器端口、readiness 路径、
+部署目录内必须存在的子目录，以及本地 Web 检查命令。镜像 `ghcr.io/voiceofhu/one-<key>`、
+Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose 项目 `one-<key>`、
+服务名 `<key>`、本地源码 `../one-<key>/{backend,web}` 由 `scripts/lib/product.sh` 统一推导。
+
+| 产品 | Backend 仓库 | 端口 / readiness | 公网地址 | 部署目录额外要求 | 本地 Web 检查 |
+| --- | --- | --- | --- | --- | --- |
+| user | `one-user-backend` | `27510/readyz` | `https://oa.aicbe.com` | `cert/` | format:check、lint、test、build |
+| object | `one-object-server` | `27525/readyz` | `https://object.aicbe.com` | — | format:check、lint、test、build |
+| notify | `one-notify-server` | `27520/readyz` | `https://notify.aicbe.com` | — | lint、build |
+| pay | `one-pay-server` | `27521/health/ready` | `https://pay.aicbe.com` | — | lint、build |
+| vps | `one-vps-server` | `27545/readyz` | `https://vps.aicbe.com` | — | lint、build |
 
 ```mermaid
 flowchart TD
-    start[make deploy-user-server] --> plan[生成版本并检查三个仓库]
+    start[make deploy-{key}-server] --> plan[生成版本并检查 Action/Backend/Web 三个仓库]
     plan --> action[确认 one-action HEAD 等于 origin/main]
-    action --> contract[validate-user]
-    contract --> backend[Backend: fmt + test]
-    backend --> web[Web: frozen install + format + lint + test + build]
-    web --> stable[再次确认源码 HEAD 和工作区未变化]
-    stable --> version[更新 Backend 和 Web 版本]
-    version --> source[提交并推送两个版本文件 commit]
-    source --> control[dispatch user-server.yml<br/>传入 Backend/Web SHA]
-    control --> resolve[Action 校验两个精确源码 SHA]
-    resolve --> amd64[amd64 原生构建<br/>复用独立 GHA layer cache]
-    resolve --> arm64[arm64 原生构建<br/>复用独立 GHA layer cache]
-    amd64 --> index[校验并发布 OCI 多架构 index]
-    arm64 --> index
-    index --> deploy[SSH + Compose 部署精确 digest]
-    deploy --> result[one-user-prod 健康检查通过]
+    action --> contract[validate-{key}]
+    contract --> backend[Backend: cargo fmt + make test]
+    backend --> web[Web: frozen install + products.json 中的检查]
+    web --> version[提交并推送 Backend/Web 版本文件]
+    version --> control[dispatch {key}-server.yml<br/>传入精确 Backend/Web SHA]
+    control --> resolve[reusable-deploy-server.yml 校验调用方、清单和 SHA]
+    resolve --> image[amd64 + arm64 原生构建，发布 OCI index]
+    image --> deploy[SSH + Compose 部署精确 digest，激活镜像内 Web]
+    deploy --> result[本机与公网 readiness 通过，否则回滚容器和 Web]
 ```
 
-`validate-user` 只检查 One User 发布脚本、`user-server.yml` 和共享镜像发布合同，不运行
-One Node/Node Server 合同、临时 tag 模拟发布或 One Node 安装生命周期 fixture。
-本地 `cargo test` 已编译 Backend 的库和二进制测试目标；release 二进制只在最终 Docker
-镜像中构建，避免触发前后重复执行 `cargo check` 和 `cargo build --release`。
+| 层 | 文件 |
+| --- | --- |
+| 本地入口 | `scripts/release/release-server.sh <key>`、`scripts/release/release-web.sh <key>` |
+| Workflow | `<key>-server.yml` / `<key>-web.yml` 仅转发 dispatch 输入，逻辑在 `reusable-deploy-server.yml` / `reusable-deploy-web.yml` |
+| 服务器部署 | `scripts/deploy/deploy-server.sh`、`scripts/deploy/deploy-web.sh`（`PRODUCT=<key>`） |
+| 测试 | `tests/products_test.sh`（清单与入口一致），`release-*_test.sh`、`deploy-*_test.sh` 对每个产品实跑 |
+
+- `make deploy-<key>-server` 发布 Server 镜像并激活镜像内 Web；`make deploy-<key>-web` 只检查并发布 Web，
+  不依赖 Server checkout，不重启 Server。首次先部署 Server 建立 `/opt/one-<key>/web` 持久化目录与挂载。
+- 均支持 `VERSION=26.912.1200` 和 `DRY_RUN=true`（只显示计划）；本地检查 `make validate-<key>`。
+- 可复用 workflow 校验调用方必须是 `voiceofhu/one-action/.github/workflows/<key>-server.yml`（或 `-web.yml`），
+  dispatch 的仓库必须与清单一致。Server 与 Web 共享部署锁，保留旧静态资源，健康检查失败时回滚。
+- 每个 Environment `one-<key>-prod` 需要 Secrets `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、
+  `DEPLOY_KNOWN_HOSTS`，可选 `DEPLOY_PORT`（默认 22）；仓库 Secret `GH_TOKEN` 读取私有源码并发布 GHCR。
+  可选 Variables `DEPLOY_URL`（默认取清单公网地址）、`DEPLOY_REMOTE_DIR`（默认 `/opt/one-<key>`）。
+- 服务器预置可写部署目录、`.env`、Docker Compose、curl、flock 和外部数据库网络（默认 `db-networks`）；
+  数据库须事先初始化，部署不会运行 SQL。服务环境配置以各 Backend README 和 `.env.example` 为准。
+- 新增同类产品：在 `products.json` 加一条，复制一对入口 workflow 并改 `product:`，在 `make/` 加两个目标，
+  并把 `<key>|<key>-web` 加到 `scripts/validate.sh` 的产品范围。
 
 ## 使用
 
@@ -157,8 +181,8 @@ make node-bundle-installers
 每个范围都会对相关 workflow 运行 actionlint（含 shellcheck）和 zizmor 离线安全审计；
 规则例外分别记录在 `.github/actionlint.yaml` 和 `.github/zizmor.yml`，单个步骤的例外使用
 `# zizmor: ignore[...]` 注释并写明原因。
-`make validate-user` 只检查 One User 与共享镜像发布契约；`deploy-user-server` 使用这一范围，
-不运行其他产品的模拟发布和生命周期 fixture。
+`make validate-<key>`（user、object、notify、pay、vps 及其 `-web`）检查共享的 Server/Web 发布实现，
+对 `products.json` 中每个产品实跑发布与部署测试，不运行 One Node 生命周期 fixture。
 `make validate-node` 只检查 One Node Runtime 的安装生命周期、dispatch、构建和 Release 合同；
 `deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。
 `make validate-node-server` 只检查 One Node Server 的发布、镜像与部署契约；
@@ -301,85 +325,3 @@ Egress updater 会在主机启动和异常退出后恢复遗留任务：安装�
 否则补报中断失败并允许重新发起升级，不自动重复安装。升级执行中的状态按同一任务 ID
 读取，避免被旧 pending 请求或上一任务结果遮蔽。已有节点需通过一次安装/升级更新
 systemd 单元，才能获得启动恢复能力。
-
-### One User 独立 Web 部署
-
-`make deploy-user-server` 发布 Server 镜像并同步更新配套 Web；`make deploy-user-web`
-只检查 Web（format、lint、test、build），按精确源码 SHA 构建并切换 `/opt/one-user/web/current`，不重建或重启 Server。
-两条部署链使用同一生产并发锁；Web 健康检查失败时恢复上一版本。
-首次使用独立 Web 部署前，先执行一次 `make deploy-user-server`，建立 Web 目录和持久化挂载。
-`make validate-user-web` 检查独立发布合同，`make deploy-user-web DRY_RUN=true` 仅显示计划。
-Browser 已采用对应的 `make deploy-browser-server` / `make deploy-browser-web`，行为一致。
-
-## One Object Server / Web
-
-`make deploy-object-server` 仿照 One User：检查本地源码，提交并推送版本变更，
-以精确 Server/Web SHA dispatch `object-server.yml`，构建 amd64/arm64 镜像，
-随后按 OCI digest 部署 `ghcr.io/voiceofhu/one-object`。Server 发布同步激活镜像内的 Web。
-`make deploy-object-web` 仅检查并发布 Web，不依赖 Server checkout，不重启 Server。
-
-源码固定为 `voiceofhu/one-object-server` 和 `voiceofhu/one-object-web`，对应本地
-`../one-object/backend` 与 `../one-object/web`。源码与 Action 必须已提交并同步远端。
-命令默认生成版本，也可传 `VERSION=26.907.1800`；`DRY_RUN=true` 仅检查并显示计划。
-本地契约检查：`make validate-object`、`make validate-object-web`。
-
-首次先部署 Server，建立 `/opt/one-object/web` 持久化目录与挂载。
-GitHub Environment `one-object-prod` 需要：
-- Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`；
-  可选 `DEPLOY_PORT`（默认 22）；`GH_TOKEN` 必须能读取两个私有源仓库并发布 GHCR。
-- Variables：可选 `DEPLOY_URL`（默认 https://object.aicbe.com），可选 `DEPLOY_REMOTE_DIR`（默认 `/opt/one-object`）。
-- 服务器预置可写部署目录、`.env`、Docker Compose、curl、flock 和外部数据库网络
-  （默认 `db-networks`）。服务监听本机 `27525`，公网反向代理需指向该端口。
-- `.env` 配置专用数据库 `DB_URL`、OIDC 参数及 `STORAGE_ENCRYPTION_KEY`；
-  数据库须事先完成初始化/升级。部署不会自动运行 SQL，也不需要 One User 的 cert 目录。
-
-Server 与 Web 共享部署锁，保留旧静态资源，健康检查失败时回滚。
-
-
-## 产品清单（products.json）
-
-Server + Web 两件套的产品逐步迁到 `products.json`，目前已迁移 **One Pay**。每个产品一条记录，
-只写无法推导的值：源码仓库、Cargo/npm 包名、默认公网地址、容器端口、readiness 路径、
-部署目录内必须存在的子目录，以及本地 Web 检查命令。镜像 `ghcr.io/voiceofhu/one-<key>`、
-Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose 项目 `one-<key>`、
-服务名 `<key>` 由 `scripts/lib/product.sh` 统一推导。
-
-已迁移产品共用同一套实现：
-
-| 层 | 文件 |
-| --- | --- |
-| 本地入口 | `scripts/release/release-server.sh <key>`、`scripts/release/release-web.sh <key>` |
-| Workflow | `<key>-server.yml` / `<key>-web.yml` 仅转发 dispatch 输入，逻辑在 `reusable-deploy-server.yml` / `reusable-deploy-web.yml` |
-| 服务器部署 | `scripts/deploy/deploy-server.sh`、`scripts/deploy/deploy-web.sh`（`PRODUCT=<key>`） |
-| 测试 | `tests/products_test.sh`（清单与入口一致），`release-*_test.sh`、`deploy-*_test.sh` 对清单中每个产品实跑 |
-
-可复用 workflow 会校验调用方必须是 `voiceofhu/one-action/.github/workflows/<key>-server.yml`
-（或 `-web.yml`），dispatch 的仓库必须与清单一致。Environment 名、部署锁和 Secret 名称与迁移前相同，
-GitHub 侧无需改配置。迁移新产品：在 `products.json` 加一条，把两个入口改成同样的薄壳，
-删除该产品专属的 release/deploy 脚本和测试，并更新 `scripts/validate.sh` 的对应范围。
-
-## One Notify / One Pay / One VPS 部署
-
-六个入口沿用 One Object 的发布流程：Server 发布检查源码、提交并推送版本变更，
-按精确 Server/Web SHA 构建 amd64/arm64 镜像并按 digest 部署；Web 发布只检查前端，
-切换持久化静态目录，不重启 Server。均支持 `VERSION=26.912.1200` 和
-`DRY_RUN=true`（只显示计划）。本地检查为 `make validate-notify`、
-`make validate-notify-web`、`make validate-pay`、`make validate-pay-web`、
-`make validate-vps`、`make validate-vps-web`。
-
-| 配置 | Notify | Pay | VPS |
-| --- | --- | --- | --- |
-| 源仓库 | `voiceofhu/one-notify-server`、`voiceofhu/one-notify-web` | `voiceofhu/one-pay-server`、`voiceofhu/one-pay-web` | `voiceofhu/one-vps-server`、`voiceofhu/one-vps-web` |
-| 本地源码 | `../one-notify/backend`、`../one-notify/web` | `../one-pay/backend`、`../one-pay/web` | `../one-vps/backend`、`../one-vps/web` |
-| GitHub Environment | `one-notify-prod` | `one-pay-prod` | `one-vps-prod` |
-| 默认部署目录 | `/opt/one-notify` | `/opt/one-pay` | `/opt/one-vps` |
-| 本机端口 / readiness | `27520/readyz` | `27521/health/ready` | `27545/readyz` |
-| 镜像 | `ghcr.io/voiceofhu/one-notify` | `ghcr.io/voiceofhu/one-pay` | `ghcr.io/voiceofhu/one-vps` |
-
-三个 Environment 都必须设置 Variable `DEPLOY_URL` 为实际 HTTPS origin，
-可选 `DEPLOY_REMOTE_DIR`。Secrets 与 Object 一致：`DEPLOY_HOST`、
-`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`、`GH_TOKEN`，
-可选 `DEPLOY_PORT`。首次部署前准备可写部署目录、服务 `.env`、已初始化数据库、
-Docker Compose、curl、flock 和外部网络（默认 `db-networks`）。
-服务环境配置以各 Backend README 和 `.env.example` 为准；部署不会初始化数据库。
-首次先部署 Server 建立 Web 挂载，随后可独立部署 Web。

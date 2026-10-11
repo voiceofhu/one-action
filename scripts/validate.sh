@@ -12,6 +12,11 @@ case "$scope" in
       "$PROJECT_ROOT/tests/pay-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/pay-web-trigger-only_test.sh"
       "$PROJECT_ROOT/tests/pay-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/vps-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/vps-release-version_test.sh"
+      "$PROJECT_ROOT/tests/vps-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/vps-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/vps-web-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/notify-publish-workflow_test.sh"
       "$PROJECT_ROOT/tests/notify-release-version_test.sh"
       "$PROJECT_ROOT/tests/notify-web-deploy_test.sh"
@@ -49,6 +54,10 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/deploy/deploy-pay.sh"
       "$PROJECT_ROOT/scripts/release/deploy-pay-web-release.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-pay-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-vps-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-vps.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-vps-web-release.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-vps-web.sh"
       "$PROJECT_ROOT/scripts/release/deploy-notify-release.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-notify.sh"
       "$PROJECT_ROOT/scripts/release/deploy-notify-web-release.sh"
@@ -194,6 +203,32 @@ case "$scope" in
     active_workflows=(
       pay-server.yml
       pay-web.yml
+      reusable-publish-server-image.yml
+    )
+    run_node_check=false
+    ;;
+  vps|vps-web)
+    active_tests=(
+      "$PROJECT_ROOT/tests/vps-web-publish-workflow_test.sh"
+      "$PROJECT_ROOT/tests/vps-web-trigger-only_test.sh"
+      "$PROJECT_ROOT/tests/vps-web-deploy_test.sh"
+      "$PROJECT_ROOT/tests/vps-release-version_test.sh"
+      "$PROJECT_ROOT/tests/vps-publish-workflow_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-vps-web.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-vps-web-release.sh"
+      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-vps.sh"
+      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
+      "$PROJECT_ROOT/scripts/release/deploy-vps-release.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(
+      vps-server.yml
+      vps-web.yml
       reusable-publish-server-image.yml
     )
     run_node_check=false
@@ -356,6 +391,7 @@ canonical_object_origin="https://object.${legacy_name}.com"
 canonical_browser_origin="https://browser.${legacy_name}.com"
 canonical_notify_origin="https://notify.${legacy_name}.com"
 canonical_pay_origin="https://pay.${legacy_name}.com"
+canonical_vps_origin="https://vps.${legacy_name}.com"
 legacy_matches="$(
   grep -RniE "$legacy_name" \
     "$PROJECT_ROOT/.github" \
@@ -367,13 +403,13 @@ legacy_matches="$(
 )"
 unexpected_legacy_matches="$(
   printf '%s\n' "$legacy_matches" \
-    | sed -e "s#${canonical_object_origin}##g" -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" -e "s#${canonical_notify_origin}##g" -e "s#${canonical_pay_origin}##g" \
+    | sed -e "s#${canonical_object_origin}##g" -e "s#${canonical_user_origin}##g" -e "s#${canonical_browser_origin}##g" -e "s#${canonical_notify_origin}##g" -e "s#${canonical_pay_origin}##g" -e "s#${canonical_vps_origin}##g" \
     | grep -iE "$legacy_name" || true
 )"
 if [[ -n "$unexpected_legacy_matches" ]]; then
   printf '%s\n' "$unexpected_legacy_matches"
   printf '%s\n' \
-    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User/Object/Browser/Notify/Pay origins.' >&2
+    'Legacy product naming is allowed only in MIGRATION-SOURCES.md or the canonical One User/Object/Browser/Notify/Pay/VPS origins.' >&2
   exit 1
 fi
 

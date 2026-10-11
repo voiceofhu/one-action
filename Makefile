@@ -8,6 +8,7 @@ include $(PROJECT_ROOT)/make/user.mk
 include $(PROJECT_ROOT)/make/object.mk
 include $(PROJECT_ROOT)/make/notify.mk
 include $(PROJECT_ROOT)/make/pay.mk
+include $(PROJECT_ROOT)/make/vps.mk
 include $(PROJECT_ROOT)/make/node.mk
 include $(PROJECT_ROOT)/make/browser.mk
 
@@ -21,6 +22,7 @@ help:
 		"  make validate-object-web    Validate One Object Web deployment contracts" \
 		"  make validate-notify        Validate One Notify Server/Web release contracts" \
 		"  make validate-pay           Validate One Pay Server/Web release contracts" \
+		"  make validate-vps           Validate One VPS Server/Web release contracts" \
 		"  make validate               Validate active shell and workflow contracts locally" \
 		"  make validate-user          Validate only One User release contracts" \
 		"  make validate-user-web      Validate One User Web deployment contracts" \
@@ -37,6 +39,8 @@ help:
 		"  make deploy-object-web      Deploy Web without restarting Object Server" \
 		"  make deploy-pay-server      Publish and deploy One Pay with Web" \
 		"  make deploy-pay-web         Deploy Web without restarting Pay Server" \
+		"  make deploy-vps-server      Publish and deploy One VPS with Web" \
+		"  make deploy-vps-web         Deploy Web without restarting VPS Server" \
 		"  make deploy-notify-server   Publish and deploy One Notify with Web" \
 		"  make deploy-notify-web      Deploy Web without restarting Notify Server" \
 		"  make deploy-user-server     Compile, upload, and deploy One User with Web" \

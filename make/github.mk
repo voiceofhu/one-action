@@ -50,3 +50,9 @@ validate-pay:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh pay
 validate-pay-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh pay-web
+
+.PHONY: validate-vps validate-vps-web
+validate-vps:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh vps
+validate-vps-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh vps-web

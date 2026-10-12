@@ -11,6 +11,7 @@ include $(PROJECT_ROOT)/make/pay.mk
 include $(PROJECT_ROOT)/make/amz.mk
 include $(PROJECT_ROOT)/make/mail.mk
 include $(PROJECT_ROOT)/make/vps.mk
+include $(PROJECT_ROOT)/make/template.mk
 include $(PROJECT_ROOT)/make/node.mk
 include $(PROJECT_ROOT)/make/browser.mk
 
@@ -27,6 +28,8 @@ help:
 		"  make validate-amz           Validate One AMZ Server/Web release contracts" \
 		"  make validate-mail          Validate One Mail Server/Web release contracts" \
 		"  make validate-vps           Validate One VPS Server/Web release contracts" \
+		"  make validate-template      Validate One Template Server/Web release contracts" \
+		"  make validate-template-web  Validate One Template Web deployment contracts" \
 		"  make validate               Validate active shell and workflow contracts locally" \
 		"  make validate-user          Validate only One User release contracts" \
 		"  make validate-user-web      Validate One User Web deployment contracts" \
@@ -50,6 +53,8 @@ help:
 		"  make deploy-mail-web        Deploy Web without restarting Mail Server" \
 		"  make deploy-vps-server      Publish and deploy One VPS with Web" \
 		"  make deploy-vps-web         Deploy Web without restarting VPS Server" \
+		"  make deploy-template-server Publish and deploy One Template with Web" \
+		"  make deploy-template-web    Deploy Web without restarting Template Server" \
 		"  make deploy-notify-server   Publish and deploy One Notify with Web" \
 		"  make deploy-notify-web      Deploy Web without restarting Notify Server" \
 		"  make deploy-user-server     Compile, upload, and deploy One User with Web" \

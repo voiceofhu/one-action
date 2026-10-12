@@ -70,3 +70,9 @@ validate-vps:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh vps
 validate-vps-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh vps-web
+
+.PHONY: validate-template validate-template-web
+validate-template:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh template
+validate-template-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh template-web

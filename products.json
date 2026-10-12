@@ -64,6 +64,19 @@
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]
   },
+  "template": {
+    "title": "One Template",
+    "backend_repository": "voiceofhu/one-template-server",
+    "backend_package": "one-template-backend",
+    "web_repository": "voiceofhu/one-template-web",
+    "web_package": "one-template-web",
+    "public_url": "https://tpl.aicbe.com",
+    "service_port": 27543,
+    "ready_path": "/readyz",
+    "pnpm_version": "11.7.0",
+    "remote_required_dirs": [],
+    "web_gates": ["format:check", "lint", "test", "build"]
+  },
   "user": {
     "title": "One User",
     "backend_repository": "voiceofhu/one-user-backend",

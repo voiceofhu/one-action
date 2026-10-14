@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 : "${SSH_HOST:?SSH_HOST is required}"
 
+# Each SSH alias (one per product) logs in to its own Docker config on the server, so
+# products deploying to the same host at once never log each other out.
 REGISTRY_ACTION=${REGISTRY_ACTION:-login}
 REGISTRY_HOST=${REGISTRY_HOST:-ghcr.io}
 USE_SUDO=${USE_SUDO:-0}
@@ -15,9 +17,10 @@ USE_SUDO=${USE_SUDO:-0}
   printf '%s\n' 'REGISTRY_HOST is invalid' >&2
   exit 1
 }
+remote_config="\$HOME/.docker-deploy/$SSH_HOST"
 case "$USE_SUDO" in
-  0) remote_docker='docker' ;;
-  1) remote_docker='sudo -n docker' ;;
+  0) remote_docker="env DOCKER_CONFIG=\"$remote_config\" docker" ;;
+  1) remote_docker="sudo -n env DOCKER_CONFIG=\"$remote_config\" docker" ;;
   *) printf '%s\n' 'USE_SUDO must be 0 or 1' >&2; exit 1 ;;
 esac
 
@@ -34,13 +37,14 @@ case "$REGISTRY_ACTION" in
       exit 1
     }
     # shellcheck disable=SC2029
+    # Compose may be a per-user CLI plugin, which Docker looks up under DOCKER_CONFIG.
     printf '%s' "$GH_TOKEN" | ssh "$SSH_HOST" \
-      "$remote_docker login $(shell_quote "$REGISTRY_HOST") --username $(shell_quote "$registry_username") --password-stdin"
+      "mkdir -p -m 700 \"$remote_config\" && { test ! -d \"\$HOME/.docker/cli-plugins\" || ln -sfn \"\$HOME/.docker/cli-plugins\" \"$remote_config/cli-plugins\"; } && $remote_docker login $(shell_quote "$REGISTRY_HOST") --username $(shell_quote "$registry_username") --password-stdin"
     ;;
   logout)
     # shellcheck disable=SC2029
     ssh "$SSH_HOST" \
-      "$remote_docker logout $(shell_quote "$REGISTRY_HOST")"
+      "$remote_docker logout $(shell_quote "$REGISTRY_HOST"); rm -rf \"$remote_config\""
     ;;
   *)
     printf '%s\n' 'REGISTRY_ACTION must be login or logout' >&2

@@ -38,7 +38,7 @@ ssh "$SSH_HOST" "test -d '$REMOTE_DIR' && test -w '$REMOTE_DIR' && test -f '$REM
 
 scp "$COMPOSE_FILE" "$SSH_HOST:$REMOTE_DIR/docker-compose.yml.next"
 
-ssh "$SSH_HOST" bash -s -- "$REMOTE_DIR" "$DOCKER_IMAGE" "$PUBLIC_URL" <<'REMOTE_DEPLOY'
+ssh "$SSH_HOST" REGISTRY_CONFIG_NAME="$SSH_HOST" bash -s -- "$REMOTE_DIR" "$DOCKER_IMAGE" "$PUBLIC_URL" <<'REMOTE_DEPLOY'
 set -Eeuo pipefail
 
 remote_dir=$1
@@ -98,7 +98,9 @@ rollback() {
 }
 trap rollback ERR
 
-compose docker-compose.yml.next pull "$service_name"
+# The workflow logged this product in to its own Docker config (registry-auth.sh).
+DOCKER_CONFIG="$HOME/.docker-deploy/${REGISTRY_CONFIG_NAME:?}" \
+  compose docker-compose.yml.next pull "$service_name"
 # Server releases activate the Web bundled with the new Server image.
 release_web="releases/server-$(date +%s)-$$"
 mkdir "web/$release_web"

@@ -62,7 +62,7 @@ remote_arguments=(
 )
 # ssh joins its arguments into one string for the remote shell, so quote each
 # value (the title contains a space) to keep the positional arguments intact.
-remote_command="bash -s --$(printf ' %q' "${remote_arguments[@]}")"
+remote_command="REGISTRY_CONFIG_NAME=$SSH_HOST bash -s --$(printf ' %q' "${remote_arguments[@]}")"
 # shellcheck disable=SC2029 # The command is built from validated, quoted values.
 ssh "$SSH_HOST" "$remote_command" <<'REMOTE_DEPLOY'
 set -Eeuo pipefail
@@ -132,7 +132,9 @@ rollback() {
 }
 trap rollback ERR
 
-compose docker-compose.yml.next pull "$service_name"
+# The workflow logged this product in to its own Docker config (registry-auth.sh).
+DOCKER_CONFIG="$HOME/.docker-deploy/${REGISTRY_CONFIG_NAME:?}" \
+  compose docker-compose.yml.next pull "$service_name"
 # Server releases activate the Web bundled with the new Server image.
 release_web="releases/server-$(date +%s)-$$"
 mkdir "web/$release_web"

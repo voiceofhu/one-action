@@ -33,6 +33,7 @@ case "$scope" in
     )
     shell_files=(
       "$PROJECT_ROOT/scripts/lib/product.sh"
+      "$PROJECT_ROOT/scripts/lib/git-remote.sh"
       "$PROJECT_ROOT/scripts/release/release-server.sh"
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
@@ -83,6 +84,7 @@ case "$scope" in
     shell_files=(
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
       "$PROJECT_ROOT/scripts/lib/product.sh"
+      "$PROJECT_ROOT/scripts/lib/git-remote.sh"
       "$PROJECT_ROOT/scripts/release/release-server.sh"
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"

@@ -64,7 +64,8 @@ git -C "$ONE_BROWSER_WEB_DIR" config url."file://$web_bare".insteadOf \
   https://github.com/voiceofhu/one-browser-web.git
 git -C "$ONE_BROWSER_WEB_DIR" push -q -u origin main
 
-mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github"
+mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github" "$action_dir/scripts/lib"
+cp "$PROJECT_ROOT/scripts/lib/git-remote.sh" "$action_dir/scripts/lib/git-remote.sh"
 cp "$PROJECT_ROOT/scripts/release/deploy-browser-server-release.sh" \
   "$action_dir/scripts/release/deploy-browser-server-release.sh"
 cat >"$action_dir/scripts/github/dispatch-workflow.sh" <<'SCRIPT'
@@ -74,7 +75,7 @@ set -Eeuo pipefail
 printf '%s\n' "$*" >"$DISPATCH_LOG"
 SCRIPT
 chmod 0755 "$action_dir/scripts/github/dispatch-workflow.sh"
-git -C "$action_dir" add scripts/release/deploy-browser-server-release.sh scripts/github/dispatch-workflow.sh
+git -C "$action_dir" add scripts/lib/git-remote.sh scripts/release/deploy-browser-server-release.sh scripts/github/dispatch-workflow.sh
 git -C "$action_dir" commit -qm initial
 git -C "$action_dir" remote add origin https://github.com/voiceofhu/one-action.git
 git -C "$action_dir" config url."file://$action_bare".insteadOf \

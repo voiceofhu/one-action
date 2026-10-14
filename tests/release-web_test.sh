@@ -77,6 +77,7 @@ git -C "$web_dir" push -q -u origin main
 mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github" "$action_dir/scripts/lib"
 cp "$PROJECT_ROOT/products.json" "$action_dir/products.json"
 cp "$PROJECT_ROOT/scripts/lib/product.sh" "$action_dir/scripts/lib/product.sh"
+cp "$PROJECT_ROOT/scripts/lib/git-remote.sh" "$action_dir/scripts/lib/git-remote.sh"
 cp "$PROJECT_ROOT/scripts/release/release-web.sh" \
   "$action_dir/scripts/release/release-web.sh"
 cat >"$action_dir/scripts/github/dispatch-workflow.sh" <<'SCRIPT'

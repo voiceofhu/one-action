@@ -15,6 +15,15 @@ include $(PROJECT_ROOT)/make/template.mk
 include $(PROJECT_ROOT)/make/node.mk
 include $(PROJECT_ROOT)/make/browser.mk
 
+# Batch deploys: `make deploy-servers` (all) or `make deploy-servers PRODUCTS="user mail"`.
+.PHONY: deploy-servers deploy-webs
+deploy-servers:
+	@KIND=server DRY_RUN="$(if $(filter command line,$(origin DRY_RUN)),$(DRY_RUN),false)" \
+		VERSION="$(VERSION)" bash $(PROJECT_ROOT)/scripts/release/deploy-many.sh $(PRODUCTS)
+deploy-webs:
+	@KIND=web DRY_RUN="$(if $(filter command line,$(origin DRY_RUN)),$(DRY_RUN),false)" \
+		VERSION="$(VERSION)" bash $(PROJECT_ROOT)/scripts/release/deploy-many.sh $(PRODUCTS)
+
 .PHONY: help
 help:
 	@printf '%s\n' \
@@ -43,6 +52,8 @@ help:
 		"  make check-token            Check read-only access to active workflows" \
 		"" \
 		"Product releases:" \
+		"  make deploy-servers         Deploy every server product (PRODUCTS=\"user mail\" to pick)" \
+		"  make deploy-webs            Deploy every web without restarting servers (PRODUCTS=...)" \
 		"  make deploy-object-server   Publish and deploy One Object with Web" \
 		"  make deploy-object-web      Deploy Web without restarting Object Server" \
 		"  make deploy-pay-server      Publish and deploy One Pay with Web" \

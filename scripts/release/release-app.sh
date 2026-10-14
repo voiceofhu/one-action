@@ -5,6 +5,8 @@ github_token=${GH_TOKEN:-}
 unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib/git-remote.sh
+source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
 source "$PROJECT_ROOT/scripts/github/common.sh"
 # shellcheck source=scripts/lib/app.sh
 source "$PROJECT_ROOT/scripts/lib/app.sh"
@@ -54,7 +56,7 @@ app_sha="$(git -C "$app_dir" rev-parse --verify HEAD)"
 validate_sha "$app_sha"
 [[ "$app_sha" == "$(git -C "$app_dir" rev-parse --verify "${app_ref}^{commit}")" ]] ||
   die "App HEAD must match $app_ref_variable ($app_ref) before validation"
-app_origin="$(git -C "$app_dir" config --get remote.origin.url)"
+app_origin="$(origin_remote_url "$app_dir")"
 case "$app_origin" in
   "https://github.com/$APP_REPOSITORY"|"https://github.com/$APP_REPOSITORY.git"|\
   "git@github.com:$APP_REPOSITORY"|"git@github.com:$APP_REPOSITORY.git") ;;

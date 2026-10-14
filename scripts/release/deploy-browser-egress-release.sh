@@ -4,6 +4,8 @@ github_token=${GH_TOKEN:-}
 unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib/git-remote.sh
+source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
 ACTION_REPOSITORY=voiceofhu/one-action
 : "${VERSION:?VERSION is required}"
 : "${ONE_BROWSER_EGRESS_DIR:?ONE_BROWSER_EGRESS_DIR is required}"
@@ -34,7 +36,7 @@ esac
 
 validate_action_repository() {
   local remote branch status
-  remote="$(git -C "$PROJECT_ROOT" config --get remote.origin.url)"
+  remote="$(origin_remote_url "$PROJECT_ROOT")"
   case "$remote" in
     "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
     "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;
@@ -66,7 +68,7 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
 }
 make --no-print-directory -C "$PROJECT_ROOT" validate-browser-egress
 
-remote="$(git -C "$ONE_BROWSER_EGRESS_DIR" config --get remote.origin.url)"
+remote="$(origin_remote_url "$ONE_BROWSER_EGRESS_DIR")"
 case "$remote" in
   "https://github.com/$ONE_BROWSER_EGRESS_REPOSITORY"|"https://github.com/$ONE_BROWSER_EGRESS_REPOSITORY.git"|\
   "git@github.com:$ONE_BROWSER_EGRESS_REPOSITORY"|"git@github.com:$ONE_BROWSER_EGRESS_REPOSITORY.git") ;;

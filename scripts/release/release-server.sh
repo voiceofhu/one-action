@@ -4,6 +4,8 @@ github_token=${GH_TOKEN:-}
 unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib/git-remote.sh
+source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
 ACTION_REPOSITORY='voiceofhu/one-action'
 # shellcheck source=scripts/lib/product.sh
 source "$PROJECT_ROOT/scripts/lib/product.sh"
@@ -46,7 +48,7 @@ validate_source_repository() {
     printf '%s version manifest is missing: %s\n' "$label" "$expected_manifest" >&2
     exit 1
   }
-  remote="$(git -C "$directory" config --get remote.origin.url)"
+  remote="$(origin_remote_url "$directory")"
   case "$remote" in
     "https://github.com/$expected_repository"|"https://github.com/$expected_repository.git"|\
     "git@github.com:$expected_repository"|"git@github.com:$expected_repository.git") ;;
@@ -75,7 +77,7 @@ validate_action_repository() {
     printf 'Action repository is missing: %s\n' "$PROJECT_ROOT" >&2
     exit 1
   }
-  remote="$(git -C "$PROJECT_ROOT" config --get remote.origin.url)"
+  remote="$(origin_remote_url "$PROJECT_ROOT")"
   case "$remote" in
     "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
     "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;

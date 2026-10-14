@@ -15,3 +15,12 @@ origin_remote_url() {
   fi
   printf '%s\n' "$remote"
 }
+
+# Succeeds when a remote URL names the GitHub repository owner/name over HTTPS or SSH.
+is_github_remote() {
+  case "$1" in
+    "https://github.com/$2" | "https://github.com/$2.git" | \
+      "git@github.com:$2" | "git@github.com:$2.git") ;;
+    *) return 1 ;;
+  esac
+}

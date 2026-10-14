@@ -36,6 +36,14 @@ printf 'cargo' >>"$LOCAL_GATE_LOG"
 printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
 printf '\n' >>"$LOCAL_GATE_LOG"
 EOF
+cat >"$fake_bin/go" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
+printf 'go' >>"$LOCAL_GATE_LOG"
+printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
+printf '\n' >>"$LOCAL_GATE_LOG"
+EOF
 cat >"$fake_bin/pnpm" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -44,7 +52,7 @@ printf 'pnpm' >>"$LOCAL_GATE_LOG"
 printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
 printf '\n' >>"$LOCAL_GATE_LOG"
 EOF
-chmod 0755 "$fake_bin/make" "$fake_bin/cargo" "$fake_bin/pnpm"
+chmod 0755 "$fake_bin/make" "$fake_bin/cargo" "$fake_bin/go" "$fake_bin/pnpm"
 export PATH="$fake_bin:$PROJECT_ROOT/tests/fakes:$PATH"
 export FAKE_CURL_LOG="$test_dir/curl.log"
 export DRY_RUN=false
@@ -74,11 +82,16 @@ for repository in "$backend_dir" "$web_dir" "$action_dir"; do
   git -C "$repository" checkout -qb main
 done
 
-printf '%s\n' '[package]' "name = \"$PRODUCT_BACKEND_PACKAGE\"" 'version = "0.1.0"' \
-  >"$backend_dir/Cargo.toml"
-printf '%s\n' 'version = 4' '' '[[package]]' "name = \"$PRODUCT_BACKEND_PACKAGE\"" 'version = "0.1.0"' \
-  >"$backend_dir/Cargo.lock"
-git -C "$backend_dir" add Cargo.toml Cargo.lock
+if [[ "$PRODUCT_BACKEND_LANGUAGE" == go ]]; then
+  printf '%s\n' "module example.invalid/$PRODUCT_BACKEND_PACKAGE" '' 'go 1.25' >"$backend_dir/go.mod"
+  git -C "$backend_dir" add go.mod
+else
+  printf '%s\n' '[package]' "name = \"$PRODUCT_BACKEND_PACKAGE\"" 'version = "0.1.0"' \
+    >"$backend_dir/Cargo.toml"
+  printf '%s\n' 'version = 4' '' '[[package]]' "name = \"$PRODUCT_BACKEND_PACKAGE\"" 'version = "0.1.0"' \
+    >"$backend_dir/Cargo.lock"
+  git -C "$backend_dir" add Cargo.toml Cargo.lock
+fi
 git -C "$backend_dir" commit -qm initial
 git -C "$backend_dir" remote add origin \
   "https://github.com/$PRODUCT_BACKEND_REPOSITORY.git"
@@ -126,8 +139,15 @@ GH_TOKEN=local-token-must-not-reach-gates \
 GITHUB_TOKEN=runtime-token-must-not-reach-gates \
   bash "$action_dir/scripts/release/release-server.sh" "$PRODUCT_KEY" >"$test_dir/output"
 
-grep -Fq 'version = "26.815.1234"' "$backend_dir/Cargo.toml"
-grep -Fq 'version = "26.815.1234"' "$backend_dir/Cargo.lock"
+if [[ "$PRODUCT_BACKEND_LANGUAGE" == rust ]]; then
+  grep -Fq 'version = "26.815.1234"' "$backend_dir/Cargo.toml"
+  grep -Fq 'version = "26.815.1234"' "$backend_dir/Cargo.lock"
+  git --git-dir="$backend_bare" show refs/heads/main:Cargo.toml |
+    grep -Fq 'version = "26.815.1234"'
+else
+  # Go has no version file: the Backend must be released at its existing commit.
+  [[ "$(git --git-dir="$backend_bare" rev-list --count refs/heads/main)" == 1 ]]
+fi
 node -e '
   const p = require(process.argv[1]);
   if (p.version !== "26.815.1234") process.exit(1);
@@ -139,8 +159,6 @@ if git --git-dir="$backend_bare" for-each-ref --format='%(refname)' refs/tags | 
   printf '%s release created a forbidden repository tag.\n' "$PRODUCT_TITLE" >&2
   exit 1
 fi
-git --git-dir="$backend_bare" show refs/heads/main:Cargo.toml |
-  grep -Fq 'version = "26.815.1234"'
 git --git-dir="$web_bare" show refs/heads/main:package.json |
   grep -Fq '"version": "26.815.1234"'
 
@@ -162,7 +180,11 @@ require_gate() {
   }
 }
 require_gate "make --no-print-directory -C $action_dir validate-$PRODUCT_KEY"
-require_gate 'cargo fmt --all -- --check'
+if [[ "$PRODUCT_BACKEND_LANGUAGE" == go ]]; then
+  require_gate 'go vet ./...'
+else
+  require_gate 'cargo fmt --all -- --check'
+fi
 require_gate "make --no-print-directory -C $backend_dir test"
 require_gate "pnpm --dir $web_dir install --frozen-lockfile"
 for gate in "${PRODUCT_WEB_GATES[@]}"; do

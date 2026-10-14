@@ -1,4 +1,4 @@
-.PHONY: validate validate-user validate-node validate-node-server validate-browser-app validate-browser-egress check-token
+.PHONY: validate validate-user validate-node-runtime validate-browser-app validate-browser-egress check-token
 
 validate:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh
@@ -6,11 +6,8 @@ validate:
 validate-user:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh user
 
-validate-node:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh node
-
-validate-node-server:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh node-server
+validate-node-runtime:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh node-runtime
 
 validate-browser-egress:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-egress
@@ -24,14 +21,6 @@ validate-mail-app:
 
 check-token:
 	@bash $(PROJECT_ROOT)/scripts/github/check-token.sh
-
-.PHONY: validate-browser-server
-validate-browser-server:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-server
-
-.PHONY: validate-node-web
-validate-node-web:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh node-web
 
 .PHONY: validate-user-web
 validate-user-web:
@@ -76,3 +65,13 @@ validate-template:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh template
 validate-template-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh template-web
+
+.PHONY: validate-node validate-node-web validate-browser validate-browser-web
+validate-node:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh node
+validate-node-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh node-web
+validate-browser:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh browser
+validate-browser-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-web

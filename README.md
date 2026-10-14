@@ -19,18 +19,15 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
-| `make deploy-<key>-server` | dispatch `<key>-server.yml` | user、object、notify、pay、template、vps、amz、mail：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
-| `make deploy-<key>-web` | dispatch `<key>-web.yml` | 同上八个产品：仅部署 Web 静态文件，不重启 Server |
+| `make deploy-<key>-server` | dispatch `<key>-server.yml` | user、object、notify、pay、template、vps、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
+| `make deploy-<key>-web` | dispatch `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
 | `make deploy-<key>-app` | dispatch `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
-| `make deploy-node-server` | dispatch `node-server.yml` | `ghcr.io/voiceofhu/node-server:<version>`，随后部署该精确 OCI digest |
-| `make deploy-node-web` | dispatch `node-web.yml` | 仅部署 One Node Web 静态文件 |
 | `make deploy-node` | dispatch `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
-| `make deploy-browser-server` | dispatch `browser-server.yml` | `ghcr.io/voiceofhu/one-browser-backend:<version>` 双架构镜像及 SSH/Compose 部署 |
-| `make deploy-browser-web` | dispatch `browser-web.yml` | 独立构建 Web，切换服务器静态文件版本，不更新 Server 容器 |
 | `make deploy-browser-egress` | dispatch `browser-egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
-`deploy-user-server` 和 `deploy-node-server` 都在镜像发布后执行 SSH/Compose 服务器部署；
-`deploy-node` 只触发 Runtime 编译上传。Browser App/Egress 发布产物；Browser Server/Web 使用 SSH 部署。
+`deploy-node` 只触发 Runtime 编译上传；Browser App/Egress 只发布产物。One Node 的 Backend 是 Go
+（`products.json` 中 `"backend_language": "go"`）：发布时运行 `go vet` 与 `make test`，不提交版本号，
+版本通过镜像构建参数 `VERSION` 写入。
 
 ## Workflow 命名规则
 
@@ -43,9 +40,6 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
   当前 `reusable-publish-server-image.yml` 负责构建 Web 和 Server 多架构镜像。
 - Actions 展示名称使用 `One <Product> <Component> [Purpose]`；共用流程使用
   `Reusable <Action> <Target>`，与文件名对应。
-
-`browser-server.yml` 发布并部署 Server；`browser-server-publish.yml` 保留原先仅发布
-镜像的入口，要求 `environment=prod`、`publish=true`、`deploy=false`，两者不能互换。
 
 新增工作流时按同产品已有文件创建，更新对应 `scripts/release/` 入口、
 `scripts/github/dispatch-workflow.sh` 的固定输入/源码白名单，以及对应产品的测试和
@@ -186,8 +180,7 @@ brew install shellcheck actionlint zizmor
 ```bash
 make validate
 make validate-user
-make validate-node
-make validate-node-server
+make validate-node-runtime
 make validate-browser-egress
 make node-check
 make node-bundle-installers
@@ -197,17 +190,14 @@ make node-bundle-installers
 每个范围都会对相关 workflow 运行 actionlint（含 shellcheck）和 zizmor 离线安全审计；
 规则例外分别记录在 `.github/actionlint.yaml` 和 `.github/zizmor.yml`，单个步骤的例外使用
 `# zizmor: ignore[...]` 注释并写明原因。
-`make validate-<key>`（user、object、notify、pay、template、vps、amz、mail 及其 `-web`）检查共享的 Server/Web 发布实现，
+`make validate-<key>`（user、object、notify、pay、template、vps、amz、mail、node、browser 及其 `-web`）检查共享的 Server/Web 发布实现，
 对 `products.json` 中每个产品实跑发布与部署测试，不运行 One Node 生命周期 fixture。
-`make validate-node` 只检查 One Node Runtime 的安装生命周期、dispatch、构建和 Release 合同；
+`make validate-node-runtime` 只检查 One Node Runtime 的安装生命周期、dispatch、构建和 Release 合同；
 `deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。
-`make validate-node-server` 只检查 One Node Server 的发布、镜像与部署契约；
-`deploy-node-server` 使用这一范围，不运行 One User 模拟发布或 One Node Runtime 生命周期 fixture。
 真实 `deploy-*` 还会执行产品门禁：
 
 - One User：Backend fmt/test；Web frozen install、format、lint、test、build；
-- One Node Server：Web frozen install/lint；Backend model/test、vet、release build，
-  release build 通过 Server 的 `build: frontend` 唯一执行一次 Web typecheck/Vite build 并暂存 `web-dist`；
+- One Node Server：Backend `go vet` 与 `make test`；Web 按 `products.json` 的 `web_gates`；
 - One Node Runtime：仅在 Node 源码仓库执行完整 `verify-upgrade`。
 - One Browser Egress：`cargo fmt`、Clippy（warnings 视为错误）和完整 feature 测试。
 

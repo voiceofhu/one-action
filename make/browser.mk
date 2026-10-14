@@ -10,13 +10,13 @@ deploy-app-server: deploy-browser-server
 
 deploy-browser-web: DRY_RUN = false
 deploy-browser-web:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(BROWSER_SERVER_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-browser-web-release.sh
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(BROWSER_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/release-web.sh browser
 
 deploy-browser-server: DRY_RUN = false
 deploy-browser-server:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(BROWSER_SERVER_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-browser-server-release.sh
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(BROWSER_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/release-server.sh browser
 
 deploy-browser-egress: DRY_RUN = false
 deploy-browser-egress:

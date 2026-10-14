@@ -102,5 +102,32 @@
     "pnpm_version": "11.7.0",
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]
+  },
+  "node": {
+    "title": "One Node",
+    "backend_language": "go",
+    "backend_repository": "voiceofhu/one-node-server",
+    "backend_package": "one-node-server",
+    "web_repository": "voiceofhu/one-node-web",
+    "web_package": "one-node-web",
+    "public_url": "https://marseo.eu.org",
+    "service_port": 27517,
+    "ready_path": "/api/healthz",
+    "pnpm_version": "11.7.0",
+    "remote_required_dirs": [],
+    "web_gates": ["lint", "build"]
+  },
+  "browser": {
+    "title": "One Browser",
+    "backend_repository": "voiceofhu/one-browser-server",
+    "backend_package": "one-browser-backend",
+    "web_repository": "voiceofhu/one-browser-web",
+    "web_package": "one-browser-web",
+    "public_url": "https://browser.aicbe.com",
+    "service_port": 27514,
+    "ready_path": "/healthz",
+    "pnpm_version": "10.32.1",
+    "remote_required_dirs": [],
+    "web_gates": ["lint", "typecheck", "test", "build"]
   }
 }

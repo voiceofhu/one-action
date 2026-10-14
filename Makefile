@@ -42,8 +42,9 @@ help:
 		"  make validate               Validate active shell and workflow contracts locally" \
 		"  make validate-user          Validate only One User release contracts" \
 		"  make validate-user-web      Validate One User Web deployment contracts" \
-		"  make validate-node          Validate only One Node Runtime release contracts" \
-		"  make validate-node-server   Validate only One Node Server release contracts" \
+		"  make validate-node          Validate One Node Server/Web release contracts" \
+		"  make validate-browser       Validate One Browser Server/Web release contracts" \
+		"  make validate-node-runtime  Validate only One Node Runtime release contracts" \
 		"  make validate-browser-app   Validate desktop App (Tauri) release contracts" \
 		"  make validate-mail-app      Validate desktop App (Tauri) release contracts" \
 		"  make validate-browser-egress Validate only Browser Egress release contracts" \
@@ -70,11 +71,11 @@ help:
 		"  make deploy-notify-web      Deploy Web without restarting Notify Server" \
 		"  make deploy-user-server     Compile, upload, and deploy One User with Web" \
 		"  make deploy-user-web        Check and deploy Web without restarting User Server" \
-		"  make deploy-node-server     Compile, upload, and deploy One Node Server" \
-		"  make deploy-node-web        Check and deploy Web without restarting Node Server" \
+		"  make deploy-node-server     Publish and deploy One Node with Web" \
+		"  make deploy-node-web        Deploy Web without restarting Node Server" \
 		"  make deploy-node            Check One Node source and dispatch compile/upload" \
 		"  make deploy-browser-app     Check One Browser App and dispatch installer publication" \
 		"  make deploy-mail-app        Check One Mail App and dispatch installer publication" \
-		"  make deploy-browser-server  Check, publish, and deploy Browser Server with Web" \
-		"  make deploy-browser-web     Check and deploy Web without restarting Server" \
+		"  make deploy-browser-server  Publish and deploy One Browser with Web" \
+		"  make deploy-browser-web     Deploy Web without restarting Browser Server" \
 		"  make deploy-browser-egress  Check Browser Egress and dispatch package/image publication"

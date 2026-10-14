@@ -57,11 +57,8 @@ validate_sha "$app_sha"
 [[ "$app_sha" == "$(git -C "$app_dir" rev-parse --verify "${app_ref}^{commit}")" ]] ||
   die "App HEAD must match $app_ref_variable ($app_ref) before validation"
 app_origin="$(origin_remote_url "$app_dir")"
-case "$app_origin" in
-  "https://github.com/$APP_REPOSITORY"|"https://github.com/$APP_REPOSITORY.git"|\
-  "git@github.com:$APP_REPOSITORY"|"git@github.com:$APP_REPOSITORY.git") ;;
-  *) die 'App origin differs from the configured source repository' ;;
-esac
+is_github_remote "$app_origin" "$APP_REPOSITORY" ||
+  die 'App origin differs from the configured source repository'
 [[ -z "$(git -C "$app_dir" status --porcelain --untracked-files=all)" ]] ||
   die 'App worktree must be clean before release validation'
 [[ -f "$app_dir/scripts/update-version.mjs" ]] ||

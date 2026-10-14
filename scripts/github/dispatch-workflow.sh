@@ -28,7 +28,7 @@ elif [[ "$workflow" =~ ^([a-z][a-z0-9]*)-(server|web)\.yml$ ]] \
   load_product "${BASH_REMATCH[1]}"
 else
   case "$workflow" in
-    browser-server-publish.yml|browser-egress.yml|node-runtime.yml|node-server.yml|browser-server.yml|browser-web.yml|node-web.yml) ;;
+    browser-egress.yml|node-runtime.yml) ;;
     *) die 'workflow is outside the fixed dispatcher allowlist' ;;
   esac
 fi
@@ -127,36 +127,6 @@ case "$product_component" in
     ;;
 esac
 case "$workflow" in
-  browser-server-publish.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version environment publish deploy
-    require_repository backend_repository voiceofhu/one-browser-server
-    require_repository web_repository voiceofhu/one-browser-web
-    publish_supported=true
-    ;;
-  node-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref \
-      version publish deploy
-    require_repository backend_repository voiceofhu/one-node-server
-    require_repository web_repository voiceofhu/one-node-web
-    publish_supported=true
-    ;;
-  node-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-node-web
-    publish_supported=true
-    ;;
-  browser-web.yml)
-    require_inputs web_repository web_ref version publish deploy
-    require_repository web_repository voiceofhu/one-browser-web
-    publish_supported=true
-    ;;
-  browser-server.yml)
-    require_inputs backend_repository backend_ref web_repository web_ref version publish deploy
-    require_repository backend_repository voiceofhu/one-browser-server
-    require_repository web_repository voiceofhu/one-browser-web
-    publish_supported=true
-    ;;
   browser-egress.yml)
     require_inputs egress_repository egress_ref version environment publish deploy
     require_repository egress_repository voiceofhu/one-browser-egress
@@ -192,7 +162,7 @@ fi
 for value in "$publish" "$deploy" "$upload_artifact"; do
   [[ "$value" == true || "$value" == false ]] || die 'mutation inputs must be true or false'
 done
-if [[ "$deploy" == true && "$product_component" != web && "$workflow" != node-server.yml && "$workflow" != browser-server.yml && "$workflow" != browser-web.yml && "$workflow" != node-web.yml ]]; then
+if [[ "$deploy" == true && "$product_component" != web ]]; then
   die 'deployment is not implemented for this workflow'
 fi
 if [[ "$deploy" == true && "$publish" != true ]]; then
@@ -259,12 +229,6 @@ done
 if [[ "$publish" == true ]]; then
   if [[ "$product_component" == server ]]; then
     workflow_base=$PRODUCT_NAME
-  elif [[ "$workflow" == browser-server.yml ]]; then
-    workflow_base=one-browser-server
-  elif [[ "$workflow" == node-server.yml ]]; then
-    workflow_base=one-node-server
-  elif [[ "$workflow" == browser-server-publish.yml ]]; then
-    workflow_base=one-browser-backend
   elif [[ "$app_component" == app ]]; then
     workflow_base=$APP_CONFIRMATION
   elif [[ "$workflow" == browser-egress.yml ]]; then

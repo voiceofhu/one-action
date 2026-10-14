@@ -15,21 +15,12 @@ case "$scope" in
       "$PROJECT_ROOT/tests/deploy-web_test.sh"
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
       "$PROJECT_ROOT/tests/app-release_test.sh"
-      "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/browser-web-deploy_test.sh"
-      "$PROJECT_ROOT/tests/browser-server-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/browser-server-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/node-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/node-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/node-web-deploy_test.sh"
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
       "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
       "$PROJECT_ROOT/tests/egress-updater_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
-      "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
     )
     shell_files=(
       "$PROJECT_ROOT/scripts/lib/product.sh"
@@ -52,14 +43,12 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/github/check-token.sh"
       "$PROJECT_ROOT/scripts/github/common.sh"
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
       "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "$PROJECT_ROOT/scripts/lib/app.sh"
       "$PROJECT_ROOT/scripts/release/release-app.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/tests/fakes/curl"
@@ -73,7 +62,7 @@ case "$scope" in
     done
     run_node_check=true
     ;;
-  amz|amz-web|mail|mail-web|notify|notify-web|object|object-web|pay|pay-web|template|template-web|user|user-web|vps|vps-web)
+  amz|amz-web|browser|browser-web|mail|mail-web|node|node-web|notify|notify-web|object|object-web|pay|pay-web|template|template-web|user|user-web|vps|vps-web)
     active_tests=(
       "$PROJECT_ROOT/tests/products_test.sh"
       "$PROJECT_ROOT/tests/release-server_test.sh"
@@ -105,7 +94,7 @@ case "$scope" in
     active_workflows+=("$product_key-server.yml" "$product_key-web.yml")
     run_node_check=false
     ;;
-  node)
+  node-runtime)
     active_tests=(
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/node/tests/firewall_test.sh"
@@ -125,41 +114,6 @@ case "$scope" in
     )
     run_node_check=true
     ;;
-  node-server)
-    active_tests=(
-      "$PROJECT_ROOT/tests/node-server-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/node-server-trigger-only_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
-      "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-node-server-release.sh"
-      "${active_tests[@]}"
-      "$PROJECT_ROOT/scripts/validate.sh"
-    )
-    active_workflows=(
-      node-server.yml
-      reusable-publish-server-image.yml
-    )
-    run_node_check=false
-    ;;
-  node-web)
-    active_tests=(
-      "$PROJECT_ROOT/tests/node-web-publish-workflow_test.sh"
-      "$PROJECT_ROOT/tests/node-web-trigger-only_test.sh"
-      "$PROJECT_ROOT/tests/node-web-deploy_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/scripts/release/deploy-node-web-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-node-web.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-node-server.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "${active_tests[@]}"
-    )
-    active_workflows=(node-web.yml node-server.yml)
-    run_node_check=false
-    ;;
   browser-app|mail-app)
     active_tests=("$PROJECT_ROOT/tests/app-release_test.sh")
     shell_files=(
@@ -171,19 +125,6 @@ case "$scope" in
     for app in $(jq -r 'keys[]' "$PROJECT_ROOT/apps.json"); do
       active_workflows+=("$app-app.yml")
     done
-    run_node_check=false
-    ;;
-  browser-server)
-    active_tests=("$PROJECT_ROOT/tests/browser-server-publish-workflow_test.sh" "$PROJECT_ROOT/tests/browser-server-trigger-only_test.sh" "$PROJECT_ROOT/tests/browser-web-trigger-only_test.sh" "$PROJECT_ROOT/tests/browser-web-deploy_test.sh")
-    shell_files=(
-      "$PROJECT_ROOT/scripts/release/deploy-browser-server-release.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-browser-server.sh"
-      "$PROJECT_ROOT/scripts/deploy/deploy-browser-web.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-browser-web-release.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
-      "${active_tests[@]}"
-    )
-    active_workflows=(browser-server.yml browser-web.yml reusable-publish-server-image.yml)
     run_node_check=false
     ;;
   browser-egress)

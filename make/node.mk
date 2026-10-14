@@ -19,7 +19,7 @@ node-bundle-installers:
 deploy-node-server: DRY_RUN = false
 deploy-node-server:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-node-server-release.sh
+		bash $(PROJECT_ROOT)/scripts/release/release-server.sh node
 
 deploy-node: DRY_RUN = false
 deploy-node:
@@ -30,4 +30,4 @@ deploy-node:
 deploy-node-web: DRY_RUN = false
 deploy-node-web:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-node-web-release.sh
+		bash $(PROJECT_ROOT)/scripts/release/release-web.sh node

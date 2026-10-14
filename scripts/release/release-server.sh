@@ -49,15 +49,11 @@ validate_source_repository() {
     exit 1
   }
   remote="$(origin_remote_url "$directory")"
-  case "$remote" in
-    "https://github.com/$expected_repository"|"https://github.com/$expected_repository.git"|\
-    "git@github.com:$expected_repository"|"git@github.com:$expected_repository.git") ;;
-    *)
-      printf '%s origin must be the fixed repository %s, got %s\n' \
-        "$label" "$expected_repository" "$remote" >&2
-      exit 1
-      ;;
-  esac
+  is_github_remote "$remote" "$expected_repository" || {
+    printf '%s origin must be the fixed repository %s, got %s\n' \
+      "$label" "$expected_repository" "$remote" >&2
+    exit 1
+  }
   branch="$(git -C "$directory" symbolic-ref --quiet --short HEAD)" || {
     printf '%s source repository must be on a branch\n' "$label" >&2
     exit 1
@@ -78,15 +74,11 @@ validate_action_repository() {
     exit 1
   }
   remote="$(origin_remote_url "$PROJECT_ROOT")"
-  case "$remote" in
-    "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
-    "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;
-    *)
-      printf 'Action origin must be the fixed repository %s, got %s\n' \
-        "$ACTION_REPOSITORY" "$remote" >&2
-      exit 1
-      ;;
-  esac
+  is_github_remote "$remote" "$ACTION_REPOSITORY" || {
+    printf 'Action origin must be the fixed repository %s, got %s\n' \
+      "$ACTION_REPOSITORY" "$remote" >&2
+    exit 1
+  }
   branch="$(git -C "$PROJECT_ROOT" symbolic-ref --quiet --short HEAD)" || {
     printf '%s\n' 'Action repository must be on the main branch' >&2
     exit 1
@@ -103,8 +95,12 @@ validate_action_repository() {
   git -C "$PROJECT_ROOT" rev-parse --verify HEAD
 }
 
+case "$PRODUCT_BACKEND_LANGUAGE" in
+  rust) backend_manifest=Cargo.toml ;;
+  go) backend_manifest=go.mod ;;
+esac
 backend_state="$(validate_source_repository \
-  Backend "$backend_dir" "$backend_repository" Cargo.toml)"
+  Backend "$backend_dir" "$backend_repository" "$backend_manifest")"
 web_state="$(validate_source_repository \
   Web "$web_dir" "$web_repository" package.json)"
 backend_branch=${backend_state%%|*}
@@ -179,7 +175,10 @@ preflight_release_repository Web "$web_dir" "$web_branch"
 
 (
   cd "$backend_dir"
-  cargo fmt --all -- --check
+  case "$PRODUCT_BACKEND_LANGUAGE" in
+    rust) cargo fmt --all -- --check ;;
+    go) go vet ./... ;;
+  esac
 )
 make --no-print-directory -C "$backend_dir" test
 pnpm --dir "$web_dir" install --frozen-lockfile
@@ -269,16 +268,18 @@ verify_changed_paths() {
   }
 }
 
-update_backend_version
-update_web_version
-verify_changed_paths Backend "$backend_dir" 'Cargo.lock Cargo.toml'
-verify_changed_paths Web "$web_dir" 'package.json'
-
-git -C "$backend_dir" add -- Cargo.toml Cargo.lock
-if ! git -C "$backend_dir" diff --cached --quiet; then
-  git -C "$backend_dir" commit -m \
-    "chore: bump $PRODUCT_BACKEND_PACKAGE version to $VERSION"
+# Go backends have no version file; the image build stamps VERSION via ldflags.
+if [[ "$PRODUCT_BACKEND_LANGUAGE" == rust ]]; then
+  update_backend_version
+  verify_changed_paths Backend "$backend_dir" 'Cargo.lock Cargo.toml'
+  git -C "$backend_dir" add -- Cargo.toml Cargo.lock
+  if ! git -C "$backend_dir" diff --cached --quiet; then
+    git -C "$backend_dir" commit -m \
+      "chore: bump $PRODUCT_BACKEND_PACKAGE version to $VERSION"
+  fi
 fi
+update_web_version
+verify_changed_paths Web "$web_dir" 'package.json'
 
 git -C "$web_dir" add -- package.json
 if ! git -C "$web_dir" diff --cached --quiet; then

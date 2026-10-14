@@ -55,6 +55,8 @@ load_product() {
   PRODUCT_SERVICE_PORT="$(product_field service_port)"
   PRODUCT_READY_PATH="$(product_field ready_path)"
   PRODUCT_PNPM_VERSION="$(product_field pnpm_version)"
+  # Optional: only the Go backend sets it.
+  PRODUCT_BACKEND_LANGUAGE="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].backend_language // "rust"' "$PRODUCT_MANIFEST")"
 
   product_require "$PRODUCT_TITLE" '^One [A-Za-z0-9 ]+$' title
   product_require "$PRODUCT_BACKEND_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' backend_repository
@@ -65,6 +67,7 @@ load_product() {
   product_require "$PRODUCT_SERVICE_PORT" '^[1-9][0-9]{0,4}$' service_port
   product_require "$PRODUCT_READY_PATH" '^(/[A-Za-z0-9._-]+)+$' ready_path
   product_require "$PRODUCT_PNPM_VERSION" '^[0-9]+\.[0-9]+\.[0-9]+$' pnpm_version
+  product_require "$PRODUCT_BACKEND_LANGUAGE" '^(rust|go)$' backend_language
 
   PRODUCT_REMOTE_REQUIRED_DIRS=()
   items="$(product_list remote_required_dirs)" || exit 1
@@ -104,5 +107,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     image "$PRODUCT_IMAGE" \
     environment "$PRODUCT_ENVIRONMENT" \
     remote_dir "$PRODUCT_REMOTE_DIR" \
-    pnpm_version "$PRODUCT_PNPM_VERSION"
+    pnpm_version "$PRODUCT_PNPM_VERSION" \
+    backend_language "$PRODUCT_BACKEND_LANGUAGE"
 fi

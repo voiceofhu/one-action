@@ -41,11 +41,10 @@ esac
 validate_action_repository() {
   local remote branch status
   remote="$(origin_remote_url "$PROJECT_ROOT")"
-  case "$remote" in
-    "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
-    "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;
-    *) printf 'Action origin must be %s, got %s\n' "$ACTION_REPOSITORY" "$remote" >&2; exit 1 ;;
-  esac
+  is_github_remote "$remote" "$ACTION_REPOSITORY" || {
+    printf 'Action origin must be %s, got %s\n' "$ACTION_REPOSITORY" "$remote" >&2
+    exit 1
+  }
   branch="$(git -C "$PROJECT_ROOT" symbolic-ref --quiet --short HEAD)" || true
   [[ "$branch" == main ]] || {
     printf 'Action repository must be on main, got %s\n' "${branch:-detached HEAD}" >&2
@@ -65,13 +64,12 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
   printf '%s\n' 'Action HEAD must exactly match published origin/main before release.' >&2
   exit 1
 }
-make --no-print-directory -C "$PROJECT_ROOT" validate-node
+make --no-print-directory -C "$PROJECT_ROOT" validate-node-runtime
 remote="$(origin_remote_url "$ONE_NODE_DIR")"
-case "$remote" in
-  "https://github.com/$ONE_NODE_REPOSITORY"|"https://github.com/$ONE_NODE_REPOSITORY.git"|\
-  "git@github.com:$ONE_NODE_REPOSITORY"|"git@github.com:$ONE_NODE_REPOSITORY.git") ;;
-  *) printf 'One Node origin must be %s, got %s\n' "$ONE_NODE_REPOSITORY" "$remote" >&2; exit 1 ;;
-esac
+is_github_remote "$remote" "$ONE_NODE_REPOSITORY" || {
+  printf 'One Node origin must be %s, got %s\n' "$ONE_NODE_REPOSITORY" "$remote" >&2
+  exit 1
+}
 
 [[ -z "$(git -C "$ONE_NODE_DIR" status --porcelain --untracked-files=all)" ]] || {
   printf 'One Node worktree must be clean: %s\n' "$ONE_NODE_DIR" >&2

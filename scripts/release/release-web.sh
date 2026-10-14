@@ -38,11 +38,10 @@ validate_source_repository() {
     exit 1
   }
   remote="$(origin_remote_url "$directory")"
-  case "$remote" in
-    "https://github.com/$expected_repository"|"https://github.com/$expected_repository.git"|\
-    "git@github.com:$expected_repository"|"git@github.com:$expected_repository.git") ;;
-    *) printf '%s origin must be %s, got %s\n' "$label" "$expected_repository" "$remote" >&2; exit 1 ;;
-  esac
+  is_github_remote "$remote" "$expected_repository" || {
+    printf '%s origin must be %s, got %s\n' "$label" "$expected_repository" "$remote" >&2
+    exit 1
+  }
   branch="$(git -C "$directory" symbolic-ref --quiet --short HEAD)" || {
     printf '%s source repository must be on a branch\n' "$label" >&2
     exit 1
@@ -58,11 +57,10 @@ validate_source_repository() {
 validate_action_repository() {
   local remote branch status
   remote="$(origin_remote_url "$PROJECT_ROOT")"
-  case "$remote" in
-    "https://github.com/$ACTION_REPOSITORY"|"https://github.com/$ACTION_REPOSITORY.git"|\
-    "git@github.com:$ACTION_REPOSITORY"|"git@github.com:$ACTION_REPOSITORY.git") ;;
-    *) printf 'Action origin must be %s, got %s\n' "$ACTION_REPOSITORY" "$remote" >&2; exit 1 ;;
-  esac
+  is_github_remote "$remote" "$ACTION_REPOSITORY" || {
+    printf 'Action origin must be %s, got %s\n' "$ACTION_REPOSITORY" "$remote" >&2
+    exit 1
+  }
   branch="$(git -C "$PROJECT_ROOT" symbolic-ref --quiet --short HEAD)" || true
   [[ "$branch" == main ]] || {
     printf 'Action repository must be on main, got %s\n' "${branch:-detached HEAD}" >&2

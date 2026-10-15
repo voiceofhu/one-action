@@ -91,6 +91,16 @@ load_product() {
   PRODUCT_CONTAINER="$PRODUCT_NAME"
   PRODUCT_SERVICE="$PRODUCT_KEY"
   PRODUCT_WEB_DIST="/opt/$PRODUCT_NAME/web-dist"
+  PRODUCT_DOCKERFILE='deploy/docker/Dockerfile'
+  PRODUCT_COMPOSE_FILE='deploy/docker/docker-compose.yml'
+  if [[ "$PRODUCT_KEY" == node ]]; then
+    PRODUCT_IMAGE='ghcr.io/voiceofhu/one-node-server'
+    PRODUCT_CONTAINER='one-node-server'
+    PRODUCT_SERVICE=server
+    PRODUCT_WEB_DIST='/app/web-dist'
+    PRODUCT_DOCKERFILE=Dockerfile
+    PRODUCT_COMPOSE_FILE='deploy/docker-compose.yml'
+  fi
   PRODUCT_SERVER_WORKFLOW="$PRODUCT_KEY-server.yml"
   PRODUCT_WEB_WORKFLOW="$PRODUCT_KEY-web.yml"
 }
@@ -105,6 +115,8 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     web_repository "$PRODUCT_WEB_REPOSITORY" \
     public_url "$PRODUCT_PUBLIC_URL" \
     image "$PRODUCT_IMAGE" \
+    dockerfile "$PRODUCT_DOCKERFILE" \
+    compose_file "$PRODUCT_COMPOSE_FILE" \
     environment "$PRODUCT_ENVIRONMENT" \
     remote_dir "$PRODUCT_REMOTE_DIR" \
     pnpm_version "$PRODUCT_PNPM_VERSION" \

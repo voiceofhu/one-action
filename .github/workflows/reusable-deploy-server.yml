@@ -40,6 +40,8 @@ jobs:
       backend_repository: ${{ steps.product.outputs.backend_repository }}
       web_repository: ${{ steps.product.outputs.web_repository }}
       image: ${{ steps.product.outputs.image }}
+      dockerfile: ${{ steps.product.outputs.dockerfile }}
+      compose_file: ${{ steps.product.outputs.compose_file }}
       pnpm_version: ${{ steps.product.outputs.pnpm_version }}
       public_url: ${{ steps.product.outputs.public_url }}
       remote_dir: ${{ steps.product.outputs.remote_dir }}
@@ -136,7 +138,7 @@ jobs:
       backend_repository: ${{ needs.prepare.outputs.backend_repository }}
       web_repository: ${{ needs.prepare.outputs.web_repository }}
       image: ${{ needs.prepare.outputs.image }}
-      dockerfile: deploy/docker/Dockerfile
+      dockerfile: ${{ needs.prepare.outputs.dockerfile }}
       pnpm_version: ${{ needs.prepare.outputs.pnpm_version }}
       action_sha: ${{ github.sha }}
       backend_sha: ${{ needs.prepare.outputs.backend_sha }}
@@ -208,7 +210,7 @@ jobs:
           SSH_HOST: one-${{ inputs.product }}-deploy
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || needs.prepare.outputs.remote_dir }}
           DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
-          COMPOSE_FILE: backend/deploy/docker/docker-compose.yml
+          COMPOSE_FILE: backend/${{ needs.prepare.outputs.compose_file }}
           PUBLIC_URL: ${{ vars.DEPLOY_URL || needs.prepare.outputs.public_url }}
         run: exec bash action/scripts/deploy/deploy-server.sh
 

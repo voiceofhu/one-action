@@ -85,6 +85,9 @@ Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose �
 
 各 Backend 仓库提供 `deploy/docker/Dockerfile` 与 `deploy/docker/docker-compose.yml`；Compose 服务名为
 `<key>`，镜像内 Web 位于 `/opt/one-<key>/web-dist`，运行时从挂载的 `/opt/one-<key>/web/current` 托管。
+One Node Server 使用根目录 `Dockerfile` 与 `deploy/docker-compose.yml`，Compose 服务名为 `server`，
+容器名为 `one-node-server`，镜像内 Web 位于 `/app/web-dist`，运行时从挂载的 `/app/web/current` 托管。
+Server 镜像发布到 `ghcr.io/voiceofhu/one-node-server`；`ghcr.io/voiceofhu/one-node` 用于 Node Runtime。
 One AMZ 以单容器 `all` 模式同时运行 API 与全部后台 Worker；One Mail 的镜像需要 OpenSSL（IMAP/SMTP 的 native-tls）。
 每个产品的 pnpm 版本也记录在 `products.json`，镜像构建与独立 Web 构建使用同一版本。
 

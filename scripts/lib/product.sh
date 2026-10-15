@@ -100,6 +100,12 @@ load_product() {
     PRODUCT_WEB_DIST='/app/web-dist'
     PRODUCT_DOCKERFILE=Dockerfile
     PRODUCT_COMPOSE_FILE='deploy/docker-compose.yml'
+  elif [[ "$PRODUCT_KEY" == browser ]]; then
+    PRODUCT_IMAGE='ghcr.io/voiceofhu/one-browser-backend'
+    PRODUCT_CONTAINER='one-browser-server'
+    PRODUCT_SERVICE=server
+    PRODUCT_DOCKERFILE=Dockerfile
+    PRODUCT_COMPOSE_FILE='deploy/docker-compose.yml'
   fi
   PRODUCT_SERVER_WORKFLOW="$PRODUCT_KEY-server.yml"
   PRODUCT_WEB_WORKFLOW="$PRODUCT_KEY-web.yml"

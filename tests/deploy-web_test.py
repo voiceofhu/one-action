@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as tmp:
   with tarfile.open(archive,'w:gz') as tar:
    for file in dist.iterdir():tar.add(file,arcname=file.name)
   digest=hashlib.sha256(archive.read_bytes()).hexdigest()
-  result=subprocess.run(['bash','-s','--',str(remote),sha,digest,'https://user.example.com'],input=body,text=True,capture_output=True,env=dict(os.environ,PATH=str(binary)+':'+os.environ['PATH'],FAIL_HEALTH=fail,TEST_WEB_SHA=sha))
+  result=subprocess.run(['bash','-s','--',str(remote),sha,digest,'https://user.example.com','/'],input=body,text=True,capture_output=True,env=dict(os.environ,PATH=str(binary)+':'+os.environ['PATH'],FAIL_HEALTH=fail,TEST_WEB_SHA=sha))
   assert (result.returncode==0)==(fail=='0'),(fail,result.returncode,result.stdout,result.stderr)
   assert (web/'current/index.html').read_text()==('new' if fail=='0' else 'old')
 print('PASS: remote Web activation and health-failure rollback; previous files retained')

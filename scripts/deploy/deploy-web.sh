@@ -27,12 +27,13 @@ ssh "$SSH_HOST" "test -L '$REMOTE_DIR/web/current' && test -f '$REMOTE_DIR/web/c
   exit 1
 }
 scp "$WEB_ARCHIVE" "$SSH_HOST:$REMOTE_DIR/web/$WEB_SHA.tar.gz"
-ssh "$SSH_HOST" bash -s -- "$REMOTE_DIR" "$WEB_SHA" "$archive_sha" "${PUBLIC_URL%/}" <<'REMOTE_DEPLOY'
+ssh "$SSH_HOST" bash -s -- "$REMOTE_DIR" "$WEB_SHA" "$archive_sha" "${PUBLIC_URL%/}" "$PRODUCT_WEB_HEALTH_PATH" <<'REMOTE_DEPLOY'
 set -Eeuo pipefail
 remote_dir=$1
 web_sha=$2
 archive_sha=$3
 public_url=$4
+web_health_path=$5
 cd "$remote_dir/web"
 exec 9>.deploy.lock
 flock -w 120 9
@@ -64,7 +65,7 @@ ready=false
 for attempt in $(seq 1 15); do
   revision=$(curl --fail --silent --show-error --connect-timeout 3 --max-time 10 \
     "$public_url/one-web-revision.txt?release=$web_sha" || true)
-  if [[ "$revision" == "$web_sha" ]] && curl --fail --silent --show-error --max-time 10 "$public_url/" >/dev/null; then
+  if [[ "$revision" == "$web_sha" ]] && curl --fail --silent --show-error --max-time 10 "$public_url$web_health_path" >/dev/null; then
     ready=true
     break
   fi

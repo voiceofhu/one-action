@@ -91,6 +91,7 @@ load_product() {
   PRODUCT_CONTAINER="$PRODUCT_NAME"
   PRODUCT_SERVICE="$PRODUCT_KEY"
   PRODUCT_WEB_DIST="/opt/$PRODUCT_NAME/web-dist"
+  PRODUCT_WEB_HEALTH_PATH=/
   PRODUCT_DOCKERFILE='deploy/docker/Dockerfile'
   PRODUCT_COMPOSE_FILE='deploy/docker/docker-compose.yml'
   if [[ "$PRODUCT_KEY" == node ]]; then
@@ -106,6 +107,8 @@ load_product() {
     PRODUCT_SERVICE=server
     PRODUCT_DOCKERFILE=Dockerfile
     PRODUCT_COMPOSE_FILE='deploy/docker-compose.yml'
+  elif [[ "$PRODUCT_KEY" == amz ]]; then
+    PRODUCT_WEB_HEALTH_PATH=/login
   fi
   PRODUCT_SERVER_WORKFLOW="$PRODUCT_KEY-server.yml"
   PRODUCT_WEB_WORKFLOW="$PRODUCT_KEY-web.yml"

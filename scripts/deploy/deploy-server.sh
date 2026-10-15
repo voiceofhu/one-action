@@ -59,6 +59,7 @@ remote_arguments=(
   "$REMOTE_DIR" "$DOCKER_IMAGE" "$PUBLIC_URL" "$PRODUCT_TITLE" "$PRODUCT_IMAGE"
   "$PRODUCT_CONTAINER" "$PRODUCT_SERVICE" "$PRODUCT_NAME" "$PRODUCT_WEB_DIST"
   "$PRODUCT_SERVICE_PORT" "$PRODUCT_READY_PATH"
+  "$PRODUCT_WEB_HEALTH_PATH"
 )
 # ssh joins its arguments into one string for the remote shell, so quote each
 # value (the title contains a space) to keep the positional arguments intact.
@@ -78,6 +79,7 @@ project_name=$8
 web_dist=$9
 service_port=${10}
 ready_path=${11}
+web_health_path=${12}
 
 cd "$remote_dir"
 test -f docker-compose.yml.next
@@ -157,7 +159,7 @@ published_port="$(docker port "$container_name" "$service_port/tcp" 2>/dev/null 
   && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
     "http://127.0.0.1:$published_port$ready_path" >/dev/null \
   && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-    "http://127.0.0.1:$published_port/" >/dev/null || {
+    "http://127.0.0.1:$published_port$web_health_path" >/dev/null || {
   docker logs --tail 120 "$container_name" >&2 || true
   false
 }
@@ -173,7 +175,7 @@ for attempt in $(seq 1 30); do
   if curl --fail --silent --show-error --connect-timeout 3 --max-time 10 \
     "$public_url$ready_path" >/dev/null \
     && curl --fail --silent --show-error --connect-timeout 3 --max-time 10 \
-      "$public_url/" >/dev/null; then
+      "$public_url$web_health_path" >/dev/null; then
     public_ready=true
     printf '%s public endpoint is ready: %s\n' "$title" "$public_url"
     break

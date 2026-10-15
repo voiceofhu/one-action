@@ -91,6 +91,7 @@ Server 镜像发布到 `ghcr.io/voiceofhu/one-node-server`；`ghcr.io/voiceofhu/
 One Browser 也使用根目录 `Dockerfile` 与 `deploy/docker-compose.yml`，保留 Compose 服务 `server`、
 容器 `one-browser-server` 和镜像仓库 `ghcr.io/voiceofhu/one-browser-backend`，Web 目录沿用上述 `/opt/one-browser` 布局。
 One AMZ 以单容器 `all` 模式同时运行 API 与全部后台 Worker；One Mail 的镜像需要 OpenSSL（IMAP/SMTP 的 native-tls）。
+One AMZ 的 Web 健康检查使用 `/login`；`/` 属于公开店铺路由，未配置店铺的管理域名会按契约返回 404。
 每个产品的 pnpm 版本也记录在 `products.json`，镜像构建与独立 Web 构建使用同一版本。
 
 ```mermaid

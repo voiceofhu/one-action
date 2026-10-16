@@ -1,4 +1,5 @@
 name: One AMZ Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/amz-server/<version> tags pushed by `make deploy-amz-server`.
 "on":

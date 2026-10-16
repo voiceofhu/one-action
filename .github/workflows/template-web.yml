@@ -1,4 +1,5 @@
 name: One Template Web
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/template-web/<version> tags pushed by `make deploy-template-web`.
 "on":

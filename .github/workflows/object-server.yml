@@ -1,4 +1,5 @@
 name: One Object Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/object-server/<version> tags pushed by `make deploy-object-server`.
 "on":

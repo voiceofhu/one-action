@@ -1,4 +1,5 @@
 name: One Pay Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/pay-server/<version> tags pushed by `make deploy-pay-server`.
 "on":

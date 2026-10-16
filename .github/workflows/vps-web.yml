@@ -1,4 +1,5 @@
 name: One VPS Web
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/vps-web/<version> tags pushed by `make deploy-vps-web`.
 "on":

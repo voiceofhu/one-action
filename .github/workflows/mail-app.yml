@@ -1,4 +1,5 @@
 name: One Mail App
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/mail-app/<version> tags pushed by `make deploy-mail-app`.
 'on':

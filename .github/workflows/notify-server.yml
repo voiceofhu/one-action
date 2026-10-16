@@ -1,4 +1,5 @@
 name: One Notify Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/notify-server/<version> tags pushed by `make deploy-notify-server`.
 "on":

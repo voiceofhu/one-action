@@ -1,4 +1,5 @@
 name: One AMZ Web
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/amz-web/<version> tags pushed by `make deploy-amz-web`.
 "on":

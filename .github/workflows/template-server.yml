@@ -1,4 +1,5 @@
 name: One Template Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/template-server/<version> tags pushed by `make deploy-template-server`.
 "on":

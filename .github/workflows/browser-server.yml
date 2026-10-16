@@ -1,4 +1,5 @@
 name: One Browser Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/browser-server/<version> tags pushed by `make deploy-browser-server`.
 "on":

@@ -1,4 +1,5 @@
 name: One Browser Egress
+run-name: ${{ github.workflow }}
 
 # Runs on a deploy/browser-egress/<version> tag (scripts/release/trigger.sh)
 # whose message pins the exact Egress commit.

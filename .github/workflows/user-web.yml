@@ -1,4 +1,5 @@
 name: One User Web
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/user-web/<version> tags pushed by `make deploy-user-web`.
 "on":

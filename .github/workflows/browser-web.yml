@@ -1,4 +1,5 @@
 name: One Browser Web
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/browser-web/<version> tags pushed by `make deploy-browser-web`.
 "on":

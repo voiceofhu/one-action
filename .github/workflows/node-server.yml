@@ -1,4 +1,5 @@
 name: One Node Server
+run-name: ${{ github.workflow }}
 
 # Runs on deploy/node-server/<version> tags pushed by `make deploy-node-server`.
 "on":

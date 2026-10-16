@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every products.json product must load, and its <product>-server.yml and
-# <product>-web.yml entries must be dispatch-only shells that forward their
-# inputs unchanged to the shared reusable workflows.
+# <product>-web.yml entries must be thin shells that run only on their own
+# deploy/<product>-<component>/* tag and call the shared reusable workflows.
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,12 +29,10 @@ ruby -ryaml -e '
   entries = {
     "server" => {
       reusable: "reusable-deploy-server.yml",
-      inputs: %w[backend_ref backend_repository confirmation expected_action_sha publish version web_ref web_repository],
       permissions: { "contents" => "read", "packages" => "write" },
     },
     "web" => {
       reusable: "reusable-deploy-web.yml",
-      inputs: %w[confirmation deploy expected_action_sha publish version web_ref web_repository],
       permissions: nil,
     },
   }
@@ -46,9 +44,8 @@ ruby -ryaml -e '
       fail = ->(message) { abort("#{file}: #{message}") }
       document = load.(file)
       trigger = document.fetch("on")
-      fail.("must be dispatch-only") unless trigger.keys == ["workflow_dispatch"]
-      inputs = trigger.fetch("workflow_dispatch").fetch("inputs")
-      fail.("unexpected dispatch inputs") unless inputs.keys.sort == contract[:inputs]
+      fail.("must run only on its deploy tag") unless
+        trigger == { "push" => { "tags" => ["deploy/#{product}-#{component}/*"] } }
       fail.("top-level permissions must be contents: read") unless
         document.fetch("permissions") == { "contents" => "read" }
       jobs = document.fetch("jobs")
@@ -57,14 +54,13 @@ ruby -ryaml -e '
       fail.("must call #{contract[:reusable]}") unless
         job.fetch("uses") == "./.github/workflows/#{contract[:reusable]}"
       fail.("unexpected job permissions") unless job["permissions"] == contract[:permissions]
-      forwarded = contract[:inputs].to_h { |name| [name, "${{ inputs.#{name} }}"] }
-      fail.("must forward every input unchanged with product: #{product}") unless
-        job.fetch("with") == { "product" => product }.merge(forwarded)
+      fail.("must pass only product: #{product}") unless
+        job.fetch("with") == { "product" => product }
       fail.("must pass exactly the deployment secrets") unless
         job.fetch("secrets") == secrets.to_h { |name| [name, "${{ secrets.#{name} }}"] }
       if component == "server"
         fail.("publish concurrency changed") unless document.fetch("concurrency") == {
-          "group" => "one-#{product}-publish-${{ inputs.version }}", "cancel-in-progress" => false
+          "group" => "one-#{product}-publish-${{ github.ref_name }}", "cancel-in-progress" => false
         }
       end
     end
@@ -88,32 +84,5 @@ ruby -ryaml -e '
   abort("reusable-deploy-server.yml: deploy must wait for prepare and publish") unless
     jobs.fetch("deploy").fetch("needs") == %w[prepare publish]
 ' "$PROJECT_ROOT" "${products[@]}"
-
-# The dispatcher must derive repositories and confirmations from the manifest.
-test_dir="$(mktemp -d)"
-trap 'rm -rf "$test_dir"' EXIT
-dispatch() {
-  PATH="$PROJECT_ROOT/tests/fakes:$PATH" FAKE_CURL_LOG="$test_dir/curl.log" \
-    FAKE_EXPECTED_AUTH=abcdefghijklmnopqrstuvwxyz123456 GH_TOKEN=abcdefghijklmnopqrstuvwxyz123456 \
-    ACTION_REPOSITORY=voiceofhu/one-action DRY_RUN=true \
-    bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" "$@" 2>&1
-}
-action_sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-for product in "${products[@]}"; do
-  load_product "$product"
-  server="$(dispatch "$PRODUCT_SERVER_WORKFLOW" \
-    "backend_repository=$PRODUCT_BACKEND_REPOSITORY" backend_ref=main \
-    "web_repository=$PRODUCT_WEB_REPOSITORY" web_ref=main version=1.2.3 publish=true)"
-  grep -Fq "\"confirmation\": \"enable:$PRODUCT_NAME:$action_sha\"" <<<"$server" ||
-    product_die "$PRODUCT_SERVER_WORKFLOW dispatch has the wrong confirmation: $server"
-  web="$(dispatch "$PRODUCT_WEB_WORKFLOW" "web_repository=$PRODUCT_WEB_REPOSITORY" web_ref=main \
-    version=1.2.3 publish=true deploy=true)"
-  grep -Fq "\"confirmation\": \"enable:$PRODUCT_KEY-web:$action_sha\"" <<<"$web" ||
-    product_die "$PRODUCT_WEB_WORKFLOW dispatch has the wrong confirmation: $web"
-  if dispatch "$PRODUCT_WEB_WORKFLOW" web_repository=voiceofhu/not-this-product web_ref=main \
-    version=1.2.3 publish=true deploy=true >/dev/null; then
-    product_die "$PRODUCT_WEB_WORKFLOW accepted a foreign Web repository"
-  fi
-done
 
 printf 'Product manifest and %s entry workflow pairs are consistent.\n' "${#products[@]}"

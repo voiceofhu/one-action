@@ -1,4 +1,4 @@
-.PHONY: validate validate-user validate-node-runtime validate-browser-app validate-browser-egress check-token
+.PHONY: validate validate-user validate-node-runtime validate-browser-app validate-browser-egress
 
 validate:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh
@@ -18,9 +18,6 @@ validate-browser-app:
 .PHONY: validate-mail-app
 validate-mail-app:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh mail-app
-
-check-token:
-	@bash $(PROJECT_ROOT)/scripts/github/check-token.sh
 
 .PHONY: validate-user-web
 validate-user-web:

@@ -1,19 +1,12 @@
 name: Reusable Deploy Web
 
 # Builds one products.json Web and switches the server's static release without
-# restarting the Server. Product entry workflows (<product>-web.yml) only
-# forward their dispatch inputs.
+# restarting the Server. Product entry workflows (<product>-web.yml) run on a
+# deploy/<product>-web/<version> tag whose message pins the exact Web commit.
 'on':
   workflow_call:
     inputs:
       product: { required: true, type: string }
-      expected_action_sha: { required: true, type: string }
-      confirmation: { required: true, type: string }
-      web_repository: { required: true, type: string }
-      web_ref: { required: true, type: string }
-      version: { required: true, type: string }
-      publish: { required: true, type: boolean }
-      deploy: { required: true, type: boolean }
     secrets:
       GH_TOKEN: { required: true }
       DEPLOY_HOST: { required: false }
@@ -32,54 +25,48 @@ jobs:
     outputs:
       public_url: ${{ steps.product.outputs.public_url }}
       remote_dir: ${{ steps.product.outputs.remote_dir }}
+      web_sha: ${{ steps.trigger.outputs.web_ref }}
     steps:
       - name: Checkout exact product manifest
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           path: action
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
           sparse-checkout: |
             products.json
+            scripts/github
             scripts/lib
           sparse-checkout-cone-mode: false
+      - name: Read deploy tag
+        id: trigger
+        shell: bash
+        working-directory: action
+        env:
+          PRODUCT: ${{ inputs.product }}
+        run: bash scripts/github/read-trigger.sh "$PRODUCT-web" web_ref >>"$GITHUB_OUTPUT"
       - name: Load product
         id: product
         shell: bash
         env:
           PRODUCT: ${{ inputs.product }}
         run: bash action/scripts/lib/product.sh "$PRODUCT" >>"$GITHUB_OUTPUT"
-      - name: Validate dispatch
+      - name: Validate caller
         shell: bash
         env:
           ACTION_REPOSITORY: ${{ github.repository }}
-          ACTION_SHA: ${{ github.sha }}
           CALLER_WORKFLOW: ${{ github.workflow_ref }}
           PRODUCT: ${{ inputs.product }}
-          PRODUCT_WEB_REPOSITORY: ${{ steps.product.outputs.web_repository }}
-          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
-          CONFIRMATION: ${{ inputs.confirmation }}
-          WEB_REPOSITORY: ${{ inputs.web_repository }}
-          WEB_SHA: ${{ inputs.web_ref }}
-          VERSION: ${{ inputs.version }}
-          PUBLISH: ${{ inputs.publish }}
-          DEPLOY: ${{ inputs.deploy }}
         run: |
           set -Eeuo pipefail
           [[ "$ACTION_REPOSITORY" == voiceofhu/one-action \
-            && "$CALLER_WORKFLOW" == "voiceofhu/one-action/.github/workflows/$PRODUCT-web.yml@"* \
-            && "$ACTION_SHA" == "$EXPECTED_ACTION_SHA" \
-            && "$CONFIRMATION" == "enable:$PRODUCT-web:$ACTION_SHA" \
-            && "$WEB_REPOSITORY" == "$PRODUCT_WEB_REPOSITORY" \
-            && "$WEB_SHA" =~ ^[0-9a-f]{40}$ \
-            && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
-            && "$PUBLISH" == true && "$DEPLOY" == true ]]
+            && "$CALLER_WORKFLOW" == "voiceofhu/one-action/.github/workflows/$PRODUCT-web.yml@"* ]]
       - name: Checkout exact Web source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.product.outputs.web_repository }}
-          ref: ${{ inputs.web_ref }}
+          ref: ${{ steps.trigger.outputs.web_ref }}
           path: web
           token: ${{ secrets.GH_TOKEN }}
           persist-credentials: false
@@ -93,8 +80,8 @@ jobs:
       - name: Build production Web
         shell: bash
         env:
-          WEB_SHA: ${{ inputs.web_ref }}
-          VITE_APP_VERSION: ${{ inputs.version }}
+          WEB_SHA: ${{ steps.trigger.outputs.web_ref }}
+          VITE_APP_VERSION: ${{ steps.trigger.outputs.version }}
         run: |
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web build
@@ -143,6 +130,6 @@ jobs:
           SSH_HOST: one-${{ inputs.product }}-deploy
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || needs.build.outputs.remote_dir }}
           WEB_ARCHIVE: dist/web.tar.gz
-          WEB_SHA: ${{ inputs.web_ref }}
+          WEB_SHA: ${{ needs.build.outputs.web_sha }}
           PUBLIC_URL: ${{ vars.DEPLOY_URL || needs.build.outputs.public_url }}
         run: exec bash action/scripts/deploy/deploy-web.sh

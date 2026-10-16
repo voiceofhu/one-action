@@ -1,20 +1,15 @@
 name: One Browser App
 
+# Runs on deploy/browser-app/<version> tags pushed by `make deploy-browser-app`.
 'on':
-  workflow_dispatch:
-    inputs:
-      expected_action_sha: {required: true, type: string}
-      confirmation: {required: true, type: string}
-      app_repository: {required: true, type: string}
-      app_ref: {required: true, type: string}
-      version: {required: true, type: string}
-      publish: {required: true, type: boolean}
+  push:
+    tags: ["deploy/browser-app/*"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: one-browser-app-publish-${{ inputs.version }}
+  group: one-browser-app-publish-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -24,11 +19,5 @@ jobs:
     uses: ./.github/workflows/reusable-publish-tauri-app.yml
     with:
       app: browser
-      expected_action_sha: ${{ inputs.expected_action_sha }}
-      confirmation: ${{ inputs.confirmation }}
-      app_repository: ${{ inputs.app_repository }}
-      app_ref: ${{ inputs.app_ref }}
-      version: ${{ inputs.version }}
-      publish: ${{ inputs.publish }}
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}

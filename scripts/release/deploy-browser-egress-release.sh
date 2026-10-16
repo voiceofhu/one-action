@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-github_token=${GH_TOKEN:-}
-unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/git-remote.sh
@@ -106,18 +104,7 @@ cargo test --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml" \
   exit 1
 }
 
-CONFIRM_DISPATCH="dispatch:browser-egress.yml:$action_head" \
-CONFIRM_MUTATION="mutate:browser-egress.yml:$action_head" \
-DRY_RUN=false \
-ACTION_REPOSITORY="$ACTION_REPOSITORY" \
-ACTION_REF=main \
-GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml \
-  "egress_repository=$ONE_BROWSER_EGRESS_REPOSITORY" \
-  "egress_ref=$egress_ref" \
-  "version=$VERSION" \
-  'environment=prod' \
-  'publish=true' \
-  'deploy=false'
+DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
+  browser-egress.yml "$action_head" "$VERSION" "egress_ref=$egress_ref"
 printf 'Triggered One Browser Egress image and Release workflow for %s at Action %s\n' \
   "$release_tag" "$action_head"

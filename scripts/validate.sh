@@ -40,10 +40,9 @@ case "$scope" in
       "$PROJECT_ROOT/node/scripts/install/tuning.sh"
       "$PROJECT_ROOT/node/upgrade.sh"
       "$PROJECT_ROOT/node/uninstall.sh"
-      "$PROJECT_ROOT/scripts/github/check-token.sh"
-      "$PROJECT_ROOT/scripts/github/common.sh"
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/github/read-trigger.sh"
+      "$PROJECT_ROOT/scripts/release/trigger.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "$PROJECT_ROOT/scripts/lib/app.sh"
@@ -51,7 +50,6 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
       "${active_tests[@]}"
-      "$PROJECT_ROOT/tests/fakes/curl"
       "$PROJECT_ROOT/scripts/validate.sh"
       "$PROJECT_ROOT/node/tests/firewall_test.sh"
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
@@ -78,7 +76,8 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/github/read-trigger.sh"
+      "$PROJECT_ROOT/scripts/release/trigger.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/scripts/validate.sh"
@@ -103,10 +102,10 @@ case "$scope" in
     shell_files=(
       "$PROJECT_ROOT/node/scripts/install/firewall.sh"
       "$PROJECT_ROOT/node/scripts/install/tuning.sh"
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/github/read-trigger.sh"
+      "$PROJECT_ROOT/scripts/release/trigger.sh"
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "${active_tests[@]}"
-      "$PROJECT_ROOT/tests/fakes/curl"
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(
@@ -137,10 +136,10 @@ case "$scope" in
       "$PROJECT_ROOT/egress/uninstall.sh"
       "$PROJECT_ROOT"/egress/scripts/install/*.sh
       "$PROJECT_ROOT"/egress/scripts/uninstall/*.sh
-      "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh"
+      "$PROJECT_ROOT/scripts/github/read-trigger.sh"
+      "$PROJECT_ROOT/scripts/release/trigger.sh"
       "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "${active_tests[@]}"
-      "$PROJECT_ROOT/tests/fakes/curl"
       "$PROJECT_ROOT/scripts/validate.sh"
     )
     active_workflows=(

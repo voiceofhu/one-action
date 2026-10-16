@@ -50,7 +50,6 @@ help:
 		"  make validate-browser-egress Validate only Browser Egress release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \
-		"  make check-token            Check read-only access to active workflows" \
 		"" \
 		"Product releases:" \
 		"  make deploy-servers         Deploy every server product (PRODUCTS=\"user mail\" to pick)" \
@@ -73,9 +72,9 @@ help:
 		"  make deploy-user-web        Check and deploy Web without restarting User Server" \
 		"  make deploy-node-server     Publish and deploy One Node with Web" \
 		"  make deploy-node-web        Deploy Web without restarting Node Server" \
-		"  make deploy-node            Check One Node source and dispatch compile/upload" \
-		"  make deploy-browser-app     Check One Browser App and dispatch installer publication" \
-		"  make deploy-mail-app        Check One Mail App and dispatch installer publication" \
+		"  make deploy-node            Check One Node source and tag compile/upload" \
+		"  make deploy-browser-app     Check One Browser App and tag installer publication" \
+		"  make deploy-mail-app        Check One Mail App and tag installer publication" \
 		"  make deploy-browser-server  Publish and deploy One Browser with Web" \
 		"  make deploy-browser-web     Deploy Web without restarting Browser Server" \
-		"  make deploy-browser-egress  Check Browser Egress and dispatch package/image publication"
+		"  make deploy-browser-egress  Check Browser Egress and tag package/image publication"

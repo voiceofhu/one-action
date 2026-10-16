@@ -1,29 +1,16 @@
 name: One Node Runtime
 
+# Runs on a deploy/node-runtime/<version> tag (scripts/release/trigger.sh)
+# whose message pins the exact One Node commit.
 'on':
-  workflow_dispatch:
-    inputs:
-      expected_action_sha:
-        required: true
-        type: string
-      confirmation:
-        required: true
-        type: string
-      node_repository:
-        required: true
-        type: string
-      node_ref:
-        required: true
-        type: string
-      version:
-        required: true
-        type: string
+  push:
+    tags: ["deploy/node-runtime/*"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: one-node-${{ inputs.version }}
+  group: one-node-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -38,25 +25,33 @@ jobs:
       upstream_version: ${{ steps.source.outputs.upstream_version }}
       upstream_commit: ${{ steps.source.outputs.upstream_commit }}
     steps:
+      - name: Checkout exact Action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: action
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: scripts/github
+          sparse-checkout-cone-mode: false
+
+      - name: Read deploy tag
+        id: trigger
+        shell: bash
+        working-directory: action
+        run: bash scripts/github/read-trigger.sh node-runtime node_ref >>"$GITHUB_OUTPUT"
+
       - name: Resolve exact One Node source
         id: source
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          EXPECTED_ACTION_SHA: ${{ inputs.expected_action_sha }}
-          CONFIRMATION: ${{ inputs.confirmation }}
-          NODE_REPOSITORY: ${{ inputs.node_repository }}
-          NODE_SHA: ${{ inputs.node_ref }}
-          VERSION: ${{ inputs.version }}
+          NODE_REPOSITORY: voiceofhu/one-node-node
+          NODE_SHA: ${{ steps.trigger.outputs.node_ref }}
+          VERSION: ${{ steps.trigger.outputs.version }}
         run: |
           set -Eeuo pipefail
-          [[ "$GITHUB_REPOSITORY" == voiceofhu/one-action ]]
           [[ -n "$GH_TOKEN" ]]
-          [[ "$GITHUB_SHA" == "$EXPECTED_ACTION_SHA" ]]
-          [[ "$CONFIRMATION" == "enable:node:$GITHUB_SHA" ]]
-          [[ "$NODE_REPOSITORY" == voiceofhu/one-node-node ]]
-          [[ "$NODE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           read_source_file() {
             gh api "repos/$NODE_REPOSITORY/contents/$1?ref=$NODE_SHA" --jq .content |
               base64 --decode | tr -d '\r\n'

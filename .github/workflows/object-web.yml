@@ -1,15 +1,9 @@
 name: One Object Web
 
+# Runs on deploy/object-web/<version> tags pushed by `make deploy-object-web`.
 "on":
-  workflow_dispatch:
-    inputs:
-      expected_action_sha: { required: true, type: string }
-      confirmation: { required: true, type: string }
-      web_repository: { required: true, type: string }
-      web_ref: { required: true, type: string }
-      version: { required: true, type: string }
-      publish: { required: true, type: boolean }
-      deploy: { required: true, type: boolean }
+  push:
+    tags: ["deploy/object-web/*"]
 
 permissions:
   contents: read
@@ -19,13 +13,6 @@ jobs:
     uses: ./.github/workflows/reusable-deploy-web.yml
     with:
       product: object
-      expected_action_sha: ${{ inputs.expected_action_sha }}
-      confirmation: ${{ inputs.confirmation }}
-      web_repository: ${{ inputs.web_repository }}
-      web_ref: ${{ inputs.web_ref }}
-      version: ${{ inputs.version }}
-      publish: ${{ inputs.publish }}
-      deploy: ${{ inputs.deploy }}
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

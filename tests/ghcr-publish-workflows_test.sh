@@ -21,18 +21,6 @@ reject_text() {
   fi
 }
 
-assert_dispatch_only() {
-  local file=$1 expected=$2
-  ruby -ryaml -e '
-    workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
-    trigger = workflow.fetch("on")
-    abort("workflow trigger must contain only workflow_dispatch") unless
-      trigger.keys == ["workflow_dispatch"]
-    actual = trigger.fetch("workflow_dispatch").fetch("inputs").keys.sort.join(",")
-    abort("unexpected dispatch inputs: #{actual}") unless actual == ARGV.fetch(1)
-  ' "$file" "$expected"
-}
-
 assert_jobs() {
   local file=$1 expected=$2
   ruby -ryaml -e '

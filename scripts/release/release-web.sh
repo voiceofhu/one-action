@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-github_token=${GH_TOKEN:-}
-unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/git-remote.sh
@@ -80,7 +78,7 @@ web_head=${web_state#*|}
 action_head="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
 printf '%s Web: %s at %s, version %s\n' "$PRODUCT_TITLE" "$web_repository" "$web_head" "$VERSION"
 if [[ "$dry_run" == true ]]; then
-  printf '%s\n' 'DRY_RUN=true: no checks, dispatch, or deployment.'
+  printf '%s\n' 'DRY_RUN=true: no checks, deploy tag, or deployment.'
   exit 0
 fi
 [[ "$(validate_action_repository)" == "$action_head" ]]
@@ -95,9 +93,5 @@ for gate in "${PRODUCT_WEB_GATES[@]}"; do
 done
 [[ "$(validate_source_repository Web "$web_dir" "$web_repository" package.json)" == "$web_state" ]]
 [[ "$(validate_action_repository)" == "$action_head" ]]
-CONFIRM_DISPATCH="dispatch:$PRODUCT_WEB_WORKFLOW:$action_head" \
-CONFIRM_MUTATION="mutate:$PRODUCT_WEB_WORKFLOW:$action_head" \
-DRY_RUN=false ACTION_REPOSITORY="$ACTION_REPOSITORY" ACTION_REF=main GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" "$PRODUCT_WEB_WORKFLOW" \
-  "web_repository=$web_repository" "web_ref=$web_head" \
-  "version=$VERSION" 'publish=true' 'deploy=true'
+DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
+  "$PRODUCT_WEB_WORKFLOW" "$action_head" "$VERSION" "web_ref=$web_head"

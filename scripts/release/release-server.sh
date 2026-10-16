@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-github_token=${GH_TOKEN:-}
-unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/git-remote.sh
@@ -117,12 +115,12 @@ printf '%s\n' \
   "  backend branch:   $backend_branch" \
   "  web branch:       $web_branch" \
   "  action:           $ACTION_REPOSITORY@$action_head" \
-  '  trigger:          workflow_dispatch'
+  "  trigger:          tag deploy/$PRODUCT_KEY-server/$VERSION"
 
 if [[ "$dry_run" == true ]]; then
 	printf '%s\n' \
-		  'DRY_RUN=true: checks, source versions, commits, pushes, dispatch, uploads, and deployment are not changed.' \
-		  'The real run checks both sources, publishes version commits, then dispatches image publication and deployment.'
+		  'DRY_RUN=true: checks, source versions, commits, pushes, tags, uploads, and deployment are not changed.' \
+		  'The real run checks both sources, publishes version commits, then pushes the deploy tag that starts image publication and deployment.'
   exit 0
 fi
 
@@ -289,13 +287,13 @@ fi
 
 if ! git -C "$backend_dir" push origin \
   "HEAD:refs/heads/$backend_branch"; then
-  printf '%s\n' 'Backend version commit push failed; dispatch was not attempted.' >&2
+  printf '%s\n' 'Backend version commit push failed; the deploy tag was not pushed.' >&2
   exit 1
 fi
 if ! git -C "$web_dir" push origin \
   "HEAD:refs/heads/$web_branch"; then
   printf '%s\n' \
-    'Web version commit push failed; dispatch was not attempted.' \
+    'Web version commit push failed; the deploy tag was not pushed.' \
     'Backend version commit may already be published.' >&2
   exit 1
 fi
@@ -306,18 +304,7 @@ printf '%s\n' \
   "Published Backend source: $backend_repository@$backend_release_sha" \
   "Published Web source: $web_repository@$web_release_sha"
 
-CONFIRM_DISPATCH="dispatch:$PRODUCT_SERVER_WORKFLOW:$action_head" \
-CONFIRM_MUTATION="mutate:$PRODUCT_SERVER_WORKFLOW:$action_head" \
-DRY_RUN=false \
-ACTION_REPOSITORY="$ACTION_REPOSITORY" \
-ACTION_REF=main \
-GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" "$PRODUCT_SERVER_WORKFLOW" \
-  "backend_repository=$backend_repository" \
+DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
+  "$PRODUCT_SERVER_WORKFLOW" "$action_head" "$VERSION" \
   "backend_ref=$backend_release_sha" \
-  "web_repository=$web_repository" \
-  "web_ref=$web_release_sha" \
-  "version=$VERSION" \
-  'publish=true'
-printf 'Dispatched %s image publication and server deployment at Action %s.\n' \
-  "$PRODUCT_TITLE" "$action_head"
+  "web_ref=$web_release_sha"

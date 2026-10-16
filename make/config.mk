@@ -1,9 +1,4 @@
-override ACTION_REPOSITORY := voiceofhu/one-action
-ACTION_REF ?= main
-override GITHUB_API_URL := https://api.github.com
 DRY_RUN ?= true
-CONFIRM_DISPATCH ?=
-CONFIRM_MUTATION ?=
 
 SOURCE_ROOT ?= $(abspath $(PROJECT_ROOT)/..)
 GENERATED_VERSION ?= $(shell node -e "\
@@ -41,8 +36,7 @@ endif
 
 # Export values so recipes expand them inside quoted shell parameters rather
 # than interpolating untrusted Make values into recipe source.
-export ACTION_REPOSITORY ACTION_REF GITHUB_API_URL DRY_RUN
-export CONFIRM_DISPATCH CONFIRM_MUTATION GH_TOKEN
+export DRY_RUN
 export GENERATED_VERSION
 export ONE_BROWSER_APP_REF
 export ONE_BROWSER_EGRESS_REPOSITORY

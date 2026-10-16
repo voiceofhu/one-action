@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-github_token=${GH_TOKEN:-}
-unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/git-remote.sh
@@ -106,15 +104,7 @@ make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
   exit 1
 }
 
-CONFIRM_DISPATCH="dispatch:node-runtime.yml:$action_head" \
-CONFIRM_MUTATION="mutate:node-runtime.yml:$action_head" \
-DRY_RUN=false \
-ACTION_REPOSITORY="$ACTION_REPOSITORY" \
-ACTION_REF=main \
-GH_TOKEN="$github_token" \
-bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" node-runtime.yml \
-  "node_repository=$ONE_NODE_REPOSITORY" \
-  "node_ref=$node_ref" \
-  "version=$VERSION"
+DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
+  node-runtime.yml "$action_head" "$VERSION" "node_ref=$node_ref"
 printf 'Triggered One Node image and Release workflow for %s at Action %s\n' \
   "$release_tag" "$action_head"

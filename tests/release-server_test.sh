@@ -23,7 +23,6 @@ export LOCAL_GATE_LOG="$test_dir/local-gates.log"
 cat >"$fake_bin/make" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
 printf 'make' >>"$LOCAL_GATE_LOG"
 printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
 printf '\n' >>"$LOCAL_GATE_LOG"
@@ -31,7 +30,6 @@ EOF
 cat >"$fake_bin/cargo" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
 printf 'cargo' >>"$LOCAL_GATE_LOG"
 printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
 printf '\n' >>"$LOCAL_GATE_LOG"
@@ -39,7 +37,6 @@ EOF
 cat >"$fake_bin/go" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
 printf 'go' >>"$LOCAL_GATE_LOG"
 printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
 printf '\n' >>"$LOCAL_GATE_LOG"
@@ -47,22 +44,18 @@ EOF
 cat >"$fake_bin/pnpm" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]
 printf 'pnpm' >>"$LOCAL_GATE_LOG"
 printf ' %s' "$@" >>"$LOCAL_GATE_LOG"
 printf '\n' >>"$LOCAL_GATE_LOG"
 EOF
 chmod 0755 "$fake_bin/make" "$fake_bin/cargo" "$fake_bin/go" "$fake_bin/pnpm"
-export PATH="$fake_bin:$PROJECT_ROOT/tests/fakes:$PATH"
-export FAKE_CURL_LOG="$test_dir/curl.log"
+export PATH="$fake_bin:$PATH"
 export DRY_RUN=false
 export VERSION=26.815.1234
 backend_dir="$test_dir/backend"
 web_dir="$test_dir/web"
 export "${product_env_prefix}_BACKEND_DIR=$backend_dir"
 export "${product_env_prefix}_WEB_DIR=$web_dir"
-unset GH_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION FAKE_EXPECTED_AUTH FAKE_CURL_ALLOW_POST
-: >"$FAKE_CURL_LOG"
 : >"$LOCAL_GATE_LOG"
 
 backend_bare="$test_dir/backend-origin.git"
@@ -111,23 +104,18 @@ git -C "$web_dir" config \
   "https://github.com/$PRODUCT_WEB_REPOSITORY.git"
 git -C "$web_dir" push -q -u origin main
 
-# Run from a temporary canonical One Action repository so dispatch validation
+# Run from a temporary canonical One Action repository so the deploy tag
 # cannot touch the developer's real checkout.
-mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github" "$action_dir/scripts/lib"
+mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github" "$action_dir/scripts/lib" \
+  "$action_dir/.github/workflows"
 cp "$PROJECT_ROOT/products.json" "$action_dir/products.json"
 cp "$PROJECT_ROOT/scripts/lib/product.sh" "$action_dir/scripts/lib/product.sh"
 cp "$PROJECT_ROOT/scripts/lib/git-remote.sh" "$action_dir/scripts/lib/git-remote.sh"
-cp "$PROJECT_ROOT/scripts/release/release-server.sh" \
-  "$action_dir/scripts/release/release-server.sh"
-export DISPATCH_LOG="$test_dir/dispatch.log"
-cat >"$action_dir/scripts/github/dispatch-workflow.sh" <<'SCRIPT'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-[[ "$GH_TOKEN" == local-token-must-not-reach-gates ]]
-printf '%s\n' "$*" >"$DISPATCH_LOG"
-SCRIPT
-chmod 0755 "$action_dir/scripts/github/dispatch-workflow.sh"
-git -C "$action_dir" add products.json scripts
+cp "$PROJECT_ROOT/scripts/release/release-server.sh" "$PROJECT_ROOT/scripts/release/trigger.sh" \
+  "$action_dir/scripts/release/"
+cp "$PROJECT_ROOT/scripts/github/read-trigger.sh" "$action_dir/scripts/github/"
+cp "$PROJECT_ROOT/.github/workflows/$PRODUCT_SERVER_WORKFLOW" "$action_dir/.github/workflows/"
+git -C "$action_dir" add products.json scripts .github
 git -C "$action_dir" commit -qm initial
 git -C "$action_dir" remote add origin https://github.com/voiceofhu/one-action.git
 git -C "$action_dir" config \
@@ -135,8 +123,7 @@ git -C "$action_dir" config \
   https://github.com/voiceofhu/one-action.git
 git -C "$action_dir" push -q -u origin main
 
-GH_TOKEN=local-token-must-not-reach-gates \
-GITHUB_TOKEN=runtime-token-must-not-reach-gates \
+env -u GH_TOKEN -u GITHUB_TOKEN \
   bash "$action_dir/scripts/release/release-server.sh" "$PRODUCT_KEY" >"$test_dir/output"
 
 if [[ "$PRODUCT_BACKEND_LANGUAGE" == rust ]]; then
@@ -154,9 +141,8 @@ node -e '
 ' "$web_dir/package.json"
 
 if git --git-dir="$backend_bare" for-each-ref --format='%(refname)' refs/tags | grep -q . ||
-  git --git-dir="$web_bare" for-each-ref --format='%(refname)' refs/tags | grep -q . ||
-  git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags | grep -q .; then
-  printf '%s release created a forbidden repository tag.\n' "$PRODUCT_TITLE" >&2
+  git --git-dir="$web_bare" for-each-ref --format='%(refname)' refs/tags | grep -q .; then
+  printf '%s release tagged a private source repository.\n' "$PRODUCT_TITLE" >&2
   exit 1
 fi
 git --git-dir="$web_bare" show refs/heads/main:package.json |
@@ -164,14 +150,23 @@ git --git-dir="$web_bare" show refs/heads/main:package.json |
 
 backend_sha="$(git --git-dir="$backend_bare" rev-parse refs/heads/main)"
 web_sha="$(git --git-dir="$web_bare" rev-parse refs/heads/main)"
-for field in \
-  "$PRODUCT_SERVER_WORKFLOW" \
-  "backend_ref=$backend_sha" \
-  "web_ref=$web_sha" \
-  version=26.815.1234 \
-  publish=true; do
-  grep -Fq "$field" "$DISPATCH_LOG"
-done
+tag="deploy/$PRODUCT_KEY-server/26.815.1234"
+[[ "$(git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags)" == "refs/tags/$tag" ]]
+action_sha="$(git --git-dir="$action_bare" rev-parse refs/heads/main)"
+
+# The workflow side reads the pushed tag back exactly as Actions would.
+runner_dir="$test_dir/runner"
+git clone -q "$action_bare" "$runner_dir"
+GITHUB_REPOSITORY=voiceofhu/one-action GITHUB_REF_TYPE=tag GITHUB_REF="refs/tags/$tag" \
+  GITHUB_SHA="$action_sha" \
+  bash -c 'cd "$1" && bash scripts/github/read-trigger.sh "$2-server" backend_ref web_ref' \
+  _ "$runner_dir" "$PRODUCT_KEY" >"$test_dir/trigger"
+printf '%s\n' version=26.815.1234 "backend_ref=$backend_sha" "web_ref=$web_sha" |
+  cmp -s - "$test_dir/trigger" || {
+  printf 'Deploy tag did not round-trip:\n' >&2
+  cat "$test_dir/trigger" >&2
+  exit 1
+}
 
 require_gate() {
   grep -Fxq "$1" "$LOCAL_GATE_LOG" || {
@@ -191,10 +186,4 @@ for gate in "${PRODUCT_WEB_GATES[@]}"; do
   require_gate "pnpm --dir $web_dir $gate"
 done
 
-if [ -s "$FAKE_CURL_LOG" ]; then
-  printf 'Local %s release unexpectedly called the GitHub API.\n' "$PRODUCT_TITLE" >&2
-  exit 1
-fi
-
-[[ -z "${GH_TOKEN:-}" ]]
-printf '%s version commits dispatched exact SHAs without repository tags.\n' "$PRODUCT_TITLE"
+printf '%s version commits triggered a deploy tag pinning exact SHAs.\n' "$PRODUCT_TITLE"

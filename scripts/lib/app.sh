@@ -37,7 +37,6 @@ load_app() {
   APP_CARGO_PACKAGE="$(app_field cargo_package)"
   APP_PNPM_VERSION="$(app_field pnpm_version)"
   APP_MACOS_CONFIG="$(jq -r --arg key "$APP_KEY" '.[$key].macos_config // ""' "$APP_MANIFEST")"
-  APP_CONFIRMATION="$(app_field confirmation)"
 
   app_require "$APP_TITLE" '^One [A-Za-z0-9 ]+$' title
   app_require "$APP_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' repository
@@ -45,7 +44,6 @@ load_app() {
   app_require "$APP_CARGO_PACKAGE" '^[a-z0-9_-]+$' cargo_package
   app_require "$APP_PNPM_VERSION" '^[0-9]+\.[0-9]+\.[0-9]+$' pnpm_version
   app_require "$APP_MACOS_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' macos_config
-  app_require "$APP_CONFIRMATION" '^[a-z][a-z0-9-]*$' confirmation
 
   APP_RELEASE_PREFIX="one-$APP_KEY-app"
   APP_WORKFLOW="$APP_KEY-app.yml"
@@ -59,6 +57,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     repository "$APP_REPOSITORY" \
     pnpm_version "$APP_PNPM_VERSION" \
     macos_config "$APP_MACOS_CONFIG" \
-    confirmation "$APP_CONFIRMATION" \
     release_prefix "$APP_RELEASE_PREFIX"
 fi

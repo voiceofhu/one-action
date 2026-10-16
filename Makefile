@@ -17,6 +17,7 @@ include $(PROJECT_ROOT)/make/browser.mk
 
 # Batch deploys: `make deploy-servers` (all) or `make deploy-servers PRODUCTS="user mail"`.
 .PHONY: deploy-servers deploy-webs
+
 deploy-servers:
 	@KIND=server DRY_RUN="$(if $(filter command line,$(origin DRY_RUN)),$(DRY_RUN),false)" \
 		VERSION="$(VERSION)" bash $(PROJECT_ROOT)/scripts/release/deploy-many.sh $(PRODUCTS)

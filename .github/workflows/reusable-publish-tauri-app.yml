@@ -251,13 +251,16 @@ jobs:
             exit 1
           fi
           tag_file="$RUNNER_TEMP/$RELEASE_PREFIX-tag.json"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >"$tag_file"; then
+          tag_error="$RUNNER_TEMP/$RELEASE_PREFIX-tag.err"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >"$tag_file" 2>"$tag_error"; then
             jq -e --arg sha "$GITHUB_SHA" \
               '.object.type == "commit" and .object.sha == $sha' "$tag_file" >/dev/null
           elif jq -e '.status == "404" or .status == 404' "$tag_file" >/dev/null; then
+            echo "Release tag $RELEASE_TAG does not exist yet; creating it."
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA" >"$tag_file"
           else
+            cat "$tag_error" >&2
             echo 'Unable to verify App release tag; refusing to publish.' >&2
             exit 1
           fi
@@ -270,3 +273,5 @@ jobs:
             --title "$APP_TITLE v$VERSION" \
             --notes "$body" \
             --latest=false
+          printf 'Published %s with assets:\n' "$RELEASE_TAG"
+          printf '  %s\n' release-assets/*

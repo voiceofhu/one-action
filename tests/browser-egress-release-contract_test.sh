@@ -33,25 +33,23 @@ require_text "$PROJECT_ROOT/make/config.mk" 'BROWSER_EGRESS_RELEASE_VERSION ='
 require_text "$PROJECT_ROOT/make/config.mk" '$(GENERATED_VERSION)'
 
 require_text "$RELEASE_SCRIPT" 'release_tag="one-browser-egress-v$VERSION"'
-require_text "$RELEASE_SCRIPT" 'unset GH_TOKEN GITHUB_TOKEN CONFIRM_DISPATCH CONFIRM_MUTATION'
 require_text "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" validate-browser-egress'
 require_text "$RELEASE_SCRIPT" 'cargo fmt --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml" --all --check'
 require_text "$RELEASE_SCRIPT" 'cargo clippy --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml"'
 require_text "$RELEASE_SCRIPT" 'cargo test --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml"'
-require_text "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml'
+require_text "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/release/trigger.sh"'
 require_text "$RELEASE_SCRIPT" '"egress_ref=$egress_ref"'
 
 test_line="$(line_number "$RELEASE_SCRIPT" 'cargo test --manifest-path "$ONE_BROWSER_EGRESS_DIR/Cargo.toml"')"
-dispatch_line="$(line_number "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml')"
-((test_line < dispatch_line)) || fail 'Egress tests must finish before workflow dispatch'
+trigger_line="$(line_number "$RELEASE_SCRIPT" 'bash "$PROJECT_ROOT/scripts/release/trigger.sh"')"
+((test_line < trigger_line)) || fail 'Egress tests must finish before the deploy tag is pushed'
 
-if grep -Fq -- 'git -C "$PROJECT_ROOT" tag' "$RELEASE_SCRIPT" ||
-  grep -Fq -- 'git -C "$ONE_BROWSER_EGRESS_DIR" tag' "$RELEASE_SCRIPT"; then
-  fail 'Local Browser Egress release must not create repository tags'
+if grep -Fq -- 'git -C "$ONE_BROWSER_EGRESS_DIR" tag' "$RELEASE_SCRIPT"; then
+  fail 'Local Browser Egress release must not tag the private source repository'
 fi
 
-require_text "$WORKFLOW" 'egress_repository: {required: true, type: string}'
-require_text "$WORKFLOW" 'egress_ref: {required: true, type: string}'
+require_text "$WORKFLOW" 'tags: ["deploy/browser-egress/*"]'
+require_text "$WORKFLOW" 'read-trigger.sh browser-egress egress_ref'
 require_text "$WORKFLOW" 'repository: voiceofhu/one-browser-egress'
 require_text "$WORKFLOW" '  build:'
 require_text "$WORKFLOW" 'name: Build and upload linux/${{ matrix.arch }}'
@@ -108,30 +106,15 @@ grep -Fq 'One Browser Egress release plan:' <<<"$dry_run_output" ||
 grep -Fq 'DRY_RUN=true:' <<<"$dry_run_output" ||
   fail 'Browser Egress dry-run did not stop before repository or API access'
 
-dispatch_fixture="$(mktemp -d)"
-trap 'rm -rf "$dispatch_fixture"' EXIT
-ln -s "$PROJECT_ROOT/tests/fakes/curl" "$dispatch_fixture/curl"
-: >"$dispatch_fixture/curl.log"
-dispatch_output="$(
-  PATH="$dispatch_fixture:$PATH" \
-  GH_TOKEN=abcdefghijklmnopqrstuvwxyz123456 \
-  FAKE_EXPECTED_AUTH=abcdefghijklmnopqrstuvwxyz123456 \
-  FAKE_CURL_LOG="$dispatch_fixture/curl.log" \
-  DRY_RUN=true \
-  ACTION_REPOSITORY=voiceofhu/one-action \
-  ACTION_REF=main \
-  bash "$PROJECT_ROOT/scripts/github/dispatch-workflow.sh" browser-egress.yml \
-    egress_repository=voiceofhu/one-browser-egress \
-    egress_ref=main \
-    version=26.901.1200 \
-    environment=prod \
-    publish=true \
-    deploy=false
+trigger_output="$(
+  DRY_RUN=true bash "$PROJECT_ROOT/scripts/release/trigger.sh" browser-egress.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 26.901.1200 \
+    egress_ref=2222222222222222222222222222222222222222
 )"
-grep -Fq '"egress_ref": "2222222222222222222222222222222222222222"' <<<"$dispatch_output" ||
-  fail 'Browser Egress dispatch did not pin the exact source commit'
-grep -Fq '"confirmation": "enable:egress:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' <<<"$dispatch_output" ||
-  fail 'Browser Egress dispatch did not carry the publication confirmation'
+grep -Fq 'Trigger: push tag deploy/browser-egress/26.901.1200 at Action aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  <<<"$trigger_output" || fail 'Browser Egress trigger did not plan the deploy tag'
+grep -Fxq 'egress_ref=2222222222222222222222222222222222222222' <<<"$trigger_output" ||
+  fail 'Browser Egress trigger did not pin the exact source commit'
 
 printf '%s\n' 'One Browser Egress release contract tests passed.'
 

@@ -20,11 +20,10 @@ for input in '' v26.907.101; do
   expected=${expected:-26.906.1234}
   make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-app" \
     ENV_FILE=/dev/null DRY_RUN=true VERSION="$input" GENERATED_VERSION=26.906.1234 \
-    >"$test_dir/plan"
-  sed '/DRY_RUN=true:/,$d' "$test_dir/plan" | \
-    jq -e --arg version "$expected" --arg repository "$APP_REPOSITORY" --arg confirmation "enable:$APP_CONFIRMATION:" '
-      .inputs.version == $version and .inputs.publish == true
-      and .inputs.app_repository == $repository and (.inputs.confirmation | startswith($confirmation))' >/dev/null
+    >"$test_dir/plan" 2>&1
+  grep -Fq "$APP_RELEASE_PREFIX-v$expected from $APP_REPOSITORY branch main (tag deploy/$APP_KEY-app/$expected)" \
+    "$test_dir/plan"
+  grep -Fq 'DRY_RUN=true: no checks ran and no deploy tag was pushed.' "$test_dir/plan"
 done
 
 ruby -ryaml -e '
@@ -41,7 +40,7 @@ ruby -ryaml -e '
   build = workflow.fetch("jobs").fetch("build")
   steps = build.fetch("steps")
   stamp = steps.find { |s| s["name"] == "Set App release version" }
-  abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ inputs.version }}"
+  abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ needs.prepare.outputs.version }}"
   abort "stamp must precede bundle" unless steps.index(stamp) < steps.index(steps.find { |s| s["name"] == "Build desktop bundle" })
   File.write("#{ARGV[1]}/stamp.sh", stamp.fetch("run"))
   publish = workflow.fetch("jobs").fetch("publish").fetch("steps").find { |s| s["name"] == "Publish release assets" }
@@ -69,7 +68,7 @@ case "$2" in
       denied) printf '%s\n' '{"status":"403"}'; exit 1 ;;
       transport) exit 1 ;;
     esac ;;
-  */commits/*) printf '{"sha":"%s"}\n' "$APP_REF" ;;
+  */commits/*) printf '{"sha":"%s"}\n' "$APP_SHA" ;;
   *) exit 99 ;;
 esac
 SCRIPT
@@ -77,15 +76,13 @@ chmod +x "$test_dir/bin/gh"
 export PATH="$test_dir/bin:$PATH"
 export RUNNER_TEMP="$test_dir" GITHUB_OUTPUT="$test_dir/output" API_LOG="$test_dir/api"
 export ACTION_REPOSITORY=voiceofhu/one-action ACTION_SERVER_URL=https://github.com
-export ACTION_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa EXPECTED_ACTION_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-export CALLER_WORKFLOW="voiceofhu/one-action/.github/workflows/$APP_WORKFLOW@refs/heads/main"
-export APP_KEY APP_TITLE EXPECTED_APP_REPOSITORY="$APP_REPOSITORY" CONFIRMATION_NAME="$APP_CONFIRMATION"
-export RELEASE_PREFIX="$APP_RELEASE_PREFIX"
-export CONFIRMATION="enable:$APP_CONFIRMATION:$ACTION_SHA" APP_REPOSITORY
-export APP_REF=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb VERSION=26.906.1234 PUBLISH=true
+export ACTION_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+export CALLER_WORKFLOW="voiceofhu/one-action/.github/workflows/$APP_WORKFLOW@refs/tags/deploy/$APP_KEY-app/26.906.1234"
+export APP_KEY APP_TITLE APP_REPOSITORY RELEASE_PREFIX="$APP_RELEASE_PREFIX"
+export APP_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb VERSION=26.906.1234
 export GH_TOKEN=fixture-token
 
-for bad in CALLER_WORKFLOW CONFIRMATION; do
+for bad in CALLER_WORKFLOW APP_SHA VERSION; do
   export RELEASE_STATE=missing
   : >"$GITHUB_OUTPUT"
   if env "$bad=wrong" bash "$test_dir/prepare.sh" >/dev/null 2>&1; then
@@ -142,7 +139,7 @@ case "$1 $2" in
     elif [[ "$TAG_STATE" == missing && ! -f "$TAG_CREATED" ]]; then
       printf '%s\n' '{"status":"404"}'; exit 1
     elif [[ "$TAG_STATE" == mismatch ]]; then
-      printf '{"object":{"type":"commit","sha":"%s"}}\n' "$APP_REF"
+      printf '{"object":{"type":"commit","sha":"%s"}}\n' "$APP_SHA"
     else
       printf '{"object":{"type":"commit","sha":"%s"}}\n' "$GITHUB_SHA"
     fi
@@ -150,7 +147,7 @@ case "$1 $2" in
   *) exit 99 ;;
 esac
 SCRIPT
-export GITHUB_REPOSITORY=voiceofhu/one-action GITHUB_SHA="$ACTION_SHA" APP_SHA="$APP_REF"
+export GITHUB_REPOSITORY=voiceofhu/one-action GITHUB_SHA="$ACTION_SHA"
 export RELEASE_TAG="$APP_RELEASE_PREFIX-v$VERSION" TAG_CREATED="$test_dir/tag-created"
 for state in missing matching mismatch denied transport; do
   export TAG_STATE="$state"

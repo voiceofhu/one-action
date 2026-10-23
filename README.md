@@ -187,6 +187,18 @@ make deploy-browser-egress DRY_RUN=true
 brew install shellcheck actionlint zizmor
 ```
 
+自动修复 Rust 后端格式：
+
+```bash
+make fix
+make fix-servers PRODUCTS="object user pay amz browser"
+```
+
+`fix` 与 `fix-servers` 是同一入口，默认处理 `products.json` 中所有 Rust 后端，
+也可用 `PRODUCTS` 选择产品；Go 后端 One Node 会跳过。命令仅执行 `cargo fmt --all`
+写回格式，不运行检查、编译或部署。源码路径沿用 `SOURCE_ROOT` 与各产品的
+`ONE_<PRODUCT>_BACKEND_DIR` 配置。
+
 基础检查：
 
 ```bash

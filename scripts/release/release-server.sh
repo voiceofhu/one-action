@@ -120,7 +120,7 @@ printf '%s\n' \
 if [[ "$dry_run" == true ]]; then
 	printf '%s\n' \
 		  'DRY_RUN=true: checks, source versions, commits, pushes, tags, uploads, and deployment are not changed.' \
-		  'The real run checks both sources, publishes version commits, then pushes the deploy tag that starts image publication and deployment.'
+		  'The real run fixes Rust backend formatting, checks both sources, publishes formatting and version commits, then pushes the deploy tag that starts image publication and deployment.'
   exit 0
 fi
 
@@ -145,12 +145,6 @@ action_remote_head="$(git -C "$PROJECT_ROOT" rev-parse --verify refs/remotes/ori
     'Push or synchronize the Action main branch, then retry; no source repositories were changed.' >&2
   exit 1
 }
-make --no-print-directory -C "$PROJECT_ROOT" "validate-$PRODUCT_KEY"
-[[ "$(validate_action_repository)" == "$action_head" ]] || {
-  printf '%s\n' 'Action source changed during local validation.' >&2
-  exit 1
-}
-
 preflight_release_repository() {
   local label=$1
   local directory=$2
@@ -171,6 +165,27 @@ preflight_release_repository() {
 preflight_release_repository Backend "$backend_dir" "$backend_branch"
 preflight_release_repository Web "$web_dir" "$web_branch"
 
+[[ "$(validate_source_repository Backend "$backend_dir" "$backend_repository" "$backend_manifest")" == "$backend_state" ]] || {
+  printf '%s\n' 'Backend source changed before automatic formatting.' >&2
+  exit 1
+}
+if [[ "$PRODUCT_BACKEND_LANGUAGE" == rust ]]; then
+  make --no-print-directory -C "$PROJECT_ROOT" fix-servers \
+    PRODUCTS="$PRODUCT_KEY" SOURCE_ROOT="$SOURCE_ROOT" "$backend_dir_variable=$backend_dir"
+fi
+backend_fixed_diff="$(git -C "$backend_dir" diff --binary HEAD | git hash-object --stdin)"
+backend_fixed_status="$(git -C "$backend_dir" status --porcelain --untracked-files=all)"
+backend_release_paths="$(
+  { git -C "$backend_dir" diff --name-only; printf '%s\n' Cargo.lock Cargo.toml; } |
+    LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//'
+)"
+
+make --no-print-directory -C "$PROJECT_ROOT" "validate-$PRODUCT_KEY"
+[[ "$(validate_action_repository)" == "$action_head" ]] || {
+  printf '%s\n' 'Action source changed during local validation.' >&2
+  exit 1
+}
+
 (
   cd "$backend_dir"
   case "$PRODUCT_BACKEND_LANGUAGE" in
@@ -185,7 +200,8 @@ for gate in "${PRODUCT_WEB_GATES[@]}"; do
 done
 
 [[ "$(git -C "$backend_dir" rev-parse HEAD)" == "$backend_head" \
-  && -z "$(git -C "$backend_dir" status --porcelain --untracked-files=all)" ]] || {
+  && "$(git -C "$backend_dir" diff --binary HEAD | git hash-object --stdin)" == "$backend_fixed_diff" \
+  && "$(git -C "$backend_dir" status --porcelain --untracked-files=all)" == "$backend_fixed_status" ]] || {
   printf '%s\n' 'Backend source changed during local validation.' >&2
   exit 1
 }
@@ -269,8 +285,8 @@ verify_changed_paths() {
 # Go backends have no version file; the image build stamps VERSION via ldflags.
 if [[ "$PRODUCT_BACKEND_LANGUAGE" == rust ]]; then
   update_backend_version
-  verify_changed_paths Backend "$backend_dir" 'Cargo.lock Cargo.toml'
-  git -C "$backend_dir" add -- Cargo.toml Cargo.lock
+  verify_changed_paths Backend "$backend_dir" "$backend_release_paths"
+  git -C "$backend_dir" add --update
   if ! git -C "$backend_dir" diff --cached --quiet; then
     git -C "$backend_dir" commit -m \
       "chore: bump $PRODUCT_BACKEND_PACKAGE version to $VERSION"

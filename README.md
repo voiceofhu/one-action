@@ -56,7 +56,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 
 1. 确认 `one-action` 和源码仓库位于干净分支，origin 指向固定仓库；
 2. 确认本地 `one-action/main` 与 `origin/main` 完全一致；
-3. 本地仅运行对应产品的格式、lint、测试和构建；
+3. Server 发布先自动修复对应 Rust 后端格式，再运行该产品的格式、lint、测试和构建；所有门禁通过后才将格式修改与版本号一起提交；
 4. One User 推送版本文件提交；One Node Server、One Node Runtime 和 Browser 三条链路要求本地 HEAD 已与远端分支完全一致；这些链路不创建源码发布 tag；
 5. 本地入口 `scripts/release/trigger.sh` 在已发布的 Action `main` 提交上创建注释标签
    `deploy/<workflow>/<version>` 并用普通 `git push` 推送；标签说明逐行写入精确源码 SHA
@@ -104,10 +104,11 @@ One AMZ 的 Web 健康检查使用 `/login`；`/` 属于公开店铺路由，未
 flowchart TD
     start[make deploy-{key}-server] --> plan[生成版本并检查 Action/Backend/Web 三个仓库]
     plan --> action[确认 one-action HEAD 等于 origin/main]
-    action --> contract[validate-{key}]
-    contract --> backend[Backend: cargo fmt + make test]
+    action --> fix[修复当前 Rust Backend 格式: fix-servers]
+    fix --> contract[validate-{key}]
+    contract --> backend[Backend: cargo fmt --check + make test]
     backend --> web[Web: frozen install + products.json 中的检查]
-    web --> version[提交并推送 Backend/Web 版本文件]
+    web --> version[提交并推送 Backend 格式修改与 Backend/Web 版本文件]
     version --> control[推送标签 deploy/{key}-server/{version}<br/>说明中写精确 Backend/Web SHA]
     control --> resolve[reusable-deploy-server.yml 读取标签并校验调用方、清单和 SHA]
     resolve --> image[amd64 + arm64 原生构建，发布 OCI index]
@@ -198,6 +199,11 @@ make fix-servers PRODUCTS="object user pay amz browser"
 也可用 `PRODUCTS` 选择产品；Go 后端 One Node 会跳过。命令仅执行 `cargo fmt --all`
 写回格式，不运行检查、编译或部署。源码路径沿用 `SOURCE_ROOT` 与各产品的
 `ONE_<PRODUCT>_BACKEND_DIR` 配置。
+
+`make deploy-<key>-server` 和批量 `make deploy-servers` 会在各产品的本地校验前
+自动执行该产品的 `fix-servers`。全部门禁通过后，Rust 后端的格式修改与版本号一起提交、
+推送；校验失败则停止，格式修改保留在工作区，不提交、不推送。发布入口仍要求运行前
+源码仓库干净，`DRY_RUN=true` 不执行格式修复。
 
 基础检查：
 

@@ -36,7 +36,25 @@ prepare_docker_image() {
 	set_product_version "$product_version" "Docker image"
 }
 
+docker_bootstrap_env_file() {
+	printf '%s\n' "${ONE_NODE_STATE_DIR}/bootstrap.env"
+}
+
+# Compose requires every env_file to exist; installs that predate the separate
+# bootstrap file get an empty one before the new compose file is used.
+ensure_docker_bootstrap_env() {
+	bootstrap_env=$(docker_bootstrap_env_file)
+	[ ! -L "$bootstrap_env" ] || die "bootstrap environment file must not be a symlink"
+	if [ -e "$bootstrap_env" ]; then
+		[ -f "$bootstrap_env" ] || die "bootstrap environment file must be a regular file"
+		return 0
+	fi
+	: >"$bootstrap_env"
+	chmod 0600 "$bootstrap_env"
+}
+
 write_docker_source() {
+	bootstrap_env=$(docker_bootstrap_env_file)
 	cat >"$COMPOSE_SOURCE" <<EOF
 services:
   one-node:
@@ -45,17 +63,26 @@ services:
     network_mode: host
     restart: unless-stopped
     read_only: true
+    security_opt:
+      - "no-new-privileges:true"
     cap_add:
       - NET_ADMIN
       - NET_RAW
     env_file:
       - "${ENV_FILE}"
+      - "${bootstrap_env}"
+    # Only runtime state is writable; ${INSTALL_DIR} holds scripts the host
+    # runs as root and must stay outside the container.
     volumes:
-      - "${INSTALL_DIR}:${INSTALL_DIR}"
       - "${ONE_NODE_STATE_DIR}:${ONE_NODE_STATE_DIR}"
       - "/etc/ssl/certs:/etc/ssl/certs:ro"
     tmpfs:
       - /tmp:mode=1777
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
     command:
       - start
 EOF
@@ -63,6 +90,7 @@ EOF
 }
 
 install_docker_runtime() {
+	ensure_docker_bootstrap_env
 	install -m 0600 "$COMPOSE_SOURCE" "$COMPOSE_FILE"
 	docker compose -f "$COMPOSE_FILE" up -d
 	docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" | grep -qx true ||

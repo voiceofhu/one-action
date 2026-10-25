@@ -118,6 +118,9 @@ done
 
 mv -f -- "$request_file" "$running_file"
 write_status running "upgrade started"
+# systemd stops the unit on TimeoutStartSec or shutdown; record that instead
+# of leaving the node reporting a running upgrade.
+trap 'write_status failed "upgrade was interrupted"; rm -f -- "$running_file"; exit 1' HUP INT TERM
 output_file="${update_dir}/last-upgrade.log"
 temporary_output=$(mktemp "${update_dir}/.upgrade-output.XXXXXX")
 chmod 0600 "$temporary_output"
@@ -153,6 +156,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+# The node treats a record older than 30 minutes as abandoned; stop first.
+TimeoutStartSec=20min
 Environment="ONE_NODE_UPDATE_DIR=${ONE_NODE_STATE_DIR}/update"
 ExecStart=/opt/one-node/updater.sh
 UMask=0077

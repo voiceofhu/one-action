@@ -32,12 +32,8 @@ initialize_install_config() {
 	ONE_NODE_STATE_DIR=${ONE_NODE_STATE_DIR:-/var/lib/one-node}
 	HOST_UPDATER_ENABLED="false"
 	ONE_NODE_EXPECTED_CONFIG_REVISION=${ONE_NODE_EXPECTED_CONFIG_REVISION:-0}
-	if [ "${ONE_NODE_ALLOW_INSECURE+x}" != x ]; then
-		case "$ONE_NODE_SERVER" in
-		https://*|grpcs://*) ONE_NODE_ALLOW_INSECURE=false ;;
-		*) ONE_NODE_ALLOW_INSECURE=true ;;
-		esac
-	fi
+	# Plaintext control and downloads are an explicit development opt-in.
+	ONE_NODE_ALLOW_INSECURE=${ONE_NODE_ALLOW_INSECURE:-false}
 	ONE_NODE_ENROLL_TIMEOUT=${ONE_NODE_ENROLL_TIMEOUT:-120}
 	ONE_NODE_ARCH=""
 	ONE_NODE_BINARY_NAME=""

@@ -135,6 +135,7 @@ download_file() {
 	*) die "download URL must use HTTP or HTTPS" ;;
 	esac
 	curl --fail --location --silent --show-error --retry 3 \
+		--connect-timeout 15 --max-time 600 \
 		--proto "$protocols" --proto-redir "$protocols" \
 		--output "$destination" "$url"
 }

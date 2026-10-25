@@ -241,6 +241,7 @@ After=network-pre.target nftables.service
 
 [Service]
 Type=oneshot
+TimeoutStartSec=60s
 Environment="ONE_NODE_FIREWALL_DIR=${ONE_NODE_STATE_DIR}/firewall"
 ExecStart=/opt/one-node/firewall.sh
 UMask=0077

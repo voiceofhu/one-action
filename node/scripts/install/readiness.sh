@@ -97,7 +97,7 @@ wait_for_ready_heartbeat() {
 			return 1
 		fi
 		if identity_is_active && runtime_revisions_are_ready &&
-			! grep -Eq '^[[:space:]]*(export[[:space:]]+)?CONTROL_BOOTSTRAP_TOKEN[[:space:]]*=' "$ENV_FILE"; then
+			! grep -Eq '^[[:space:]]*(export[[:space:]]+)?CONTROL_BOOTSTRAP_TOKEN[[:space:]]*=' "${BOOTSTRAP_ENV_FILE:-$ENV_FILE}"; then
 			return 0
 		fi
 		sleep 1

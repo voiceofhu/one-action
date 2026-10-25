@@ -400,3 +400,84 @@ if grep -R -E 'apt-get purge|docker system prune|docker (rm|rmi).*(xray|Xray)' \
 	printf '%s\n' "uninstaller manages software outside its manifest" >&2
 	exit 1
 fi
+
+(
+	# Plaintext control is never inferred from the server address.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/install/config.sh"
+	unset ONE_NODE_ALLOW_INSECURE
+	ONE_NODE_SERVER="http://control.example:27519"
+	initialize_install_config
+	[ "$ONE_NODE_ALLOW_INSECURE" = false ]
+	ONE_NODE_ID=7
+	ONE_NODE_BOOTSTRAP_TOKEN=token
+	ONE_NODE_VERSION=26.824.1520
+	if (validate_install_config) >"$TEST_TEMP_DIR/plaintext.log" 2>&1; then
+		fail "installer accepted a plaintext control address without ONE_NODE_ALLOW_INSECURE=true"
+	fi
+	grep -F 'plaintext control connections require ONE_NODE_ALLOW_INSECURE=true' \
+		"$TEST_TEMP_DIR/plaintext.log" >/dev/null
+	ONE_NODE_ALLOW_INSECURE=true
+	ONE_NODE_SERVER="http://control.example:27519"
+	initialize_install_config
+	[ "$ONE_NODE_ALLOW_INSECURE" = true ]
+)
+(
+	# Docker mounts only runtime state, rotates logs, and keeps the bootstrap
+	# token in the state directory where the container can remove it.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/install/docker.sh"
+	. "$ROOT_DIR/scripts/install/files.sh"
+	docker_root="$TEST_TEMP_DIR/docker-layout"
+	install -d -m 0700 "$docker_root/tmp" "$docker_root/state"
+	TEMP_DIR="$docker_root/tmp"
+	COMPOSE_SOURCE="$TEMP_DIR/docker-compose.yml"
+	INSTALL_DIR="$docker_root/opt"
+	ENV_FILE="$INSTALL_DIR/.env"
+	ENV_SOURCE="$TEMP_DIR/one-node.env"
+	ONE_NODE_STATE_DIR="$docker_root/state"
+	ONE_NODE_DOCKER_IMAGE="ghcr.io/voiceofhu/one-node@sha256:$(printf '%064d' 3)"
+	CONTAINER_NAME=one-node
+	INSTALL_MODE=docker
+	BOOTSTRAP_ENV_SOURCE="$TEMP_DIR/bootstrap.env"
+	BOOTSTRAP_ENV_FILE=$(docker_bootstrap_env_file)
+	ONE_NODE_ID=7
+	ONE_NODE_SERVER="grpcs://control.example:443"
+	ONE_NODE_BOOTSTRAP_TOKEN='tok$en'
+	write_docker_source
+	grep -F -- "- \"${ONE_NODE_STATE_DIR}:${ONE_NODE_STATE_DIR}\"" "$COMPOSE_SOURCE" >/dev/null
+	if grep -F -- "- \"${INSTALL_DIR}:" "$COMPOSE_SOURCE" >/dev/null; then
+		fail "Docker compose still mounts the host install directory"
+	fi
+	grep -F -- "- \"${ONE_NODE_STATE_DIR}/bootstrap.env\"" "$COMPOSE_SOURCE" >/dev/null
+	grep -F 'driver: local' "$COMPOSE_SOURCE" >/dev/null
+	grep -F 'max-size: "10m"' "$COMPOSE_SOURCE" >/dev/null
+	grep -F 'no-new-privileges:true' "$COMPOSE_SOURCE" >/dev/null
+	write_environment_source
+	if grep -F 'CONTROL_BOOTSTRAP_TOKEN' "$ENV_SOURCE" >/dev/null; then
+		fail "Docker environment kept the bootstrap token in the host install directory"
+	fi
+	grep -Fx "CONTROL_BOOTSTRAP_ENV_FILE=\"${ONE_NODE_STATE_DIR}/bootstrap.env\"" "$ENV_SOURCE" >/dev/null
+	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="tok\$en"' "$BOOTSTRAP_ENV_SOURCE" >/dev/null
+	[ "$(file_mode "$BOOTSTRAP_ENV_SOURCE")" = 600 ]
+	ensure_docker_bootstrap_env
+	[ -f "$BOOTSTRAP_ENV_FILE" ] && [ ! -s "$BOOTSTRAP_ENV_FILE" ]
+	[ "$(file_mode "$BOOTSTRAP_ENV_FILE")" = 600 ]
+)
+(
+	# Native keeps the token in the systemd EnvironmentFile it removes it from.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/install/files.sh"
+	native_root="$TEST_TEMP_DIR/native-layout"
+	install -d -m 0700 "$native_root"
+	ENV_FILE="$native_root/.env"
+	ENV_SOURCE="$native_root/one-node.env"
+	BOOTSTRAP_ENV_FILE=""
+	ONE_NODE_ID=7
+	ONE_NODE_STATE_DIR=/var/lib/one-node
+	ONE_NODE_SERVER="grpcs://control.example:443"
+	ONE_NODE_BOOTSTRAP_TOKEN=token
+	write_environment_source
+	grep -Fx "CONTROL_BOOTSTRAP_ENV_FILE=\"${ENV_FILE}\"" "$ENV_SOURCE" >/dev/null
+	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="token"' "$ENV_SOURCE" >/dev/null
+)

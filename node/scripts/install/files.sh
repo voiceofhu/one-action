@@ -19,6 +19,12 @@ initialize_install_workspace() {
 	UNIT_SOURCE="${TEMP_DIR}/${PROGRAM}.service"
 	COMPOSE_SOURCE="${TEMP_DIR}/docker-compose.yml"
 	RECORD_SOURCE="${TEMP_DIR}/.installation"
+	BOOTSTRAP_ENV_SOURCE="${TEMP_DIR}/bootstrap.env"
+	if [ "$INSTALL_MODE" = "docker" ]; then
+		BOOTSTRAP_ENV_FILE=$(docker_bootstrap_env_file)
+	else
+		BOOTSTRAP_ENV_FILE=$ENV_FILE
+	fi
 	BINARY_FILE="${INSTALL_DIR}/${PROGRAM}"
 	IDENTITY_FILE="${ONE_NODE_STATE_DIR}/node-secret"
 	RUNTIME_STATE_FILE="${ONE_NODE_STATE_DIR}/runtime-active.json"
@@ -51,7 +57,7 @@ on_install_exit() {
 			fi
 		fi
 		remove_host_firewall
-		rm -f -- "$BINARY_FILE" "$MANIFEST_INSTALLER_PATH" "$ENV_FILE" "$COMPOSE_FILE" "$INSTALL_RECORD"
+		rm -f -- "$BINARY_FILE" "$MANIFEST_INSTALLER_PATH" "$ENV_FILE" "$BOOTSTRAP_ENV_FILE" "$COMPOSE_FILE" "$INSTALL_RECORD"
 		if [ "$STATE_DIR_CREATED" = "true" ]; then
 			rmdir -- "$ONE_NODE_STATE_DIR" 2>/dev/null || true
 		fi
@@ -102,6 +108,7 @@ set_product_version() {
 }
 
 write_environment_source() {
+	BOOTSTRAP_ENV_FILE=${BOOTSTRAP_ENV_FILE:-$ENV_FILE}
 	: >"$ENV_SOURCE"
 	chmod 0600 "$ENV_SOURCE"
 	write_env "NODE_NODE_ID" "$ONE_NODE_ID"
@@ -112,9 +119,17 @@ write_environment_source() {
 	fi
 	write_env "NODE_FIREWALL_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/firewall/request"
 	write_env "CONTROL_ADDR" "$ONE_NODE_SERVER"
-	write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"
-	write_env "CONTROL_BOOTSTRAP_ENV_FILE" "$ENV_FILE"
+	write_env "CONTROL_BOOTSTRAP_ENV_FILE" "$BOOTSTRAP_ENV_FILE"
 	write_env "LOG_LEVEL" "info"
+	if [ "$BOOTSTRAP_ENV_FILE" = "$ENV_FILE" ]; then
+		write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"
+	else
+		# Docker keeps the token in the state directory, the only host path the
+		# container can write, so the node can remove it after enrollment.
+		: >"$BOOTSTRAP_ENV_SOURCE"
+		chmod 0600 "$BOOTSTRAP_ENV_SOURCE"
+		printf 'CONTROL_BOOTSTRAP_TOKEN="%s"\n' "$(escape_dotenv "$ONE_NODE_BOOTSTRAP_TOKEN")" >>"$BOOTSTRAP_ENV_SOURCE"
+	fi
 }
 
 write_common_sources() {
@@ -170,6 +185,9 @@ install_common_files() {
 		install -m 0755 "$BINARY_SOURCE" "$BINARY_FILE"
 	fi
 	install -m 0600 "$ENV_SOURCE" "$ENV_FILE"
+	if [ "$BOOTSTRAP_ENV_FILE" != "$ENV_FILE" ]; then
+		install -m 0600 "$BOOTSTRAP_ENV_SOURCE" "$BOOTSTRAP_ENV_FILE"
+	fi
 	install -m 0600 "$RECORD_SOURCE" "$INSTALL_RECORD"
 }
 

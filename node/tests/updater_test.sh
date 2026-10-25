@@ -38,6 +38,11 @@ if [ "$1" = --upgrade ] && [ "$2" = 26.828.1600 ]; then
 	printf '%s\n' '[one-node] upgrade fixture completed'
 	exit 0
 fi
+if [ "$1" = --upgrade ] && [ "$2" = 26.828.1700 ]; then
+	# systemd stops the whole unit on timeout or shutdown.
+	kill -TERM "$PPID"
+	exit 143
+fi
 printf '%s\n' '[one-node] error: nftables is required for One Node firewall management' >&2
 exit 1
 EOF
@@ -102,6 +107,28 @@ if PATH="${fake_bin}:$PATH" ONE_NODE_UPDATE_DIR="$update_dir" ONE_NODE_INSTALLER
 	printf '%s\n' 'updater accepted a non-canonical version' >&2
 	exit 1
 fi
+
+cat >"${update_dir}/request" <<'EOF'
+command_id=command-3
+version=26.828.1700
+state=pending
+requested_at=2026-08-28T08:00:00Z
+updated_at=2026-08-28T08:00:00Z
+message=
+EOF
+chmod 0600 "${update_dir}/request"
+if PATH="${fake_bin}:$PATH" ONE_NODE_UPDATE_DIR="$update_dir" ONE_NODE_INSTALLER="$fake_installer" "$UPDATER_FILE" >/dev/null 2>&1; then
+	printf '%s\n' 'updater reported an interrupted upgrade as successful' >&2
+	exit 1
+fi
+grep -Fx 'command_id=command-3' "${update_dir}/status" >/dev/null
+grep -Fx 'state=failed' "${update_dir}/status" >/dev/null
+grep -Fx 'message=upgrade was interrupted' "${update_dir}/status" >/dev/null
+[ ! -e "${update_dir}/request.running" ] || {
+	printf '%s\n' 'updater left an interrupted request running' >&2
+	exit 1
+}
+grep -Fx 'TimeoutStartSec=20min' "$UPDATER_SERVICE_FILE" >/dev/null
 
 printf '%s\n' 'One Node host updater boundary tests passed.'
 

@@ -2,6 +2,7 @@
 
 stage_docker_upgrade() {
 	prepare_docker_image || return 1
+	ensure_docker_bootstrap_env || return 1
 	write_docker_source || return 1
 	sync -f "$COMPOSE_SOURCE"
 }
@@ -36,6 +37,7 @@ rollback_docker_runtime() {
 	rollback_image=$MANIFEST_PREVIOUS_IMAGE
 	failed_image=$MANIFEST_CURRENT_IMAGE
 	manifest_validate_image "$rollback_image" || return 1
+	ensure_docker_bootstrap_env || return 1
 	ONE_NODE_DOCKER_IMAGE=$rollback_image
 	write_docker_source || return 1
 	sync -f "$COMPOSE_SOURCE" || return 1

@@ -70,6 +70,28 @@ persists pending, running, succeeded, or failed status for the restarted Node
 to report. A manual upgrade from an older installation migrates the existing
 environment without replacing credentials and installs this host boundary.
 
+The native runtime runs as the dedicated `one-node` user. SSH with a normal
+administrator account and use `sudo` for the one-time installation or migration;
+the root-owned updater and firewall services handle later panel requests.
+Keep `/opt/one-node` and its scripts root-owned. Runtime state under
+`/var/lib/one-node` belongs to `one-node`, with directories `0700` and status
+files `0600`.
+
+Release verification uses OpenSSL 3 or, on older distributions, system Python 3
+with `python3-cryptography`. Ubuntu 20.04 can install the latter without replacing
+its system OpenSSL:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y python3 python3-cryptography
+```
+
+An old retained installer still requires OpenSSL 3. For the first migration,
+download `node/install.sh` from the published `one-node-v<version>` tag that
+contains the compatibility fix, then run the downloaded script with
+`sudo /bin/sh ./install.sh --upgrade <version>`. A successful upgrade atomically
+refreshes `/opt/one-node/install.sh`, so later panel upgrades use the new verifier.
+
 Native mode supports Linux amd64/arm64 hosts using systemd, including the major
 Debian/Ubuntu, RHEL-compatible, Fedora, Amazon Linux, SUSE, and Arch families.
 Docker mode works on supported systemd Linux hosts with nftables, Docker Engine, and Compose v2;

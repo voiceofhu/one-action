@@ -312,7 +312,7 @@ install_common_files() {
 install_persistent_installer() {
 	[ -f "$ONE_NODE_INSTALLER_SOURCE" ] && [ ! -L "$ONE_NODE_INSTALLER_SOURCE" ] ||
 		die "installer source is missing or unsafe"
-	install -m 0755 "$ONE_NODE_INSTALLER_SOURCE" "$MANIFEST_INSTALLER_PATH" ||
+	replace_managed_file "$ONE_NODE_INSTALLER_SOURCE" "$MANIFEST_INSTALLER_PATH" 0755 ||
 		die "unable to install the persistent installer"
 	if [ -f "$INSTALL_RECORD" ] && ! manifest_has_owned_path "$MANIFEST_INSTALLER_PATH"; then
 		manifest_append_owned_path "$MANIFEST_INSTALLER_PATH" ||

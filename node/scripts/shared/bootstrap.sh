@@ -83,15 +83,12 @@ bootstrap_sha256() {
 	fi
 }
 
-bootstrap_require_openssl() {
-	command -v openssl >/dev/null 2>&1 ||
-		bootstrap_die "OpenSSL 3 or newer is required to verify signed One Node releases; install the openssl package and retry"
+bootstrap_has_openssl3() {
+	command -v openssl >/dev/null 2>&1 || return 1
 	bootstrap_openssl_version=$(openssl version 2>/dev/null || true)
 	case "$bootstrap_openssl_version" in
-	"OpenSSL "[3-9].*|"OpenSSL "[1-9][0-9]*) ;;
-	*)
-		bootstrap_die "OpenSSL 3 or newer is required to verify Ed25519 release signatures; found: ${bootstrap_openssl_version:-unknown}"
-		;;
+	"OpenSSL "[3-9].*|"OpenSSL "[1-9][0-9]*) return 0 ;;
+	*) return 1 ;;
 	esac
 }
 
@@ -99,16 +96,42 @@ bootstrap_require_openssl() {
 bootstrap_verify_signature() {
 	bootstrap_signed_file=$1
 	bootstrap_signature_file=$2
-	bootstrap_require_openssl
 	bootstrap_key_file=$(mktemp "${bootstrap_signed_file}.key.XXXXXX") || return 1
 	printf '%s\n' "$ONE_NODE_RELEASE_PUBLIC_KEY" >"$bootstrap_key_file"
-	if openssl pkeyutl -verify -pubin -inkey "$bootstrap_key_file" -rawin \
-		-in "$bootstrap_signed_file" -sigfile "$bootstrap_signature_file" >/dev/null 2>&1; then
-		rm -f -- "$bootstrap_key_file"
-		return 0
+	bootstrap_verify_result=0
+	if bootstrap_has_openssl3; then
+		openssl pkeyutl -verify -pubin -inkey "$bootstrap_key_file" -rawin \
+			-in "$bootstrap_signed_file" -sigfile "$bootstrap_signature_file" >/dev/null 2>&1 ||
+			bootstrap_verify_result=$?
+	elif command -v python3 >/dev/null 2>&1; then
+		# Older distributions can verify the same Ed25519 signature without
+		# replacing their system OpenSSL. Ignore user Python configuration.
+		python3 -I - "$bootstrap_key_file" "$bootstrap_signed_file" "$bootstrap_signature_file" <<'PY' || bootstrap_verify_result=$?
+import sys
+
+try:
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+except ImportError:
+    sys.exit("[one-node] error: install the system python3-cryptography package to verify Ed25519 release signatures with older OpenSSL")
+
+with open(sys.argv[1], "rb") as source:
+    public_key = load_pem_public_key(source.read(), backend=default_backend())
+if not isinstance(public_key, Ed25519PublicKey):
+    sys.exit("[one-node] error: release verification key is not Ed25519")
+with open(sys.argv[2], "rb") as source:
+    signed_data = source.read()
+with open(sys.argv[3], "rb") as source:
+    signature = source.read()
+public_key.verify(signature, signed_data)
+PY
+	else
+		printf '%s\n' "[one-node] error: signed release verification requires OpenSSL 3 or the system python3 and python3-cryptography packages" >&2
+		bootstrap_verify_result=1
 	fi
 	rm -f -- "$bootstrap_key_file"
-	return 1
+	return "$bootstrap_verify_result"
 }
 
 # Called after any SHA256SUMS download: fetch <url>.sig and verify it.

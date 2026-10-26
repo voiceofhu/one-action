@@ -64,6 +64,7 @@ main() {
 		restore_after_failed_upgrade
 		die "upgrade target did not become ready and was rolled back"
 	fi
+	install_persistent_installer
 	log "firewall: active runtime ports applied"
 	log "${INSTALL_MODE} upgrade to ${MANIFEST_CURRENT_VERSION} is ready"
 }

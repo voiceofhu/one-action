@@ -84,7 +84,9 @@ runtime_revisions_are_ready() {
 	config_revision=$(runtime_revision config) || return 1
 	validate_decimal "$config_revision" || return 1
 	[ "$config_revision" != "0" ] || return 1
-	[ "$config_revision" = "$ONE_NODE_EXPECTED_CONFIG_REVISION" ]
+	# The install manifest records a minimum revision; the server may deploy
+	# a newer config when an upgraded node enables additional protocol features.
+	[ "$config_revision" -ge "$ONE_NODE_EXPECTED_CONFIG_REVISION" ]
 }
 
 wait_for_ready_heartbeat() {

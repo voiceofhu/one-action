@@ -80,6 +80,9 @@ write_status() {
 	message=$2
 	temporary=$(mktemp "${update_dir}/.status.XXXXXX")
 	chmod 0600 "$temporary"
+	# The native node runs as one-node and must read the status back.
+	status_owner=$(stat -c %u:%g "$update_dir" 2>/dev/null) &&
+		chown "$status_owner" "$temporary" 2>/dev/null || true
 	printf '%s\n' \
 		"command_id=${command_id}" \
 		"version=${version}" \

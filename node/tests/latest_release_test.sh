@@ -28,6 +28,13 @@ ONE_NODE_TEST_RELEASE_RESPONSE='[{"tag_name":"node-server-v9.9.9"},{"tag_name":"
 resolve_latest_node_version
 [ "$ONE_NODE_VERSION" = 26.821.1200 ] || fail "latest One Node release was not selected"
 
+# A release published later for an older version must not be selected.
+ONE_NODE_VERSION=
+initialize_install_config
+ONE_NODE_TEST_RELEASE_RESPONSE='[{"tag_name":"one-node-v26.820.1507"},{"tag_name":"one-node-v26.1001.900"},{"tag_name":"one-node-v26.821.1200"}]'
+resolve_latest_node_version
+[ "$ONE_NODE_VERSION" = 26.1001.900 ] || fail "latest resolver selected $ONE_NODE_VERSION instead of the highest version"
+
 curl() {
 	fail "explicit One Node version unexpectedly queried GitHub"
 }
@@ -80,3 +87,23 @@ docker() {
 prepare_docker_image
 [ "$ONE_NODE_DOCKER_IMAGE" = 'ghcr.io/voiceofhu/one-node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ] ||
 	fail "Docker install did not retain the resolved immutable digest"
+
+# The entrypoint bootstrap picks the same highest release as the module resolver.
+(
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/shared/bootstrap.sh"
+	curl() {
+		printf '%s' '[{"tag_name":"one-node-v26.820.1507"},{"tag_name":"one-node-v26.1001.900"},{"tag_name":"node-server-v99.0.0"}]'
+	}
+	[ "$(bootstrap_latest_version)" = 26.1001.900 ] ||
+		fail "bootstrap latest resolver did not select the highest version"
+	ONE_NODE_VERSION=
+	ONE_NODE_ENTRYPOINT_KIND=install
+	bootstrap_resolve_release_version false >/dev/null
+	[ "$ONE_NODE_RELEASE_VERSION" = 26.1001.900 ] && [ "$ONE_NODE_VERSION" = 26.1001.900 ] ||
+		fail "install bootstrap did not pin the verified latest release"
+	ONE_NODE_VERSION=
+	ONE_NODE_ENTRYPOINT_KIND=uninstall
+	bootstrap_resolve_release_version false >/dev/null
+	[ -z "$ONE_NODE_VERSION" ] || fail "uninstall bootstrap exported a target version"
+)

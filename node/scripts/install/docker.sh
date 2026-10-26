@@ -65,8 +65,14 @@ services:
     read_only: true
     security_opt:
       - "no-new-privileges:true"
+    # Root in the container, but with only the network capabilities. A
+    # non-root user would lose them: Docker sets no ambient capabilities and
+    # no-new-privileges ignores file capabilities.
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
+      - NET_BIND_SERVICE
       - NET_RAW
     env_file:
       - "${ENV_FILE}"
@@ -91,6 +97,9 @@ EOF
 
 install_docker_runtime() {
 	ensure_docker_bootstrap_env
+	# Without CAP_DAC_OVERRIDE container root reaches only root-owned state,
+	# e.g. after a native install left it to the one-node service account.
+	chown -hR 0:0 "$ONE_NODE_STATE_DIR"
 	install -m 0600 "$COMPOSE_SOURCE" "$COMPOSE_FILE"
 	docker compose -f "$COMPOSE_FILE" up -d
 	docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" | grep -qx true ||

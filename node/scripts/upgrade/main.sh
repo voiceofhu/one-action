@@ -35,11 +35,11 @@ main() {
 	load_upgrade_manifest
 	validate_upgrade_host
 	configure_readiness
-	apply_network_tuning
 	ONE_NODE_READINESS_RETURN_ONLY="true"
 
 	if [ "$UPGRADE_OPERATION" = rollback ]; then
 		[ -n "$MANIFEST_PREVIOUS_VERSION" ] || die "installation manifest has no previous version"
+		apply_network_tuning
 		UPGRADE_MANIFEST_ADVANCED="true"
 		enable_host_firewall_for_upgrade
 		stage_host_firewall_transition || die "firewall could not be prepared for rollback"
@@ -50,6 +50,7 @@ main() {
 	fi
 
 	validate_upgrade_target
+	apply_network_tuning
 	enable_host_updater_for_upgrade
 	enable_host_firewall_for_upgrade
 	stage_upgrade || die "upgrade artifact staging or immutable metadata verification failed"

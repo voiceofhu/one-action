@@ -12,11 +12,12 @@ main() {
 	parse_install_arguments "$@"
 	validate_install_host
 	validate_install_config
-	apply_network_tuning
 	configure_host_updater
 	configure_host_firewall
 	probe_control_endpoint
 	validate_install_target
+	# Host sysctl changes wait until the install target is known to be safe.
+	apply_network_tuning
 	if [ "$INSTALL_OPERATION" = "reconfigure" ]; then
 		install_host_firewall
 		if [ "$INSTALL_MODE" = "native" ]; then
@@ -61,5 +62,6 @@ main() {
 	log "firewall: active runtime ports applied"
 
 	INSTALL_COMMITTED="true"
+	discard_replaced_installation
 	log "${INSTALL_MODE} sing-box installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION}"
 }

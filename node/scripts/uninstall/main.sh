@@ -27,7 +27,10 @@ main() {
 		uninstall_docker
 	fi
 	remove_host_firewall
+	# Mode-independent: a native install may have been replaced by Docker.
+	remove_native_service_account
 	remove_owned_files
+	remove_network_tuning
 	command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
 	log "One Node sing-box runtime and all runtime state were removed"
 }

@@ -28,7 +28,8 @@ canonical_path() {
 	case "$canonical_input" in
 	*'//'*) return 1 ;;
 	*'
-'*|*''*) return 1 ;;
+'*|*'
+'*) return 1 ;;
 	esac
 	case "/${canonical_input#/}/" in
 	*'/../'*) return 1 ;;
@@ -84,7 +85,8 @@ require_single_line() {
 	value=$2
 	case "$value" in
 	*'
-'*|*''*) die "${name} must be a single line" ;;
+'*|*'
+'*) die "${name} must be a single line" ;;
 	esac
 }
 
@@ -137,5 +139,20 @@ download_file() {
 	curl --fail --location --silent --show-error --retry 3 \
 		--connect-timeout 15 --max-time 600 \
 		--proto "$protocols" --proto-redir "$protocols" \
-		--output "$destination" "$url"
+		--output "$destination" "$url" || return 1
+	case "$url" in
+	*/SHA256SUMS) verify_release_checksums "$url" "$destination" ;;
+	esac
+}
+
+# Release checksums are trusted only with a valid detached signature
+# (SHA256SUMS.sig); the verifier ships in every entrypoint's bootstrap.
+verify_release_checksums() {
+	if command -v bootstrap_verify_checksums_signature >/dev/null 2>&1; then
+		bootstrap_verify_checksums_signature "$1" "$2"
+	elif [ "${ONE_NODE_ALLOW_INSECURE:-false}" = "true" ]; then
+		log "warning: release checksum signature was not verified"
+	else
+		die "release checksum signature verifier is unavailable"
+	fi
 }

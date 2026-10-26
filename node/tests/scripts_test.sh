@@ -11,12 +11,10 @@ UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/fi
 
 for entrypoint in install.sh uninstall.sh upgrade.sh; do
 	sh -n "$ROOT_DIR/$entrypoint"
-	grep -F 'https://raw.githubusercontent.com/voiceofhu/one-action/${ONE_ACTION_COMMIT}/node/scripts' \
-		"$ROOT_DIR/$entrypoint" >/dev/null
-	grep -F 'https://api.github.com/repos/voiceofhu/one-action/commits/main' \
-		"$ROOT_DIR/$entrypoint" >/dev/null
+	grep -F '# >>> one-node bootstrap:' "$ROOT_DIR/$entrypoint" >/dev/null
 	grep -F 'Accept: application/vnd.github.sha' "$ROOT_DIR/$entrypoint" >/dev/null
 done
+"$ROOT_DIR/scripts/sync-bootstrap.sh" --check
 grep -F 'https://github.com/voiceofhu/one-action/releases/download/one-node-v${ONE_NODE_VERSION}' \
 	"$ROOT_DIR/scripts/install/config.sh" >/dev/null
 grep -F 'https://api.github.com/repos/voiceofhu/one-action/releases?per_page=100' \
@@ -250,11 +248,6 @@ for entrypoint in install.sh uninstall.sh upgrade.sh; do
 		ONE_NODE_ALLOW_INSECURE=true \
 		ONE_NODE_SCRIPT_BASE_URL="http://127.0.0.1:9999/scripts" \
 		"$TEST_TEMP_DIR/$entrypoint" --help >/dev/null
-	PATH="$TEST_TEMP_DIR/bin:$PATH" \
-		ONE_ACTION_COMMIT="$TEST_ACTION_COMMIT" \
-		"$TEST_TEMP_DIR/$entrypoint" --help >/dev/null
-	PATH="$TEST_TEMP_DIR/bin:$PATH" \
-		"$TEST_TEMP_DIR/$entrypoint" --help >/dev/null
 	if PATH="$TEST_TEMP_DIR/bin:$PATH" \
 		ONE_ACTION_COMMIT=0123456789ABCDEF0123456789ABCDEF01234567 \
 		"$TEST_TEMP_DIR/$entrypoint" --help >/dev/null 2>&1; then
@@ -262,15 +255,6 @@ for entrypoint in install.sh uninstall.sh upgrade.sh; do
 		exit 1
 	fi
 done
-
-if PATH="$TEST_TEMP_DIR/bin:$PATH" \
-	ONE_NODE_TEST_ACTION_RESPONSE='{"object":{"sha":"0123456789abcdef0123456789abcdef01234567"}}' \
-	"$TEST_TEMP_DIR/install.sh" --help >"$TEST_TEMP_DIR/invalid-commit-response.log" 2>&1; then
-	printf '%s\n' "installer accepted a JSON commit response" >&2
-	exit 1
-fi
-grep -F 'One Action commit response must be an exact lowercase commit SHA' \
-	"$TEST_TEMP_DIR/invalid-commit-response.log" >/dev/null
 
 grep -F 'MANIFEST_FORMAT_NAME="one-node-manifest"' \
 	"$ROOT_DIR/scripts/shared/manifest.sh" >/dev/null
@@ -480,4 +464,19 @@ fi
 	write_environment_source
 	grep -Fx "CONTROL_BOOTSTRAP_ENV_FILE=\"${ENV_FILE}\"" "$ENV_SOURCE" >/dev/null
 	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="token"' "$ENV_SOURCE" >/dev/null
+)
+(
+	# Full uninstall removes only One Node's own tuning files.
+	# shellcheck disable=SC1090
+	. "$ROOT_DIR/scripts/uninstall/common.sh"
+	tuning_root="$TEST_TEMP_DIR/tuning-uninstall"
+	install -d -m 0755 "$tuning_root"
+	NETWORK_TUNING_FILE="$tuning_root/99-zz-one-node.conf"
+	BBR_MODULE_FILE="$tuning_root/90-one-node-bbr.conf"
+	: >"$NETWORK_TUNING_FILE"
+	: >"$tuning_root/other.conf"
+	ln -s "$tuning_root/other.conf" "$BBR_MODULE_FILE"
+	remove_network_tuning >/dev/null
+	[ ! -e "$NETWORK_TUNING_FILE" ]
+	[ -L "$BBR_MODULE_FILE" ] && [ -f "$tuning_root/other.conf" ]
 )

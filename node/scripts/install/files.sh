@@ -3,6 +3,120 @@
 # Fresh-install workspace and exact file ownership. Upgrade rollback is A03.
 # shellcheck disable=SC2034
 
+NATIVE_SERVICE_USER="one-node"
+
+# Created accounts are recorded in the root-only install directory, never in
+# the state directory the service account can write, so uninstall removes only
+# what this installation added.
+native_service_account_record() {
+	printf '%s\n' "${INSTALL_DIR}/.service-account"
+}
+
+native_service_shell() {
+	for service_shell in /usr/sbin/nologin /sbin/nologin; do
+		if [ -x "$service_shell" ]; then
+			printf '%s\n' "$service_shell"
+			return 0
+		fi
+	done
+	printf '%s\n' /bin/false
+}
+
+record_native_service_account() {
+	account_entry=$1
+	account_record=$(native_service_account_record)
+	[ ! -L "$account_record" ] || return 1
+	if [ -f "$account_record" ] && grep -Fx "$account_entry" "$account_record" >/dev/null; then
+		return 0
+	fi
+	account_temp=$(mktemp "${account_record}.XXXXXX") || return 1
+	if ! { [ ! -f "$account_record" ] || cat "$account_record"; } >"$account_temp" ||
+		! printf '%s\n' "$account_entry" >>"$account_temp" ||
+		! chmod 0600 "$account_temp" ||
+		! mv -f -- "$account_temp" "$account_record"; then
+		rm -f -- "$account_temp"
+		return 1
+	fi
+}
+
+# The native runtime runs as an unprivileged system account; firewall and
+# upgrade work is delegated to root services through request files.
+ensure_native_service_user() {
+	NATIVE_SERVICE_ACCOUNT_CREATED=${NATIVE_SERVICE_ACCOUNT_CREATED:-false}
+	command -v getent >/dev/null 2>&1 || return 1
+	if ! getent group "$NATIVE_SERVICE_USER" >/dev/null 2>&1; then
+		command -v groupadd >/dev/null 2>&1 || return 1
+		groupadd --system "$NATIVE_SERVICE_USER" || return 1
+		NATIVE_SERVICE_ACCOUNT_CREATED="true"
+		record_native_service_account "group=${NATIVE_SERVICE_USER}" || return 1
+	fi
+	if service_passwd=$(getent passwd "$NATIVE_SERVICE_USER" 2>/dev/null); then
+		service_uid=$(printf '%s\n' "$service_passwd" | cut -d: -f3)
+		case "$service_uid" in
+		''|*[!0-9]*|0) return 1 ;;
+		esac
+		return 0
+	fi
+	command -v useradd >/dev/null 2>&1 || return 1
+	useradd --system --gid "$NATIVE_SERVICE_USER" --no-create-home \
+		--home-dir /nonexistent --shell "$(native_service_shell)" \
+		--comment "One Node runtime" "$NATIVE_SERVICE_USER" || return 1
+	NATIVE_SERVICE_ACCOUNT_CREATED="true"
+	record_native_service_account "user=${NATIVE_SERVICE_USER}"
+}
+
+write_native_source() {
+	# The path is embedded unquoted in unit directives.
+	case "$ONE_NODE_STATE_DIR" in
+	/*) ;;
+	*) die "ONE_NODE_STATE_DIR must be absolute" ;;
+	esac
+	case "$ONE_NODE_STATE_DIR" in
+	*[!A-Za-z0-9._/-]*) die "ONE_NODE_STATE_DIR contains characters systemd units cannot carry" ;;
+	esac
+	cat >"$UNIT_SOURCE" <<EOF
+[Unit]
+Description=One Node sing-box runtime
+Wants=network-online.target one-node-firewall.path
+After=network-online.target one-node-firewall.path
+
+[Service]
+Type=simple
+User=${NATIVE_SERVICE_USER}
+Group=${NATIVE_SERVICE_USER}
+WorkingDirectory=${ONE_NODE_STATE_DIR}
+EnvironmentFile=/opt/one-node/.env
+EnvironmentFile=-${ONE_NODE_STATE_DIR}/bootstrap.env
+# Root-side installers and host services also write into the state directory;
+# hand it to the service account before every start (+ runs as root).
+ExecStartPre=+/bin/chown -hR ${NATIVE_SERVICE_USER}:${NATIVE_SERVICE_USER} ${ONE_NODE_STATE_DIR}
+ExecStart=/opt/one-node/one-node start
+Restart=always
+RestartSec=5s
+UMask=0077
+TimeoutStopSec=30s
+LimitNOFILE=1048576
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=${ONE_NODE_STATE_DIR}
+PrivateTmp=yes
+# Inbounds only listen on ports; no TUN device is used (Docker has none either).
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
 initialize_install_workspace() {
 	TEMP_DIR=$(mktemp -d "/tmp/one-node-install.XXXXXX")
 	chmod 0700 "$TEMP_DIR"
@@ -20,11 +134,9 @@ initialize_install_workspace() {
 	COMPOSE_SOURCE="${TEMP_DIR}/docker-compose.yml"
 	RECORD_SOURCE="${TEMP_DIR}/.installation"
 	BOOTSTRAP_ENV_SOURCE="${TEMP_DIR}/bootstrap.env"
-	if [ "$INSTALL_MODE" = "docker" ]; then
-		BOOTSTRAP_ENV_FILE=$(docker_bootstrap_env_file)
-	else
-		BOOTSTRAP_ENV_FILE=$ENV_FILE
-	fi
+	# Both runtimes remove the token after enrollment and can write only the
+	# state directory, so the token never lives in the root-owned install dir.
+	BOOTSTRAP_ENV_FILE="${ONE_NODE_STATE_DIR}/bootstrap.env"
 	BINARY_FILE="${INSTALL_DIR}/${PROGRAM}"
 	IDENTITY_FILE="${ONE_NODE_STATE_DIR}/node-secret"
 	RUNTIME_STATE_FILE="${ONE_NODE_STATE_DIR}/runtime-active.json"
@@ -50,6 +162,9 @@ on_install_exit() {
 			systemctl disable --now one-node.service >/dev/null 2>&1
 			rm -f -- "$UNIT_FILE"
 			systemctl daemon-reload >/dev/null 2>&1
+			if [ "${NATIVE_SERVICE_ACCOUNT_CREATED:-false}" = "true" ]; then
+				remove_native_service_account
+			fi
 		else
 			if command -v docker >/dev/null 2>&1; then
 				docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1
@@ -62,7 +177,9 @@ on_install_exit() {
 			rmdir -- "$ONE_NODE_STATE_DIR" 2>/dev/null || true
 		fi
 		set -e
-		log "installation did not become ready; credential state was preserved for a safe retry"
+		# A replaced installation reports its own restore instead.
+		[ -n "${REPLACE_BACKUP_DIR:-}" ] ||
+			log "installation did not become ready; credential state was preserved for a safe retry"
 	fi
 	rm -rf -- "$TEMP_DIR"
 	exit "$exit_status"
@@ -124,8 +241,9 @@ write_environment_source() {
 	if [ "$BOOTSTRAP_ENV_FILE" = "$ENV_FILE" ]; then
 		write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"
 	else
-		# Docker keeps the token in the state directory, the only host path the
-		# container can write, so the node can remove it after enrollment.
+		# The token lives in the state directory, the only host path the node
+		# can write, so it can remove the token after enrollment.
+		BOOTSTRAP_ENV_SOURCE=${BOOTSTRAP_ENV_SOURCE:-${ENV_SOURCE}.bootstrap}
 		: >"$BOOTSTRAP_ENV_SOURCE"
 		chmod 0600 "$BOOTSTRAP_ENV_SOURCE"
 		printf 'CONTROL_BOOTSTRAP_TOKEN="%s"\n' "$(escape_dotenv "$ONE_NODE_BOOTSTRAP_TOKEN")" >>"$BOOTSTRAP_ENV_SOURCE"
@@ -221,7 +339,8 @@ replace_managed_file() {
 restart_reconfigured_runtime() {
 	case "$INSTALL_MODE" in
 	native)
-		systemctl daemon-reload &&
+		ensure_native_service_user &&
+			systemctl daemon-reload &&
 			systemctl enable one-node.service &&
 			systemctl restart one-node.service &&
 			systemctl is-active --quiet one-node.service
@@ -266,7 +385,18 @@ reset_registration_state_for_reenrollment() {
 	fi
 	rm -f -- "$IDENTITY_FILE" "$RUNTIME_STATE_FILE" ||
 		die "unable to reset the previous node registration state"
+	install_bootstrap_environment ||
+		die "unable to install the new bootstrap credential"
 	log "reset previous registration state; reconnecting as node $ONE_NODE_ID"
+}
+
+# Reconfiguration writes the new token into the state directory only after the
+# previous registration is gone.
+install_bootstrap_environment() {
+	[ -n "${BOOTSTRAP_ENV_FILE:-}" ] && [ "$BOOTSTRAP_ENV_FILE" != "$ENV_FILE" ] || return 0
+	[ -f "${BOOTSTRAP_ENV_SOURCE:-}" ] || return 1
+	[ ! -L "$BOOTSTRAP_ENV_FILE" ] || return 1
+	replace_managed_file "$BOOTSTRAP_ENV_SOURCE" "$BOOTSTRAP_ENV_FILE" 0600
 }
 
 restore_reconfiguration() {
@@ -331,6 +461,8 @@ reconfigure_existing_installation() {
 	trap 'exit 1' HUP INT TERM
 
 	ENV_SOURCE="${RECONFIGURE_TEMP_DIR}/.env.next"
+	BOOTSTRAP_ENV_FILE="${ONE_NODE_STATE_DIR}/bootstrap.env"
+	BOOTSTRAP_ENV_SOURCE="${RECONFIGURE_TEMP_DIR}/bootstrap.env.next"
 	write_environment_source
 	replace_managed_file "$ENV_SOURCE" "$ENV_FILE" 0600 ||
 		die "unable to replace the One Node environment"

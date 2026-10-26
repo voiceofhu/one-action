@@ -9,3 +9,6 @@
 **/node_modules/
 **/target/
 .claude/
+
+# Local signing keys; never commit.
+/.secrets/

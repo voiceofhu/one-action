@@ -26,6 +26,7 @@ case "${1:-}" in
 		printf '%s\n' 'reno cubic bbr'
 		exit 0
 	fi
+	case " ${TUNING_SYSCTL_MISSING:-} " in *" ${key} "*) exit 255 ;; esac
 	if [ -f "$TUNING_SYSCTL_STATE" ]; then
 		sed -n "s|^${key}[[:space:]]*=[[:space:]]*||p" "$TUNING_SYSCTL_STATE" |
 			awk '{$1=$1; print}'
@@ -56,20 +57,21 @@ export PATH
 assert_profile() {
 	memory_kib=$1
 	want_max=$2
-	want_receive=$3
-	want_send=$4
+	want_conntrack=$3
 	calculate_network_tuning_profile "$memory_kib"
 	[ "$tcp_max_mib" = "$want_max" ]
-	[ "$tcp_receive_default_mib" = "$want_receive" ]
-	[ "$tcp_send_default_mib" = "$want_send" ]
+	[ "$tcp_rmem_value" = "4096 131072 $((want_max * 1048576))" ]
+	[ "$tcp_wmem_value" = "4096 16384 $((want_max * 1048576))" ]
+	[ "$conntrack_max" = "$want_conntrack" ]
 }
 
-assert_profile 524288 32 4 2
-assert_profile 1000000 64 8 4
-assert_profile 2097152 128 16 8
-assert_profile 4194304 256 16 16
-assert_profile 8388608 512 16 16
-assert_profile 16777216 512 16 16
+assert_profile 262144 64 65536
+assert_profile 524288 64 65536
+assert_profile 1000000 64 124928
+assert_profile 2097152 128 262144
+assert_profile 4194304 128 524288
+assert_profile 8388608 128 1048576
+assert_profile 16777216 128 1048576
 
 NETWORK_TUNING_FILE="${TEST_TEMP_DIR}/sysctl.d/90-one-node.conf"
 BBR_MODULE_FILE="${TEST_TEMP_DIR}/modules-load.d/90-one-node-bbr.conf"
@@ -79,12 +81,27 @@ bbr_is_persisted() { [ -f "$BBR_MODULE_FILE" ]; }
 
 apply_network_tuning
 grep -F 'net.core.rmem_max = 67108864' "$NETWORK_TUNING_FILE" >/dev/null
-grep -F 'net.ipv4.tcp_rmem = 4096 8388608 67108864' "$NETWORK_TUNING_FILE" >/dev/null
-grep -F 'net.ipv4.tcp_wmem = 4096 4194304 67108864' "$NETWORK_TUNING_FILE" >/dev/null
+grep -F 'net.ipv4.tcp_rmem = 4096 131072 67108864' "$NETWORK_TUNING_FILE" >/dev/null
+grep -F 'net.ipv4.tcp_wmem = 4096 16384 67108864' "$NETWORK_TUNING_FILE" >/dev/null
+grep -F 'net.core.somaxconn = 4096' "$NETWORK_TUNING_FILE" >/dev/null
+grep -F 'net.netfilter.nf_conntrack_max = 124928' "$NETWORK_TUNING_FILE" >/dev/null
 grep -F 'net.ipv4.tcp_congestion_control = bbr' "$NETWORK_TUNING_FILE" >/dev/null
+grep -F 'net.ipv4.tcp_notsent_lowat = 131072' "$NETWORK_TUNING_FILE" >/dev/null
+grep -F 'net.ipv4.tcp_mtu_probing = 1' "$NETWORK_TUNING_FILE" >/dev/null
 [ "$(cat "$SYSCTL_COUNT")" = 1 ]
 
 apply_network_tuning
 [ "$(cat "$SYSCTL_COUNT")" = 1 ]
+
+# Higher administrator values are kept, and hosts without nf_conntrack get no
+# conntrack key that would make sysctl -p fail.
+printf '%s\n' 'net.core.somaxconn = 65535' >"$SYSCTL_STATE"
+TUNING_SYSCTL_MISSING=net.netfilter.nf_conntrack_max apply_network_tuning
+grep -F 'net.core.somaxconn = 65535' "$NETWORK_TUNING_FILE" >/dev/null
+if grep -F 'nf_conntrack_max' "$NETWORK_TUNING_FILE" >/dev/null; then
+	printf '%s\n' "conntrack tuning was written without the kernel key" >&2
+	exit 1
+fi
+[ "$(cat "$SYSCTL_COUNT")" = 2 ]
 
 printf '%s\n' 'One Node dynamic network tuning checks passed.'

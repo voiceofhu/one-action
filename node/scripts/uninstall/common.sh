@@ -17,6 +17,19 @@ log() {
 	printf '%s\n' "[one-node] $*"
 }
 
+# Only full uninstall drops the host tuning; a reinstall replaces the runtime
+# after it has already re-applied tuning.
+remove_network_tuning() {
+	for tuning_file in \
+		"${NETWORK_TUNING_FILE:-/etc/sysctl.d/99-zz-one-node.conf}" \
+		"${BBR_MODULE_FILE:-/etc/modules-load.d/90-one-node-bbr.conf}"
+	do
+		[ -f "$tuning_file" ] && [ ! -L "$tuning_file" ] || continue
+		rm -f -- "$tuning_file"
+		log "removed network tuning file $tuning_file; live kernel values remain until reboot"
+	done
+}
+
 die() {
 	printf '%s\n' "[one-node] error: $*" >&2
 	exit 1

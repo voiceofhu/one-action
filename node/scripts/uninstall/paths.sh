@@ -55,5 +55,7 @@ remove_owned_files() {
 	if manifest_has_owned_path "$MANIFEST_PREVIOUS_DIR"; then
 		rmdir -- "$MANIFEST_PREVIOUS_DIR" 2>/dev/null || true
 	fi
+	# Host firewall rule tracking outlives a failed rule removal.
+	rm -f -- "$MANIFEST_INSTALL_DIR/.firewall-host-rules"
 	rmdir -- "$MANIFEST_INSTALL_DIR" 2>/dev/null || true
 }

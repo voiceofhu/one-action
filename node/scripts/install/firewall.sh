@@ -76,6 +76,11 @@ set -eu
 umask 077
 
 firewall_dir=${ONE_NODE_FIREWALL_DIR:-/var/lib/one-node/firewall}
+# Rules added to ufw/firewalld are tracked in the root-only install directory:
+# the state directory belongs to the runtime account, which must not be able
+# to choose which host rules root deletes.
+host_rules_file=${ONE_NODE_FIREWALL_HOST_RULES:-/opt/one-node/.firewall-host-rules}
+host_sync_warning=false
 request_file="${firewall_dir}/request"
 running_file="${firewall_dir}/request.running"
 status_file="${firewall_dir}/status"
@@ -100,6 +105,170 @@ die() {
 		esac
 	fi
 	exit 1
+}
+
+note() {
+	printf '%s\n' "[one-node-firewall] $*" >&2
+}
+
+warn_host() {
+	note "warning: $*"
+	host_sync_warning=true
+}
+
+ufw_is_active() {
+	command -v ufw >/dev/null 2>&1 || return 1
+	ufw status 2>/dev/null | sed -n '1p' | grep -Eq '^Status:[[:space:]]+active$'
+}
+
+firewalld_is_running() {
+	command -v firewall-cmd >/dev/null 2>&1 || return 1
+	firewall-cmd --state >/dev/null 2>&1
+}
+
+valid_host_rule() {
+	case "$1" in
+	*[!0-9]*/tcp|*[!0-9]*/udp|/*) return 1 ;;
+	[1-9]*/tcp|[1-9]*/udp) [ "${1%/*}" -le 65535 ] ;;
+	*) return 1 ;;
+	esac
+}
+
+valid_firewalld_zone() {
+	case "$1" in
+	''|-*|*[!A-Za-z0-9_-]*) return 1 ;;
+	esac
+}
+
+# Opens the active ports in ufw and firewalld when they are enforcing, since
+# their base chains can drop traffic the one_node table accepts. Only rules
+# this script added are ever removed; ports that an existing rule already
+# opens are left unmanaged. Failures are logged and never fail the request.
+sync_host_firewalls() {
+	desired_rules=""
+	old_ifs=$IFS
+	IFS=,
+	for port in $tcp_ports; do desired_rules="${desired_rules} ${port}/tcp"; done
+	for port in $udp_ports; do desired_rules="${desired_rules} ${port}/udp"; done
+	IFS=$old_ifs
+
+	tracked_rules=""
+	if [ -e "$host_rules_file" ] || [ -L "$host_rules_file" ]; then
+		if [ -f "$host_rules_file" ] && [ ! -L "$host_rules_file" ]; then
+			tracked_rules=$(cat "$host_rules_file")
+		else
+			warn_host "ignoring unsafe host rule record $host_rules_file"
+			return 0
+		fi
+	fi
+
+	kept_rules=""
+	IFS='
+'
+	for tracked in $tracked_rules; do
+		IFS=$old_ifs
+		set -f
+		# shellcheck disable=SC2086
+		set -- $tracked
+		set +f
+		backend=${1:-}
+		case "$backend" in
+		ufw) [ "$#" -eq 2 ] && zone="" && rule=$2 ;;
+		firewalld) [ "$#" -eq 3 ] && zone=$2 && rule=$3 ;;
+		*) false ;;
+		esac || { warn_host "dropping invalid host rule record: $tracked"; continue; }
+		valid_host_rule "$rule" || { warn_host "dropping invalid host rule record: $tracked"; continue; }
+		if [ "$backend" = firewalld ] && ! valid_firewalld_zone "$zone"; then
+			warn_host "dropping invalid host rule record: $tracked"
+			continue
+		fi
+		case " $desired_rules " in
+		*" ${rule} "*)
+			kept_rules="${kept_rules}${tracked}
+"
+			continue
+			;;
+		esac
+		if [ "$backend" = ufw ]; then
+			if command -v ufw >/dev/null 2>&1 && ufw --force delete allow "$rule" >/dev/null 2>&1; then
+				note "ufw: removed One Node rule for $rule"
+			else
+				warn_host "ufw: unable to remove One Node rule for $rule; will retry"
+				kept_rules="${kept_rules}${tracked}
+"
+			fi
+		else
+			if command -v firewall-cmd >/dev/null 2>&1; then
+				firewall-cmd --zone="$zone" --remove-port="$rule" >/dev/null 2>&1 || true
+				if firewall-cmd --permanent --zone="$zone" --remove-port="$rule" >/dev/null 2>&1; then
+					note "firewalld: removed One Node port $rule from zone $zone"
+					continue
+				fi
+			fi
+			warn_host "firewalld: unable to remove One Node port $rule from zone $zone; will retry"
+			kept_rules="${kept_rules}${tracked}
+"
+		fi
+	done
+	IFS=$old_ifs
+
+	if [ -n "$desired_rules" ] && ufw_is_active; then
+		for rule in $desired_rules; do
+			case "$kept_rules" in *"ufw ${rule}
+"*) continue ;; esac
+			if ufw_output=$(ufw allow "$rule" comment one-node 2>&1); then
+				case "$ufw_output" in
+				*[Ss]kipping*) note "ufw: $rule is already allowed by an existing rule; leaving it unmanaged" ;;
+				*)
+					kept_rules="${kept_rules}ufw ${rule}
+"
+					note "ufw: allowed $rule"
+					;;
+				esac
+			else
+				warn_host "ufw: unable to allow $rule"
+			fi
+		done
+	fi
+	if [ -n "$desired_rules" ] && firewalld_is_running; then
+		zone=$(firewall-cmd --get-default-zone 2>/dev/null || true)
+		if valid_firewalld_zone "$zone"; then
+			for rule in $desired_rules; do
+				case "$kept_rules" in *"firewalld ${zone} ${rule}
+"*) continue ;; esac
+				if firewall-cmd --zone="$zone" --query-port="$rule" >/dev/null 2>&1; then
+					note "firewalld: $rule is already open in zone $zone; leaving it unmanaged"
+					continue
+				fi
+				if firewall-cmd --zone="$zone" --add-port="$rule" >/dev/null 2>&1; then
+					kept_rules="${kept_rules}firewalld ${zone} ${rule}
+"
+					firewall-cmd --permanent --zone="$zone" --add-port="$rule" >/dev/null 2>&1 ||
+						warn_host "firewalld: $rule is open until the next firewalld reload only"
+					note "firewalld: opened $rule in zone $zone"
+				else
+					warn_host "firewalld: unable to open $rule in zone $zone"
+				fi
+			done
+		else
+			warn_host "firewalld: unable to read a valid default zone"
+		fi
+	fi
+
+	if [ -z "$kept_rules" ]; then
+		rm -f -- "$host_rules_file"
+		return 0
+	fi
+	rules_temporary=$(mktemp "${host_rules_file}.XXXXXX") || {
+		warn_host "unable to record host firewall rules"
+		return 0
+	}
+	if printf '%s' "$kept_rules" >"$rules_temporary" && chmod 0600 "$rules_temporary" &&
+		mv -f -- "$rules_temporary" "$host_rules_file"; then
+		return 0
+	fi
+	rm -f -- "$rules_temporary"
+	warn_host "unable to record host firewall rules"
 }
 
 write_table_source() {
@@ -176,6 +345,9 @@ write_status() {
 	message=$2
 	temporary=$(mktemp "${firewall_dir}/.status.XXXXXX")
 	chmod 0600 "$temporary"
+	# The native node runs as one-node and must read the status back.
+	status_owner=$(stat -c %u:%g "$firewall_dir" 2>/dev/null) &&
+		chown "$status_owner" "$temporary" 2>/dev/null || true
 	printf '%s\n' \
 		"request_id=${request_id}" \
 		"state=${state}" \
@@ -202,6 +374,13 @@ apply_ports() {
 	trap - EXIT HUP INT TERM
 }
 
+if [ "${1:-}" = "--remove-host-rules" ]; then
+	tcp_ports=""
+	udp_ports=""
+	sync_host_firewalls
+	exit 0
+fi
+
 install -d -m 0700 "$firewall_dir"
 initialize_table
 [ "${1:-}" != "--initialize" ] || exit 0
@@ -225,7 +404,12 @@ mv -f -- "$request_file" "$running_file"
 if apply_ports; then
 	rm -f -- "$running_file"
 	sync -f "$firewall_dir"
-	write_status succeeded "firewall ports applied"
+	sync_host_firewalls
+	if [ "$host_sync_warning" = true ]; then
+		write_status succeeded "firewall ports applied; ufw/firewalld sync incomplete, see journalctl -u one-node-firewall"
+	else
+		write_status succeeded "firewall ports applied"
+	fi
 	exit 0
 fi
 rm -f -- "$running_file"
@@ -243,6 +427,7 @@ After=network-pre.target nftables.service
 Type=oneshot
 TimeoutStartSec=60s
 Environment="ONE_NODE_FIREWALL_DIR=${ONE_NODE_STATE_DIR}/firewall"
+Environment="ONE_NODE_FIREWALL_HOST_RULES=${INSTALL_DIR}/.firewall-host-rules"
 ExecStart=/opt/one-node/firewall.sh
 UMask=0077
 EOF
@@ -271,8 +456,19 @@ EOF
 	log "firewall: waiting for active runtime ports"
 }
 
+# Removes only the ufw/firewalld rules the installed firewall script recorded
+# as its own. Scripts from older installs never added any and lack the flag.
+remove_host_firewall_rules() {
+	configure_host_firewall
+	[ -f "$FIREWALL_FILE" ] && [ -x "$FIREWALL_FILE" ] && [ ! -L "$FIREWALL_FILE" ] || return 0
+	grep -Fq -- '--remove-host-rules' "$FIREWALL_FILE" || return 0
+	ONE_NODE_FIREWALL_HOST_RULES="${INSTALL_DIR}/.firewall-host-rules" "$FIREWALL_FILE" --remove-host-rules ||
+		log "firewall: warning: unable to remove ufw/firewalld rules added by One Node"
+}
+
 remove_host_firewall() {
 	configure_host_firewall
+	remove_host_firewall_rules
 	if command -v systemctl >/dev/null 2>&1; then
 		systemctl disable --now one-node-firewall.path >/dev/null 2>&1 || true
 		systemctl stop one-node-firewall.service >/dev/null 2>&1 || true

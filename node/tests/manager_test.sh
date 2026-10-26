@@ -84,4 +84,30 @@ done
 help_output=$(ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" "$ROOT_DIR/install.sh")
 printf '%s\n' "$help_output" | grep -F 'Manage the installed One Node runtime.' >/dev/null
 
+# Doctor warns, without failing, when another firewall can still drop ports.
+write_fixture native
+printf '%s\n' '#!/bin/sh' 'exit 0' >"$FAKE_BIN/nft"
+printf '%s\n' '#!/bin/sh' "printf '%s\\n' 'Status: active'" >"$FAKE_BIN/ufw"
+chmod 0755 "$FAKE_BIN/nft" "$FAKE_BIN/ufw"
+ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" \
+	"$ROOT_DIR/install.sh" --doctor >"$TEST_TEMP_DIR/doctor.log" 2>&1
+grep -F 'warning: ufw is active' "$TEST_TEMP_DIR/doctor.log" >/dev/null
+grep -F 'environment check passed' "$TEST_TEMP_DIR/doctor.log" >/dev/null
+rm -f "$FAKE_BIN/ufw"
+ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" \
+	"$ROOT_DIR/install.sh" --doctor >"$TEST_TEMP_DIR/doctor.log" 2>&1
+if grep -F 'warning:' "$TEST_TEMP_DIR/doctor.log" >/dev/null; then
+	printf '%s\n' 'doctor warned without an active host firewall' >&2
+	exit 1
+fi
+
+for malformed_version in 1.2 1..2 1.2.3.4 .1.2 1.2.; do
+	if ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" \
+		"$ROOT_DIR/install.sh" --upgrade "$malformed_version" >"$TEST_TEMP_DIR/upgrade.log" 2>&1; then
+		printf '%s\n' "manager accepted upgrade version $malformed_version" >&2
+		exit 1
+	fi
+	grep -F 'upgrade version must contain three numeric components' "$TEST_TEMP_DIR/upgrade.log" >/dev/null
+done
+
 printf '%s\n' 'One Node retained installer management status tests passed.'

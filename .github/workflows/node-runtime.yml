@@ -269,12 +269,40 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Checkout exact Action installer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.action_sha }}
+          path: action
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: node
+          sparse-checkout-cone-mode: false
+
       - name: Create release checksums
         shell: bash
         run: |
           set -Eeuo pipefail
           chmod 0755 dist/one-node-linux-amd64 dist/one-node-linux-arm64
           (cd dist && sha256sum one-node-linux-amd64 one-node-linux-arm64 >SHA256SUMS)
+
+      # SHA256SUMS lists the binaries plus every installer file at the release
+      # commit; nodes refuse a release whose SHA256SUMS.sig does not verify
+      # against the public key embedded in node/scripts/shared/bootstrap.sh.
+      - name: Sign release checksums
+        shell: bash
+        env:
+          ONE_NODE_RELEASE_SIGNING_KEY: ${{ secrets.ONE_NODE_RELEASE_SIGNING_KEY }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "$ONE_NODE_RELEASE_SIGNING_KEY" ]]; then
+            printf '%s\n' '::error::ONE_NODE_RELEASE_SIGNING_KEY is not configured' >&2
+            exit 1
+          fi
+          key_file="$RUNNER_TEMP/one-node-release-signing.pem"
+          trap 'rm -f -- "$key_file"' EXIT
+          (umask 077 && printf '%s\n' "$ONE_NODE_RELEASE_SIGNING_KEY" >"$key_file")
+          sh action/node/scripts/sign-release.sh dist "$key_file"
 
       - name: Create or resume GitHub Release
         shell: bash
@@ -295,13 +323,13 @@ jobs:
               -f ref="refs/tags/$RELEASE_TAG" \
               -f sha="$ACTION_SHA" >/dev/null
           fi
-          expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
+          expected_assets=$'SHA256SUMS\nSHA256SUMS.sig\none-node-linux-amd64\none-node-linux-arm64'
           notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
             "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION")"
 
           verify_assets() {
             local directory=$1
-            for asset in SHA256SUMS one-node-linux-amd64 one-node-linux-arm64; do
+            for asset in SHA256SUMS SHA256SUMS.sig one-node-linux-amd64 one-node-linux-arm64; do
               cmp -s "dist/$asset" "$directory/$asset"
             done
           }
@@ -321,7 +349,7 @@ jobs:
             fi
             while IFS= read -r asset; do
               case "$asset" in
-                ''|SHA256SUMS|one-node-linux-amd64|one-node-linux-arm64) ;;
+                ''|SHA256SUMS|SHA256SUMS.sig|one-node-linux-amd64|one-node-linux-arm64) ;;
                 *) printf 'Unexpected draft Release asset: %s\n' "$asset" >&2; exit 1 ;;
               esac
             done <<<"$actual_assets"
@@ -336,7 +364,7 @@ jobs:
           fi
 
           gh release upload "$RELEASE_TAG" \
-            dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 \
+            dist/SHA256SUMS dist/one-node-linux-amd64 dist/one-node-linux-arm64 dist/SHA256SUMS.sig \
             --repo voiceofhu/one-action \
             --clobber
           readback_dir="$(mktemp -d)"
@@ -373,7 +401,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -Eeuo pipefail
-          expected_assets=$'SHA256SUMS\none-node-linux-amd64\none-node-linux-arm64'
+          expected_assets=$'SHA256SUMS\nSHA256SUMS.sig\none-node-linux-amd64\none-node-linux-arm64'
           notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nUpstream: sing-box %s@%s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
             "$NODE_SHA" "$UPSTREAM_VERSION" "$UPSTREAM_COMMIT" "$VERSION")"
           gh release edit "$RELEASE_TAG" \

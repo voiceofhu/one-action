@@ -78,9 +78,12 @@ resolve_latest_node_version() {
 		--user-agent 'one-node-installer' \
 		'https://api.github.com/repos/voiceofhu/one-action/releases?per_page=100') ||
 		die "unable to resolve the latest One Node release"
+	# GitHub lists releases by creation time; pick the highest version so a
+	# release published later for an older line never wins.
 	release_tag=$(printf '%s' "$releases" |
 		grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"one-node-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"' |
-		sed -n '1s/^.*"one-node-v\([^"]*\)"$/\1/p')
+		sed 's/^.*"one-node-v\([^"]*\)"$/\1/' |
+		sort -t . -k 1,1n -k 2,2n -k 3,3n | tail -n 1)
 	manifest_validate_version "$release_tag" ||
 		die "latest One Node release response did not contain a valid version"
 	ONE_NODE_VERSION=$release_tag

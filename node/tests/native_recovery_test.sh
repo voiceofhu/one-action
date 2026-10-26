@@ -25,6 +25,8 @@ fail() {
 . "$ROOT_DIR/scripts/install/native.sh"
 . "$ROOT_DIR/scripts/install/native_reconfigure.sh"
 
+ensure_native_service_user() { :; }
+
 sha256sum() {
 	if command -v shasum >/dev/null 2>&1; then
 		command shasum -a 256 "$@"

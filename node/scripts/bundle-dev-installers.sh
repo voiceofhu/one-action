@@ -25,6 +25,8 @@ bundle_entrypoint() {
 	trap 'rm -f -- "$temporary_path"' EXIT HUP INT TERM
 	{
 		printf '%s\n' '#!/bin/sh' 'set -eu' 'umask 077'
+		# Release signature verification for SHA256SUMS downloads.
+		sed '1{/^#!\/bin\/sh$/d;}' "${ROOT_DIR}/scripts/shared/bootstrap.sh"
 		for module in $modules; do
 			module_path="${ROOT_DIR}/scripts/${module}"
 			[ -f "$module_path" ] && [ ! -L "$module_path" ] || {

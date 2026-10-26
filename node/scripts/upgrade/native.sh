@@ -10,7 +10,53 @@ stage_native_upgrade() {
 	sync -f "$INSTALL_DIR"
 }
 
+# Installs that predate the unprivileged runtime kept the bootstrap token in
+# the root-owned install directory, where the service account cannot remove
+# it; move it (and the pointer to it) into the state directory.
+migrate_native_bootstrap_environment() {
+	bootstrap_env="${ONE_NODE_STATE_DIR}/bootstrap.env"
+	bootstrap_pointer="CONTROL_BOOTSTRAP_ENV_FILE=\"${bootstrap_env}\""
+	[ ! -L "$bootstrap_env" ] || return 1
+	if [ -e "$bootstrap_env" ]; then
+		[ -f "$bootstrap_env" ] || return 1
+	fi
+	token_source="${UPGRADE_TEMP_DIR}/bootstrap.env.next"
+	: >"$token_source" || return 1
+	chmod 0600 "$token_source" || return 1
+	grep '^CONTROL_BOOTSTRAP_TOKEN=' "$ENV_FILE" >>"$token_source" || true
+	if [ -s "$token_source" ]; then
+		replace_managed_file "$token_source" "$bootstrap_env" 0600 || return 1
+	elif [ ! -e "$bootstrap_env" ]; then
+		install -m 0600 "$token_source" "$bootstrap_env" || return 1
+	fi
+	if grep -Fx "$bootstrap_pointer" "$ENV_FILE" >/dev/null &&
+		! grep '^CONTROL_BOOTSTRAP_TOKEN=' "$ENV_FILE" >/dev/null; then
+		return 0
+	fi
+	env_source="${UPGRADE_TEMP_DIR}/.env.next"
+	sed '/^CONTROL_BOOTSTRAP_ENV_FILE=/d; /^CONTROL_BOOTSTRAP_TOKEN=/d' "$ENV_FILE" >"$env_source" || return 1
+	chmod 0600 "$env_source" || return 1
+	printf '%s\n' "$bootstrap_pointer" >>"$env_source" || return 1
+	replace_managed_file "$env_source" "$ENV_FILE" 0600
+}
+
+# Runs while the old process is still up, so a failure leaves it serving; the
+# rewritten unit takes effect at the restart below and also covers rollbacks.
+migrate_native_service_hardening() {
+	ensure_native_service_user || return 1
+	migrate_native_bootstrap_environment || return 1
+	install -d -m 0700 "${ONE_NODE_STATE_DIR}/firewall" || return 1
+	if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
+		install -d -m 0700 "${ONE_NODE_STATE_DIR}/update" || return 1
+	fi
+	UNIT_SOURCE="${UPGRADE_TEMP_DIR}/one-node.service"
+	write_native_source
+	replace_managed_file "$UNIT_SOURCE" "$UNIT_FILE" 0644 || return 1
+	systemctl daemon-reload
+}
+
 switch_native_runtime() {
+	migrate_native_service_hardening || return 1
 	[ ! -L "$MANIFEST_PREVIOUS_DIR" ] || return 1
 	install -d -m 0755 "$MANIFEST_PREVIOUS_DIR" || return 1
 	[ ! -L "$MANIFEST_PREVIOUS_BINARY_PATH_FIXED" ] || return 1

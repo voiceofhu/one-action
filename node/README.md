@@ -7,12 +7,12 @@ This namespace owns the One Node installer lifecycle inside the central
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/upgrade.sh`
 - `https://raw.githubusercontent.com/voiceofhu/one-action/<action-commit>/node/uninstall.sh`
 
-The entrypoints load the product-specific modules under `scripts`. A
-remote invocation may set `ONE_ACTION_COMMIT` to the exact 40-character
-lowercase commit containing the entrypoint and modules. If omitted, the
-entrypoint resolves central `main` once through the fixed GitHub API, requires
-exactly one 40-character commit, and loads every module from that immutable
-commit. Resolution or validation failure stops before module loading.
+The entrypoints load the product-specific modules under `scripts` from the
+commit of the selected `one-node-v<version>` release tag. They resolve that
+commit through the fixed GitHub API and verify each module against the signed
+release manifest. An inherited `ONE_ACTION_COMMIT` from an older manager is
+replaced if it differs from the selected release's commit. Resolution or
+validation failure stops before module loading.
 `ONE_NODE_SCRIPT_BASE_URL` is restricted to explicitly enabled local HTTP
 development fixtures and cannot redirect production loading to another HTTPS
 repository. Native

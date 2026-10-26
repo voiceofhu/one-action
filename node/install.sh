@@ -217,22 +217,25 @@ bootstrap_resolve_release_version() {
 # The release tag's commit, so entrypoint, modules, and binary share one source.
 bootstrap_resolve_action_commit() {
 	bootstrap_response=$1
-	bootstrap_commit=${ONE_ACTION_COMMIT:-}
-	if [ -z "$bootstrap_commit" ]; then
-		bootstrap_status=$(bootstrap_curl --no-location \
-			--header 'Accept: application/vnd.github.sha' \
-			--header 'X-GitHub-Api-Version: 2022-11-28' \
-			--write-out '%{http_code}' \
-			"https://api.github.com/repos/${ONE_NODE_ACTION_REPOSITORY}/commits/one-node-v${ONE_NODE_RELEASE_VERSION}" \
-			--output "$bootstrap_response") ||
-			bootstrap_die "unable to resolve the One Action commit of one-node-v${ONE_NODE_RELEASE_VERSION}"
-		[ "$bootstrap_status" = 200 ] || bootstrap_die "unexpected One Action commit response"
-		bootstrap_commit=$(tr -d '\r\n' <"$bootstrap_response")
-		bootstrap_validate_action_commit "$bootstrap_commit" ||
-			bootstrap_die "One Action commit response must be an exact lowercase commit SHA"
+	bootstrap_inherited_commit=${ONE_ACTION_COMMIT:-}
+	if [ -n "$bootstrap_inherited_commit" ]; then
+		bootstrap_validate_action_commit "$bootstrap_inherited_commit" ||
+			bootstrap_die "ONE_ACTION_COMMIT must be an exact lowercase commit SHA"
 	fi
+	bootstrap_status=$(bootstrap_curl --no-location \
+		--header 'Accept: application/vnd.github.sha' \
+		--header 'X-GitHub-Api-Version: 2022-11-28' \
+		--write-out '%{http_code}' \
+		"https://api.github.com/repos/${ONE_NODE_ACTION_REPOSITORY}/commits/one-node-v${ONE_NODE_RELEASE_VERSION}" \
+		--output "$bootstrap_response") ||
+		bootstrap_die "unable to resolve the One Action commit of one-node-v${ONE_NODE_RELEASE_VERSION}"
+	[ "$bootstrap_status" = 200 ] || bootstrap_die "unexpected One Action commit response"
+	bootstrap_commit=$(tr -d '\r\n' <"$bootstrap_response")
 	bootstrap_validate_action_commit "$bootstrap_commit" ||
-		bootstrap_die "ONE_ACTION_COMMIT must be an exact lowercase commit SHA"
+		bootstrap_die "One Action commit response must be an exact lowercase commit SHA"
+	if [ -n "$bootstrap_inherited_commit" ] && [ "$bootstrap_inherited_commit" != "$bootstrap_commit" ]; then
+		bootstrap_warn "using one-node-v${ONE_NODE_RELEASE_VERSION} commit ${bootstrap_commit} instead of inherited ONE_ACTION_COMMIT=${bootstrap_inherited_commit}"
+	fi
 	ONE_ACTION_COMMIT=$bootstrap_commit
 	export ONE_ACTION_COMMIT
 }

@@ -162,10 +162,10 @@ grep -F "one-action/${COMMIT}/node/scripts/install/main.sh" "$FAKE_CURL_LOG" >/d
 grep -F "one-action/${COMMIT}/node/install.sh" "$FAKE_CURL_LOG" >/dev/null
 grep -F 'one-node-v1.2.3/SHA256SUMS.sig' "$FAKE_CURL_LOG" >/dev/null
 
-# An explicit commit is used as given; the version comes from the command.
+# Resolve the target release even when a parent supplied a commit.
 run_entrypoint env ONE_ACTION_COMMIT=$COMMIT ONE_NODE_VERSION=$VERSION "$RUN/upgrade.sh"
-if grep -F 'api.github.com' "$FAKE_CURL_LOG" >/dev/null; then
-	fail "pinned commit and version still queried the GitHub API"
+if ! grep -F 'commits/one-node-v1.2.3' "$FAKE_CURL_LOG" >/dev/null; then
+	fail "inherited commit skipped target release resolution"
 fi
 # Uninstall and rollback verify against the installed version.
 install -d -m 0700 "$TEST_TEMP_DIR/installed"

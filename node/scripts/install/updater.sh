@@ -81,8 +81,7 @@ write_status() {
 	temporary=$(mktemp "${update_dir}/.status.XXXXXX")
 	chmod 0600 "$temporary"
 	# The native node runs as one-node and must read the status back.
-	status_owner=$(stat -c %u:%g "$update_dir" 2>/dev/null) &&
-		chown "$status_owner" "$temporary" 2>/dev/null || true
+	chown -h --reference="$update_dir" "$temporary"
 	printf '%s\n' \
 		"command_id=${command_id}" \
 		"version=${version}" \
@@ -163,6 +162,8 @@ Type=oneshot
 TimeoutStartSec=20min
 Environment="ONE_NODE_UPDATE_DIR=${ONE_NODE_STATE_DIR}/update"
 ExecStart=/opt/one-node/updater.sh
+# A legacy updater may write its final root-owned status after migration.
+ExecStopPost=/bin/chown -hR --reference="${ONE_NODE_STATE_DIR}/update" "${ONE_NODE_STATE_DIR}/update"
 UMask=0077
 EOF
 
@@ -179,6 +180,7 @@ WantedBy=multi-user.target
 EOF
 
 	install -d -m 0700 "${ONE_NODE_STATE_DIR}/update"
+	chown -hR --reference="$ONE_NODE_STATE_DIR" "${ONE_NODE_STATE_DIR}/update"
 	install -m 0700 "$updater_script_source" "$UPDATER_FILE"
 	install -m 0644 "$updater_service_source" "$UPDATER_SERVICE_FILE"
 	install -m 0644 "$updater_path_source" "$UPDATER_PATH_FILE"

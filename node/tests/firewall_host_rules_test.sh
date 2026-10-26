@@ -123,6 +123,7 @@ request_ports() {
 		"request_id=11111111-1111-4111-8111-11111111111$1" \
 		"tcp_ports=$2" \
 		"udp_ports=$3" >"$FIREWALL_REQUEST_FILE"
+	[ -z "${4:-}" ] || printf '%s\n' "restricted=$4" >>"$FIREWALL_REQUEST_FILE"
 	chmod 0600 "$FIREWALL_REQUEST_FILE"
 	ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" \
 		ONE_NODE_FIREWALL_HOST_RULES="$HOST_RULES" "$FIREWALL_FILE" 2>>"${TEST_TEMP_DIR}/firewall.log"
@@ -167,6 +168,26 @@ printf '%s\n' 'ufw 22/tcp; rm -rf /' 'firewalld -x 1/tcp' 'ufw 0/tcp' >>"$HOST_R
 request_ports 5 8443,26172 ""
 grep -Fx '22/tcp admin' "$FAKE_STATE/ufw.rules" >/dev/null || fail "malformed record removed an admin rule"
 grep -F 'rm -rf' "$HOST_RULES" >/dev/null && fail "malformed record was kept"
+
+# Restricted ports are still opened in ufw/firewalld: their base chains run
+# after inet one_node, whose restricted chain already dropped other sources.
+request_ports 6 8443,26172 26172 'tcp:26172:198.51.100.7/32;udp:26172:2001:db8::/32'
+grep -Fx '26172/tcp one-node' "$FAKE_STATE/ufw.rules" >/dev/null || fail "restricted ufw tcp port was not allowed"
+grep -Fx '26172/udp one-node' "$FAKE_STATE/ufw.rules" >/dev/null || fail "restricted ufw udp port was not allowed"
+
+# A rejected restricted request leaves the host firewalls untouched.
+cp "$FAKE_STATE/ufw.rules" "${TEST_TEMP_DIR}/ufw.before"
+printf '%s\n' \
+	'request_id=11111111-1111-4111-8111-111111111117' \
+	'tcp_ports=8443' \
+	'udp_ports=' \
+	'restricted=tcp:8443:198.51.100.7/32' >"$FIREWALL_REQUEST_FILE"
+chmod 0600 "$FIREWALL_REQUEST_FILE"
+if ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" \
+	ONE_NODE_FIREWALL_HOST_RULES="$HOST_RULES" "$FIREWALL_FILE" 2>>"${TEST_TEMP_DIR}/firewall.log"; then
+	fail "restricted port outside 20000-60000 was accepted"
+fi
+cmp -s "$FAKE_STATE/ufw.rules" "${TEST_TEMP_DIR}/ufw.before" || fail "rejected request changed ufw rules"
 
 # Removing the firewall removes only the recorded rules.
 remove_host_firewall

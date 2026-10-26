@@ -35,10 +35,21 @@ write_host_firewall_environment() {
 
 enable_host_firewall_for_upgrade() {
 	configure_host_firewall
+	# A new table starts with every managed port closed. When an upgrade adds
+	# the firewall to an install that never had it, the running runtime still
+	# serves its ports, so keep the range open until the new runtime replaces
+	# it with its own port list.
+	host_firewall_table_existed=false
+	if command -v nft >/dev/null 2>&1 && nft -nn list table inet one_node >/dev/null 2>&1; then
+		host_firewall_table_existed=true
+	fi
 	write_host_firewall_environment
 	record_host_firewall_manifest_paths
 	manifest_write "$INSTALL_RECORD" || die "unable to record the host firewall"
 	install_host_firewall
+	if [ "$host_firewall_table_existed" = false ]; then
+		stage_host_firewall_transition || die "unable to keep current runtime ports open while enabling the host firewall"
+	fi
 }
 
 stage_host_firewall_transition() {
@@ -275,8 +286,8 @@ write_table_source() {
 	target=$1
 	cat >"$target" <<'NFT'
 add table inet one_node
-add set inet one_node tcp_ports { type inet_service; flags interval; elements = { 20000-60000 }; }
-add set inet one_node udp_ports { type inet_service; flags interval; elements = { 20000-60000 }; }
+add set inet one_node tcp_ports { type inet_service; flags interval; }
+add set inet one_node udp_ports { type inet_service; flags interval; }
 add chain inet one_node input { type filter hook input priority -10; policy accept; }
 add rule inet one_node input iifname "lo" accept comment "one-node-loopback"
 add rule inet one_node input ct state established,related accept comment "one-node-established"
@@ -285,6 +296,15 @@ add rule inet one_node input udp dport @udp_ports accept comment "one-node-activ
 add rule inet one_node input tcp dport 20000-60000 drop comment "one-node-unused-tcp"
 add rule inet one_node input udp dport 20000-60000 drop comment "one-node-unused-udp"
 NFT
+	write_restricted_chain >>"$target"
+}
+
+# The restricted base chain runs before chain input (priority -10), so its
+# drops win over the @tcp_ports/@udp_ports accepts. Re-adding it is a no-op,
+# which also upgrades tables created before it existed.
+write_restricted_chain() {
+	printf '%s\n' \
+		"add chain inet one_node restricted { type filter hook input priority -15; policy accept; }"
 }
 
 validate_table() {
@@ -319,6 +339,131 @@ initialize_table() {
 	nft -f "$temporary" || die "unable to initialize nftables table inet one_node"
 	rm -f -- "$temporary"
 	trap - EXIT HUP INT TERM
+}
+
+valid_decimal() {
+	case "$1" in
+	0) return 0 ;;
+	''|*[!0-9]*|0*|??????*) return 1 ;;
+	esac
+	[ "$1" -le "$2" ]
+}
+
+valid_ipv4_cidr() {
+	case "$1" in
+	*/*/*|*[!0-9./]*|*..*|.*|*./*) return 1 ;;
+	*.*.*.*.*/*) return 1 ;;
+	*.*.*.*/*) ;;
+	*) return 1 ;;
+	esac
+	valid_decimal "${1#*/}" 32 || return 1
+	ipv4_rest=${1%/*}
+	while :; do
+		valid_decimal "${ipv4_rest%%.*}" 255 || return 1
+		case "$ipv4_rest" in *.*) ipv4_rest=${ipv4_rest#*.} ;; *) return 0 ;; esac
+	done
+}
+
+# Sets ipv6_groups to the number of 1-4 digit hex groups in $1, which must be
+# empty or groups joined by single colons.
+count_ipv6_groups() {
+	ipv6_groups=0
+	[ -n "$1" ] || return 0
+	case "$1" in :*|*:|*::*) return 1 ;; esac
+	ipv6_rest=$1
+	while :; do
+		case "${ipv6_rest%%:*}" in ''|?????*|*[!0-9a-f]*) return 1 ;; esac
+		ipv6_groups=$((ipv6_groups + 1))
+		case "$ipv6_rest" in *:*) ipv6_rest=${ipv6_rest#*:} ;; *) return 0 ;; esac
+	done
+}
+
+# Lowercase hex only, no zones or embedded IPv4, explicit prefix length.
+valid_ipv6_cidr() {
+	case "$1" in
+	*/*/*|*[!0-9a-f:/]*|*:::*|*::*::*) return 1 ;;
+	*:*/*) ;;
+	*) return 1 ;;
+	esac
+	valid_decimal "${1#*/}" 128 || return 1
+	ipv6_address=${1%/*}
+	case "$ipv6_address" in
+	*::*)
+		count_ipv6_groups "${ipv6_address%%::*}" || return 1
+		ipv6_head=$ipv6_groups
+		count_ipv6_groups "${ipv6_address#*::}" || return 1
+		[ $((ipv6_head + ipv6_groups)) -le 7 ]
+		;;
+	*)
+		count_ipv6_groups "$ipv6_address" || return 1
+		[ "$ipv6_groups" -eq 8 ]
+		;;
+	esac
+}
+
+port_listed() {
+	case ",$2," in *",$1,"*) return 0 ;; esac
+	return 1
+}
+
+# restricted=<tcp|udp>:<port>:<cidr>|<cidr>;... limits a listed port inside
+# the managed range to the given sources. An empty source list drops every
+# source. Validated sources are collected into restricted_rules as nft
+# commands; nothing from the request reaches nft unvalidated.
+validate_restricted() {
+	restricted_rules=""
+	[ -n "$restricted" ] || return 0
+	case "$restricted" in
+	\;*|*\;|*\;\;*|*[!0-9a-fptu:./'|;']*) return 1 ;;
+	esac
+	restricted_seen=";"
+	restricted_count=0
+	restricted_rest=$restricted
+	while :; do
+		entry=${restricted_rest%%;*}
+		restricted_count=$((restricted_count + 1))
+		[ "$restricted_count" -le 128 ] || return 1
+		protocol=${entry%%:*}
+		case "$entry" in *:*:*) ;; *) return 1 ;; esac
+		entry_rest=${entry#*:}
+		port=${entry_rest%%:*}
+		sources=${entry_rest#*:}
+		case "$protocol" in
+		tcp) port_listed "$port" "$tcp_ports" || return 1 ;;
+		udp) port_listed "$port" "$udp_ports" || return 1 ;;
+		*) return 1 ;;
+		esac
+		valid_decimal "$port" 65535 || return 1
+		[ "$port" -ge 20000 ] && [ "$port" -le 60000 ] || return 1
+		case "$restricted_seen" in *";${protocol}:${port};"*) return 1 ;; esac
+		restricted_seen="${restricted_seen}${protocol}:${port};"
+
+		ipv4_sources=""
+		ipv6_sources=""
+		source_count=0
+		case "$sources" in \|*|*\||*\|\|*) return 1 ;; esac
+		sources_rest=$sources
+		while [ -n "$sources_rest" ]; do
+			source=${sources_rest%%|*}
+			source_count=$((source_count + 1))
+			[ "$source_count" -le 1024 ] || return 1
+			if valid_ipv4_cidr "$source"; then
+				ipv4_sources="${ipv4_sources:+${ipv4_sources}, }${source}"
+			elif valid_ipv6_cidr "$source"; then
+				ipv6_sources="${ipv6_sources:+${ipv6_sources}, }${source}"
+			else
+				return 1
+			fi
+			case "$sources_rest" in *"|"*) sources_rest=${sources_rest#*|} ;; *) sources_rest="" ;; esac
+		done
+		[ -z "$ipv4_sources" ] || restricted_rules="${restricted_rules}add rule inet one_node restricted ${protocol} dport ${port} ip saddr { ${ipv4_sources} } accept comment \"one-node-restricted-allow\"
+"
+		[ -z "$ipv6_sources" ] || restricted_rules="${restricted_rules}add rule inet one_node restricted ${protocol} dport ${port} ip6 saddr { ${ipv6_sources} } accept comment \"one-node-restricted-allow\"
+"
+		restricted_rules="${restricted_rules}add rule inet one_node restricted ${protocol} dport ${port} drop comment \"one-node-restricted-drop\"
+"
+		case "$restricted_rest" in *";"*) restricted_rest=${restricted_rest#*;} ;; *) return 0 ;; esac
+	done
 }
 
 validate_ports() {
@@ -365,6 +510,15 @@ apply_ports() {
 		"flush set inet one_node udp_ports" >"$temporary"
 	[ -z "$tcp_ports" ] || printf '%s\n' "add element inet one_node tcp_ports { ${tcp_ports} }" >>"$temporary"
 	[ -z "$udp_ports" ] || printf '%s\n' "add element inet one_node udp_ports { ${udp_ports} }" >>"$temporary"
+	# One nft transaction: the sets and the restricted chain change together.
+	{
+		write_restricted_chain
+		printf '%s\n' \
+			"flush chain inet one_node restricted" \
+			"add rule inet one_node restricted iifname \"lo\" accept comment \"one-node-restricted-loopback\"" \
+			"add rule inet one_node restricted ct state established,related accept comment \"one-node-restricted-established\""
+		printf '%s' "$restricted_rules"
+	} >>"$temporary"
 	if ! nft -f "$temporary"; then
 		rm -f -- "$temporary"
 		trap - EXIT HUP INT TERM
@@ -388,10 +542,17 @@ initialize_table
 processing_request=true
 [ -f "$request_file" ] && [ ! -L "$request_file" ] || die "request is missing or unsafe"
 [ "$(stat -c %a "$request_file")" = 600 ] || die "request permissions must be 0600"
-[ "$(wc -l <"$request_file" | tr -d ' ')" = 3 ] || die "request has an invalid field count"
+# Read first so later failures can still be reported; die only echoes it
+# after checking its shape.
 request_id=$(sed -n 's/^request_id=//p' "$request_file")
+request_lines=$(wc -l <"$request_file" | tr -d ' ')
+restricted_lines=$(grep -c '^restricted=' "$request_file" || true)
+# Older nodes send three lines; restricted= is the optional fourth.
+[ "$request_lines" = $((3 + restricted_lines)) ] && [ "$restricted_lines" -le 1 ] ||
+	die "request has an invalid field count"
 tcp_ports=$(sed -n 's/^tcp_ports=//p' "$request_file")
 udp_ports=$(sed -n 's/^udp_ports=//p' "$request_file")
+restricted=$(sed -n 's/^restricted=//p' "$request_file")
 [ "$(grep -c '^request_id=' "$request_file")" = 1 ] || die "request_id is invalid"
 [ "$(grep -c '^tcp_ports=' "$request_file")" = 1 ] || die "tcp_ports is invalid"
 [ "$(grep -c '^udp_ports=' "$request_file")" = 1 ] || die "udp_ports is invalid"
@@ -399,6 +560,7 @@ case "$request_id" in ????????-????-????-????-????????????) ;; *) die "request_i
 case "$request_id" in *[!0-9a-f-]*) die "request_id is invalid" ;; esac
 validate_ports "$tcp_ports" || die "tcp_ports is invalid"
 validate_ports "$udp_ports" || die "udp_ports is invalid"
+validate_restricted || die "restricted is invalid"
 
 mv -f -- "$request_file" "$running_file"
 if apply_ports; then

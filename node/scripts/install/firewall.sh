@@ -84,6 +84,8 @@ install_host_firewall() {
 	cat >"$firewall_script_source" <<'EOF'
 #!/bin/sh
 set -eu
+# Keep validation character ranges independent of the host locale.
+export LC_ALL=C
 umask 077
 
 firewall_dir=${ONE_NODE_FIREWALL_DIR:-/var/lib/one-node/firewall}

@@ -27,6 +27,15 @@ cat >"${fake_bin}/stat" <<'EOF'
 exec /usr/bin/stat -f %Lp "$3"
 EOF
 chmod 0755 "${fake_bin}/stat"
+# GNU `chown -h[R] --reference=DIR PATH` on BSD hosts.
+cat >"${fake_bin}/chown" <<'EOF'
+#!/bin/sh
+reference=${2#--reference=}
+[ "$reference" != "$2" ] || exec /usr/sbin/chown "$@"
+exec /usr/sbin/chown "$1" "$(/usr/bin/stat -f %u:%g "$reference")" "$3"
+EOF
+chmod 0755 "${fake_bin}/chown"
+chown() { "${fake_bin}/chown" "$@"; }
 
 systemctl() { :; }
 install_host_updater

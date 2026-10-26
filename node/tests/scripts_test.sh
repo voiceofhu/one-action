@@ -97,7 +97,9 @@ chmod 0700 "$upgrade_installer"
 canonical_fixture="$TEST_TEMP_DIR/not-created/child"
 [ "$(canonical_path "$canonical_fixture")" = "$canonical_fixture" ]
 [ "$(canonical_path "$TEST_TEMP_DIR/./child")" = "$TEST_TEMP_DIR/child" ]
-for unsafe_path in relative/path "$TEST_TEMP_DIR//child" "$TEST_TEMP_DIR/../child"; do
+for unsafe_path in relative/path "$TEST_TEMP_DIR//child" "$TEST_TEMP_DIR/../child" \
+	"$TEST_TEMP_DIR/cr$(printf '\r')child" "$TEST_TEMP_DIR/lf
+child"; do
 	if canonical_path "$unsafe_path" >/dev/null; then
 		printf '%s\n' "unsafe path was accepted: $unsafe_path" >&2
 		exit 1

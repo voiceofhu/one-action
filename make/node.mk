@@ -10,6 +10,11 @@ node-check:
 	@sh $(PROJECT_ROOT)/node/tests/reset_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/native_recovery_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/updater_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/hardening_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/reinstall_rollback_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/signing_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/tuning_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/firewall_host_rules_test.sh
 
 NODE_INSTALLER_DIST ?= $(PROJECT_ROOT)/node/dist
 

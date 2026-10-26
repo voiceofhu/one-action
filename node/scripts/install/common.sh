@@ -1,5 +1,9 @@
 #!/bin/sh
 
+ONE_NODE_LF='
+'
+ONE_NODE_CR=$(printf '\r')
+
 log() {
 	printf '%s\n' "[one-node] $*"
 }
@@ -27,9 +31,7 @@ canonical_path() {
 	esac
 	case "$canonical_input" in
 	*'//'*) return 1 ;;
-	*'
-'*|*'
-'*) return 1 ;;
+	*"$ONE_NODE_LF"*|*"$ONE_NODE_CR"*) return 1 ;;
 	esac
 	case "/${canonical_input#/}/" in
 	*'/../'*) return 1 ;;
@@ -84,9 +86,7 @@ require_single_line() {
 	name=$1
 	value=$2
 	case "$value" in
-	*'
-'*|*'
-'*) die "${name} must be a single line" ;;
+	*"$ONE_NODE_LF"*|*"$ONE_NODE_CR"*) die "${name} must be a single line" ;;
 	esac
 }
 

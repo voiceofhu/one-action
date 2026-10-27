@@ -73,7 +73,6 @@ help:
 		"  make validate-node-runtime  Validate only One Node Runtime release contracts" \
 		"  make validate-browser-app   Validate desktop App (Tauri) release contracts" \
 		"  make validate-mail-app      Validate desktop App (Tauri) release contracts" \
-		"  make validate-browser-egress Validate only Browser Egress release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \
 		"" \
@@ -102,5 +101,4 @@ help:
 		"  make deploy-browser-app     Check One Browser App and tag installer publication" \
 		"  make deploy-mail-app        Check One Mail App and tag installer publication" \
 		"  make deploy-browser-server  Publish and deploy One Browser with Web" \
-		"  make deploy-browser-web     Deploy Web without restarting Browser Server" \
-		"  make deploy-browser-egress  Check Browser Egress and tag package/image publication"
+		"  make deploy-browser-web     Deploy Web without restarting Browser Server"

@@ -11,7 +11,7 @@ ruby -ryaml -e '
     events = document.fetch("on")
     reusable = events.key?("workflow_call")
     pattern = reusable ? /\Areusable-[a-z0-9]+(?:-[a-z0-9]+)+\.yml\z/ :
-      /\A(?!one-)[a-z][a-z0-9]*-(?:server|web|app|runtime|egress)(?:-[a-z0-9]+)*\.yml\z/
+      /\A(?!one-)[a-z][a-z0-9]*-(?:server|web|app|runtime)(?:-[a-z0-9]+)*\.yml\z/
     abort("#{name}: use <product>-<component>[-<purpose>].yml or reusable-<action>-<target>.yml") unless name.match?(pattern)
     document.fetch("jobs").each_value do |job|
       reference = job["uses"]

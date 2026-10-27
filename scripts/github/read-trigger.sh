@@ -15,7 +15,7 @@ die() {
 [[ "$#" -ge 2 ]] || die 'usage: read-trigger.sh NAME KEY_ref...'
 name=$1
 shift
-[[ "$name" =~ ^[a-z][a-z0-9]*-(server|web|app|runtime|egress)$ ]] || die "invalid workflow name: $name"
+[[ "$name" =~ ^[a-z][a-z0-9]*-(server|web|app|runtime)$ ]] || die "invalid workflow name: $name"
 
 [[ "${GITHUB_REPOSITORY:-}" == voiceofhu/one-action \
   && "${GITHUB_REF_TYPE:-}" == tag \

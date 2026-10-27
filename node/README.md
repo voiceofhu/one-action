@@ -18,8 +18,8 @@ development fixtures and cannot redirect production loading to another HTTPS
 repository. Native
 and Docker installation, install-command replacement with manifest-owned cleanup,
 readiness checks, immutable-version upgrade, automatic failed-upgrade recovery,
-explicit rollback, and uninstall remain separate from Browser Egress lifecycle
-code. When `ONE_NODE_VERSION` is omitted, installation resolves the newest
+explicit rollback, and uninstall are all handled by these entrypoints.
+When `ONE_NODE_VERSION` is omitted, installation resolves the newest
 published `voiceofhu/one-action@one-node-v<version>` Release. Native then downloads that
 exact Release, while Docker pulls its matching version tag and records the
 resolved immutable digest. Explicit version and digest inputs remain available

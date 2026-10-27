@@ -13,11 +13,8 @@ USER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENE
 NODE_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
 ONE_BROWSER_APP_REF ?= main
-ONE_BROWSER_EGRESS_REPOSITORY ?= voiceofhu/one-browser-egress
 ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/app
-ONE_BROWSER_EGRESS_DIR ?= $(SOURCE_ROOT)/one-browser/egress
 BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-BROWSER_EGRESS_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
 ONE_NODE_REPOSITORY ?= voiceofhu/one-node-node
 ONE_NODE_REF ?= main
@@ -39,9 +36,7 @@ endif
 export DRY_RUN
 export GENERATED_VERSION
 export ONE_BROWSER_APP_REF
-export ONE_BROWSER_EGRESS_REPOSITORY
 export ONE_BROWSER_APP_DIR
-export ONE_BROWSER_EGRESS_DIR
 export ONE_NODE_REPOSITORY ONE_NODE_REF
 export ONE_NODE_DIR
 export VERSION ENVIRONMENT PUBLISH DEPLOY

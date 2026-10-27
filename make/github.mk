@@ -1,4 +1,4 @@
-.PHONY: validate validate-user validate-node-runtime validate-browser-app validate-browser-egress
+.PHONY: validate validate-user validate-node-runtime validate-browser-app
 
 validate:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh
@@ -8,9 +8,6 @@ validate-user:
 
 validate-node-runtime:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh node-runtime
-
-validate-browser-egress:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-egress
 
 validate-browser-app:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-app

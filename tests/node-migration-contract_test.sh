@@ -37,24 +37,10 @@ for entrypoint in install.sh upgrade.sh uninstall.sh; do
     fail "missing namespaced Node entrypoint: node/$entrypoint"
 done
 
-for entrypoint in install.sh uninstall.sh; do
-  root_entrypoint="$PROJECT_ROOT/$entrypoint"
-  [[ ! -e "$root_entrypoint" ]] && continue
-  [[ -f "$root_entrypoint" ]] ||
-    fail "root lifecycle entrypoint must be a regular file: $entrypoint"
-  grep -Fq 'ONE_BROWSER_EGRESS_' "$root_entrypoint" ||
-    fail "ambiguous root lifecycle entrypoint is not branded for Egress: $entrypoint"
+for entrypoint in install.sh upgrade.sh uninstall.sh; do
+  [[ ! -e "$PROJECT_ROOT/$entrypoint" ]] ||
+    fail "ambiguous root lifecycle entrypoint must not exist: $entrypoint"
 done
-
-for entrypoint in install.sh uninstall.sh; do
-  [[ -f "$PROJECT_ROOT/egress/$entrypoint" ]] ||
-    fail "missing namespaced Egress entrypoint: egress/$entrypoint"
-  grep -Fq "egress/$entrypoint" "$PROJECT_ROOT/$entrypoint" ||
-    fail "root Egress compatibility entrypoint does not delegate to egress/$entrypoint"
-done
-
-[[ ! -e "$PROJECT_ROOT/upgrade.sh" ]] ||
-  fail "ambiguous root lifecycle entrypoint must not exist: upgrade.sh"
 
 require_text "$WORKFLOW" "'on':"
 require_text "$WORKFLOW" 'tags: ["deploy/node-runtime/*"]'

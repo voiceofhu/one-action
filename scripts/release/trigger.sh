@@ -20,7 +20,7 @@ action_sha=$2
 version=$3
 shift 3
 
-[[ "$workflow" =~ ^([a-z][a-z0-9]*-(server|web|app|runtime|egress))\.yml$ ]] ||
+[[ "$workflow" =~ ^([a-z][a-z0-9]*-(server|web|app|runtime))\.yml$ ]] ||
   die "workflow is outside the release naming contract: $workflow"
 name=${BASH_REMATCH[1]}
 workflow_file="$PROJECT_ROOT/.github/workflows/$workflow"

@@ -16,8 +16,6 @@ case "$scope" in
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
       "$PROJECT_ROOT/tests/app-release_test.sh"
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
-      "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
-      "$PROJECT_ROOT/tests/egress-updater_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
@@ -29,12 +27,6 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
-      "$PROJECT_ROOT/install.sh"
-      "$PROJECT_ROOT/uninstall.sh"
-      "$PROJECT_ROOT/egress/install.sh"
-      "$PROJECT_ROOT/egress/uninstall.sh"
-      "$PROJECT_ROOT"/egress/scripts/install/*.sh
-      "$PROJECT_ROOT"/egress/scripts/uninstall/*.sh
       "$PROJECT_ROOT/node/install.sh"
       "$PROJECT_ROOT/node/scripts/install/firewall.sh"
       "$PROJECT_ROOT/node/scripts/install/tuning.sh"
@@ -47,7 +39,6 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/deploy-node-release.sh"
       "$PROJECT_ROOT/scripts/lib/app.sh"
       "$PROJECT_ROOT/scripts/release/release-app.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/scripts/validate.sh"
@@ -124,27 +115,6 @@ case "$scope" in
     for app in $(jq -r 'keys[]' "$PROJECT_ROOT/apps.json"); do
       active_workflows+=("$app-app.yml")
     done
-    run_node_check=false
-    ;;
-  browser-egress)
-    active_tests=(
-      "$PROJECT_ROOT/tests/browser-egress-release-contract_test.sh"
-      "$PROJECT_ROOT/tests/egress-updater_test.sh"
-    )
-    shell_files=(
-      "$PROJECT_ROOT/egress/install.sh"
-      "$PROJECT_ROOT/egress/uninstall.sh"
-      "$PROJECT_ROOT"/egress/scripts/install/*.sh
-      "$PROJECT_ROOT"/egress/scripts/uninstall/*.sh
-      "$PROJECT_ROOT/scripts/github/read-trigger.sh"
-      "$PROJECT_ROOT/scripts/release/trigger.sh"
-      "$PROJECT_ROOT/scripts/release/deploy-browser-egress-release.sh"
-      "${active_tests[@]}"
-      "$PROJECT_ROOT/scripts/validate.sh"
-    )
-    active_workflows=(
-      browser-egress.yml
-    )
     run_node_check=false
     ;;
   *)

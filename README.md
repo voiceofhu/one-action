@@ -10,9 +10,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 和产物不得包含私有源码、Token、环境文件或生产凭据。
 
 公开安装器按产品命名空间组织：One Node 使用 `node/{install,upgrade,uninstall}.sh`
-及 `node/scripts/`，One Browser Egress 使用 `egress/{install,uninstall}.sh` 及
-`egress/scripts/`。根目录 Egress 入口仅兼容历史命令；新生成的安装命令必须使用
-`egress/` 路径。
+及 `node/scripts/`；仓库根目录不提供安装入口。
 
 所有产品都通过 One Action 发布；One IP 是独立项目，不接入（由自身仓库 `make deploy-server`
 部署）。当前本地发布入口如下，未在这里列出的产品不应视为已经具备正式分发或部署能力：
@@ -23,9 +21,8 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
 | `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
-| `make deploy-browser-egress` | 标签 `deploy/browser-egress/<version>` → `browser-egress.yml` | Egress 双架构原生包、`SHA256SUMS`、公开 Release 和 `ghcr.io/voiceofhu/one-browser-egress:<version>` |
 
-`deploy-node` 只触发 Runtime 编译上传；Browser App/Egress 只发布产物。One Node 的 Backend 是 Go
+`deploy-node` 只触发 Runtime 编译上传；Browser App 只发布产物。One Node 的 Backend 是 Go
 （`products.json` 中 `"backend_language": "go"`）：发布时运行 `go vet` 与 `make test`，不提交版本号，
 版本通过镜像构建参数 `VERSION` 写入。
 
@@ -34,7 +31,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 所有工作流直接放在 `.github/workflows/`，使用小写 kebab-case 和 `.yml` 后缀：
 
 - 产品入口：`<product>-<component>[-<purpose>].yml`。产品省略统一的 `one-` 前缀；
-  组件使用 `server`、`web`、`app`、`runtime`、`egress`。例如 `user-server.yml`、
+  组件使用 `server`、`web`、`app`、`runtime`。例如 `user-server.yml`、
   `browser-app.yml`、`node-runtime.yml`；同一组件存在不同用途时才增加后缀。
 - 共用工作流：`reusable-<action>-<target>.yml`，通过 `workflow_call` 调用。
   当前 `reusable-publish-server-image.yml` 负责构建 Web 和 Server 多架构镜像。
@@ -60,7 +57,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 4. One User 推送版本文件提交；One Node Server、One Node Runtime 和 Browser 三条链路要求本地 HEAD 已与远端分支完全一致；这些链路不创建源码发布 tag；
 5. 本地入口 `scripts/release/trigger.sh` 在已发布的 Action `main` 提交上创建注释标签
    `deploy/<workflow>/<version>` 并用普通 `git push` 推送；标签说明逐行写入精确源码 SHA
-   （如 `backend_ref=<sha>`）。One Node / App / Egress Release workflow 另行创建公开 Release 所需的 `one-*-v<version>` 标签；
+   （如 `backend_ref=<sha>`）。One Node / App Release workflow 另行创建公开 Release 所需的 `one-*-v<version>` 标签；
 6. Action 只拉取固定源码、并行编译 amd64/arm64，并上传镜像或 Release 产物；
 7. One User 与 One Node Server 在镜像成功合并后，将 digest-qualified 镜像分别部署到受保护的生产 environment。
 
@@ -163,10 +160,9 @@ make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 make deploy-browser-app
 make deploy-browser-server
-make deploy-browser-egress
 ```
 
-One User、One Node 和 Browser Egress 目标执行各自产品的本地检查；Browser App 在推送标签前安装锁定依赖、检查 Node 脚本语法，并运行 Rust fmt、Clippy 和测试；失败即停止，成功后将本地校验过的源码 SHA 交给工作流构建。App 工作区须干净，HEAD 须匹配配置的源码 ref。App 默认使用与其他部署入口相同的上海时间版本（YY.MMDD.HHmm，去除各段前导零），也可通过 `VERSION=...` 显式指定；不再复用源码 package.json 的旧版本。CI 在各平台打包前调用 App 的 `scripts/update-version.mjs`，同步写入 package.json、Tauri 配置、Cargo.toml 和 Cargo.lock，版本修改仅发生在 CI 检出目录。构建前先检查同名 Release，已存在或无法确认时停止，发布阶段仍保留不可覆盖保护。同一分钟内重复发布时需等下一分钟或指定未使用的版本。 与 One Node 一样，App 发布时在 one-action 公共仓库显式创建 `one-browser-app-v<版本>` tag，绑定本次 Action SHA；已有 tag 必须指向相同提交，禁止移动或覆盖。创建 Release 使用 `--verify-tag --latest=false`，源码 SHA 记录在发布说明中，源码仓库不打发布 tag。Browser Server/Web 在本地校验后推送 deploy 标签。`browser-app.yml` 从标签读取源码 SHA，所有平台统一检出该 SHA。生产页面地址由 App 的 `src-tauri/tauri.conf.json` 管理（`https://browser.aicbe.com`），无需设置 Action 后端地址变量。修改 workflow 后须先推送到 `main`，新入口才能被标签触发。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
+One User 和 One Node 目标执行各自产品的本地检查；Browser App 在推送标签前安装锁定依赖、检查 Node 脚本语法，并运行 Rust fmt、Clippy 和测试；失败即停止，成功后将本地校验过的源码 SHA 交给工作流构建。App 工作区须干净，HEAD 须匹配配置的源码 ref。App 默认使用与其他部署入口相同的上海时间版本（YY.MMDD.HHmm，去除各段前导零），也可通过 `VERSION=...` 显式指定；不再复用源码 package.json 的旧版本。CI 在各平台打包前调用 App 的 `scripts/update-version.mjs`，同步写入 package.json、Tauri 配置、Cargo.toml 和 Cargo.lock，版本修改仅发生在 CI 检出目录。构建前先检查同名 Release，已存在或无法确认时停止，发布阶段仍保留不可覆盖保护。同一分钟内重复发布时需等下一分钟或指定未使用的版本。 与 One Node 一样，App 发布时在 one-action 公共仓库显式创建 `one-browser-app-v<版本>` tag，绑定本次 Action SHA；已有 tag 必须指向相同提交，禁止移动或覆盖。创建 Release 使用 `--verify-tag --latest=false`，源码 SHA 记录在发布说明中，源码仓库不打发布 tag。Browser Server/Web 在本地校验后推送 deploy 标签。`browser-app.yml` 从标签读取源码 SHA，所有平台统一检出该 SHA。生产页面地址由 App 的 `src-tauri/tauri.conf.json` 管理（`https://browser.aicbe.com`），无需设置 Action 后端地址变量。修改 workflow 后须先推送到 `main`，新入口才能被标签触发。源码仓库不创建发布 tag；One Node Server 不修改 Web 版本，One Node Runtime 和 Browser 也不修改源码版本。只查看计划时显式启用 dry-run；dry-run 不运行
 产品检查、不修改文件、不创建或推送标签：
 
 ```bash
@@ -175,7 +171,6 @@ make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
 make deploy-browser-app DRY_RUN=true
 make deploy-browser-server DRY_RUN=true
-make deploy-browser-egress DRY_RUN=true
 ```
 
 版本必须是无 `v` 前缀、无前导零的 `<major>.<minor>.<patch>`。
@@ -211,7 +206,6 @@ make fix-servers PRODUCTS="object user pay amz browser"
 make validate
 make validate-user
 make validate-node-runtime
-make validate-browser-egress
 make node-check
 make node-bundle-installers
 ```
@@ -229,9 +223,8 @@ make node-bundle-installers
 - One User：Backend fmt/test；Web frozen install、format、lint、test、build；
 - One Node Server：Backend `go vet` 与 `make test`；Web 按 `products.json` 的 `web_gates`；
 - One Node Runtime：仅在 Node 源码仓库执行完整 `verify-upgrade`。
-- One Browser Egress：`cargo fmt`、Clippy（warnings 视为错误）和完整 feature 测试。
 
-Browser App 与 Browser Egress 要求本地源码仓库干净、已推送且 Rust 门禁通过，再推送标签固定
+Browser App 要求本地源码仓库干净、已推送且 Rust 门禁通过，再推送标签固定
 精确源码 SHA。
 
 任何本地门禁失败都会发生在版本提交或推送 deploy 标签之前。
@@ -245,7 +238,6 @@ Browser App 与 Browser Egress 要求本地源码仓库干净、已推送且 Rus
   OCI index、checksum 和公开 One Action GitHub Release 上传最多 8 分钟。
 - One Browser App：2 分钟源码解析；Linux、Windows、macOS arm64/x64 并行打包；
 - One Browser App Server：复用 Web+Backend 双架构镜像发布器；
-- One Browser App Egress：amd64/arm64 原生包和镜像并行构建，再分别发布 Release 与 OCI index。
 
 Action 中没有 fmt、lint、test、race、e2e 或 installer lifecycle；双架构 Docker 构建使用
 按产品和架构隔离的 GHA layer cache。One User 与 One Node Server 保留各自隔离的
@@ -267,7 +259,7 @@ SSH/Compose 部署步骤。
 - 读取固定的私有源码仓库；
 - 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index；
 - 在 `voiceofhu/one-action@one-node-v<version>` 创建并上传公开 One Node Release。
-- 在 One Action 创建 One Browser App 与 Egress 的产品前缀 Release。
+- 在 One Action 创建 One Browser App 的产品前缀 Release。
 
 One Node 的构建使用 `contents: read`；Release job 使用仓库 `GITHUB_TOKEN` 的 `contents: write`。
 
@@ -342,20 +334,3 @@ Web 目录通过只读挂载提供给 Server，两个工作流共用部署锁。
 `make validate-node-web` 检查此发布链，`make deploy-node-web DRY_RUN=true` 只显示计划。
 
 Browser 与 Node 的 Web 均由后台在 `/` 路由提供，API 路由保持不变。
-
-### Browser Egress 安装后管理
-
-安装或升级后保留 `/opt/one-browser-egress/install.sh`，执行
-`sudo /opt/one-browser-egress/install.sh` 打开交互菜单，支持状态、运行环境检查、
-升级至最新版或指定版本、重启、日志及卸载。非交互调用使用 `--status`、`--doctor`、
-`--upgrade [latest|VERSION]`、`--restart`、`--logs [--follow]`、`--uninstall --yes`。
-升级保留已有节点身份，无需重新提供安装令牌。
-
-Server 通过心跳响应下发升级指令，egress 写入受管请求后由 systemd updater 调用同一
-管理入口执行指定版本升级，并通过心跳回报结果。主机执行日志位于
-`/opt/one-browser-egress/last-upgrade.log`（仅 root 可读）。
-
-Egress updater 会在主机启动和异常退出后恢复遗留任务：安装记录已是目标版本时补报成功，
-否则补报中断失败并允许重新发起升级，不自动重复安装。升级执行中的状态按同一任务 ID
-读取，避免被旧 pending 请求或上一任务结果遮蔽。已有节点需通过一次安装/升级更新
-systemd 单元，才能获得启动恢复能力。

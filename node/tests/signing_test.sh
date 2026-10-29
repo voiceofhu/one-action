@@ -1,6 +1,8 @@
 #!/bin/sh
 # Signed-release chain of trust: entrypoints verify SHA256SUMS.sig with the
-# embedded Ed25519 key, then refuse any module that differs from it.
+# embedded Ed25519 key (or, on hosts without an Ed25519 verifier,
+# SHA256SUMS.rsa.sig with the embedded RSA key), then refuse any module that
+# differs from it.
 set -eu
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
@@ -28,19 +30,58 @@ openssl pkey -pubin -in "$TEST_TEMP_DIR/shipped.pem" -noout -text 2>/dev/null |
 	grep -F 'ED25519' >/dev/null || fail "embedded release key is not an Ed25519 public key"
 shipped_line=$(sed -n '2p' "$TEST_TEMP_DIR/shipped.pem")
 
+# The RSA key is 3072-bit and install.ps1 carries the same modulus.
+rsa_pem() {
+	awk '
+		index($0, "ONE_NODE_RELEASE_RSA_PUBLIC_KEY=\x27") == 1 { inside = 1; sub(/^ONE_NODE_RELEASE_RSA_PUBLIC_KEY=\x27/, "") }
+		inside { line = $0; if (sub(/\x27$/, "", line)) { print line; exit } ; print line }
+	' "$1"
+}
+modulus_base64() {
+	perl -e 'print pack("H*", $ARGV[0])' \
+		"$(openssl rsa -pubin -in "$1" -noout -modulus 2>/dev/null | sed 's/^Modulus=//')" | openssl base64 -A
+}
+rsa_pem "$ROOT_DIR/scripts/shared/bootstrap.sh" >"$TEST_TEMP_DIR/shipped-rsa.pem"
+openssl rsa -pubin -in "$TEST_TEMP_DIR/shipped-rsa.pem" -noout -text 2>/dev/null |
+	grep -F 'Public-Key: (3072 bit)' >/dev/null || fail "embedded RSA release key is not RSA-3072"
+shipped_modulus=$(modulus_base64 "$TEST_TEMP_DIR/shipped-rsa.pem")
+grep -F "'$shipped_modulus'" "$ROOT_DIR/install.ps1" >/dev/null ||
+	fail "install.ps1 does not embed the RSA release key of the shared bootstrap"
+
 # A test copy of the node tree that trusts a throwaway key.
 openssl genpkey -algorithm ed25519 -out "$TEST_TEMP_DIR/test.pem" 2>/dev/null
 openssl pkey -in "$TEST_TEMP_DIR/test.pem" -pubout -out "$TEST_TEMP_DIR/test.pub.pem"
 openssl genpkey -algorithm ed25519 -out "$TEST_TEMP_DIR/other.pem" 2>/dev/null
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$TEST_TEMP_DIR/test-rsa.pem" 2>/dev/null
+openssl pkey -in "$TEST_TEMP_DIR/test-rsa.pem" -pubout -out "$TEST_TEMP_DIR/test-rsa.pub.pem"
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$TEST_TEMP_DIR/other-rsa.pem" 2>/dev/null
 test_line=$(sed -n '2p' "$TEST_TEMP_DIR/test.pub.pem")
+test_modulus=$(modulus_base64 "$TEST_TEMP_DIR/test-rsa.pub.pem")
 SOURCE="$TEST_TEMP_DIR/source/node"
 install -d -m 0755 "$SOURCE"
-cp -R "$ROOT_DIR/install.sh" "$ROOT_DIR/upgrade.sh" "$ROOT_DIR/uninstall.sh" "$ROOT_DIR/scripts" "$SOURCE/"
+cp -R "$ROOT_DIR/install.sh" "$ROOT_DIR/install.ps1" "$ROOT_DIR/upgrade.sh" "$ROOT_DIR/uninstall.sh" "$ROOT_DIR/scripts" "$SOURCE/"
 for file in "$SOURCE/install.sh" "$SOURCE/upgrade.sh" "$SOURCE/uninstall.sh" "$SOURCE/scripts/shared/bootstrap.sh"; do
-	sed "s|^${shipped_line}\$|${test_line}|" "$file" >"$file.new"
+	awk -v shipped="$shipped_line" -v replacement="$test_line" -v rsa="$TEST_TEMP_DIR/test-rsa.pub.pem" '
+		$0 == shipped { print replacement; next }
+		index($0, "ONE_NODE_RELEASE_RSA_PUBLIC_KEY=\x27") == 1 {
+			skipping = 1
+			first = 1
+			while ((getline key < rsa) > 0) {
+				if (first) { printf "ONE_NODE_RELEASE_RSA_PUBLIC_KEY=\x27"; first = 0 }
+				if (key ~ /^-----END/) print key "\x27"; else print key
+			}
+		}
+		skipping { if ($0 ~ /\x27$/) skipping = 0; next }
+		{ print }
+	' "$file" >"$file.new"
 	mv "$file.new" "$file"
 	grep -F "$test_line" "$file" >/dev/null || fail "unable to substitute the test key in $file"
+	[ "$(modulus_base64 "$TEST_TEMP_DIR/test-rsa.pub.pem")" = "$(rsa_pem "$file" >"$file.rsa" && modulus_base64 "$file.rsa")" ] ||
+		fail "unable to substitute the test RSA key in $file"
+	rm -f "$file.rsa"
 done
+sed "s|$shipped_modulus|$test_modulus|" "$SOURCE/install.ps1" >"$SOURCE/install.ps1.new"
+mv "$SOURCE/install.ps1.new" "$SOURCE/install.ps1"
 chmod 0755 "$SOURCE"/*.sh "$SOURCE"/scripts/*.sh
 
 VERSION=1.2.3
@@ -55,12 +96,19 @@ printf '%s\n' arm64 >"$RELEASE/one-node-linux-arm64"
 		printf '%s  %s\n' "$(openssl dgst -sha256 -r "$binary" | awk '{ print $1 }')" "$binary"
 	done >SHA256SUMS
 )
-"$SOURCE/scripts/sign-release.sh" "$RELEASE" "$TEST_TEMP_DIR/test.pem" "$TEST_TEMP_DIR/test.pub.pem" >/dev/null
+"$SOURCE/scripts/sign-release.sh" "$RELEASE" "$TEST_TEMP_DIR/test.pem" "$TEST_TEMP_DIR/test-rsa.pem" >/dev/null
+[ -s "$RELEASE/SHA256SUMS.rsa.sig" ] || fail "release signing did not write SHA256SUMS.rsa.sig"
+openssl dgst -sha256 -verify "$TEST_TEMP_DIR/test-rsa.pub.pem" -signature "$RELEASE/SHA256SUMS.rsa.sig" \
+	"$RELEASE/SHA256SUMS" >/dev/null || fail "SHA256SUMS.rsa.sig does not verify"
 grep -F '  node/scripts/install/main.sh' "$RELEASE/SHA256SUMS" >/dev/null ||
 	fail "signed manifest does not list installer modules"
+grep -F '  node/install.ps1' "$RELEASE/SHA256SUMS" >/dev/null ||
+	fail "signed manifest does not list the Windows installer"
+grep -F '  node/scripts/darwin/main.sh' "$RELEASE/SHA256SUMS" >/dev/null ||
+	fail "signed manifest does not list the macOS module"
 grep -F '  node/upgrade.sh' "$RELEASE/SHA256SUMS" >/dev/null ||
 	fail "signed manifest does not list entrypoints"
-if "$SOURCE/scripts/sign-release.sh" "$RELEASE" "$TEST_TEMP_DIR/test.pem" "$TEST_TEMP_DIR/test.pub.pem" >/dev/null 2>&1; then
+if "$SOURCE/scripts/sign-release.sh" "$RELEASE" "$TEST_TEMP_DIR/test.pem" "$TEST_TEMP_DIR/test-rsa.pem" >/dev/null 2>&1; then
 	fail "release signing appended installer files twice"
 fi
 cp "$RELEASE/SHA256SUMS" "$TEST_TEMP_DIR/release.SHA256SUMS"
@@ -69,9 +117,20 @@ install -d -m 0755 "$TEST_TEMP_DIR/mismatch"
 cp "$RELEASE/one-node-linux-amd64" "$TEST_TEMP_DIR/mismatch/"
 printf '%s  %s\n' 0000000000000000000000000000000000000000000000000000000000000000 one-node-linux-amd64 \
 	>"$TEST_TEMP_DIR/mismatch/SHA256SUMS"
-if "$SOURCE/scripts/sign-release.sh" "$TEST_TEMP_DIR/mismatch" "$TEST_TEMP_DIR/other.pem" >/dev/null 2>&1; then
+if "$SOURCE/scripts/sign-release.sh" "$TEST_TEMP_DIR/mismatch" "$TEST_TEMP_DIR/other.pem" "$TEST_TEMP_DIR/test-rsa.pem" \
+	>"$TEST_TEMP_DIR/mismatch.log" 2>&1; then
 	fail "release signing accepted a key that does not match the embedded public key"
 fi
+grep -F 'signature does not verify with the embedded release public key' "$TEST_TEMP_DIR/mismatch.log" >/dev/null ||
+	fail "Ed25519 mismatch failed for another reason: $(cat "$TEST_TEMP_DIR/mismatch.log")"
+printf '%s  %s\n' 0000000000000000000000000000000000000000000000000000000000000000 one-node-linux-amd64 \
+	>"$TEST_TEMP_DIR/mismatch/SHA256SUMS"
+if "$SOURCE/scripts/sign-release.sh" "$TEST_TEMP_DIR/mismatch" "$TEST_TEMP_DIR/test.pem" "$TEST_TEMP_DIR/other-rsa.pem" \
+	>"$TEST_TEMP_DIR/mismatch.log" 2>&1; then
+	fail "release signing accepted an RSA key that does not match the embedded RSA public key"
+fi
+grep -F 'RSA signature does not verify' "$TEST_TEMP_DIR/mismatch.log" >/dev/null ||
+	fail "RSA mismatch failed for another reason: $(cat "$TEST_TEMP_DIR/mismatch.log")"
 
 FAKE_BIN="$TEST_TEMP_DIR/bin"
 install -d -m 0755 "$FAKE_BIN"
@@ -108,6 +167,10 @@ https://github.com/voiceofhu/one-action/releases/download/one-node-v1.2.3/SHA256
 	[ "${FAKE_UNSIGNED:-false}" = false ] || exit 22
 	emit "$FAKE_RELEASE/SHA256SUMS.sig"
 	;;
+https://github.com/voiceofhu/one-action/releases/download/one-node-v1.2.3/SHA256SUMS.rsa.sig)
+	[ "${FAKE_UNSIGNED:-false}" = false ] || exit 22
+	emit "$FAKE_RELEASE/SHA256SUMS.rsa.sig"
+	;;
 "https://raw.githubusercontent.com/voiceofhu/one-action/${FAKE_COMMIT}/node/"*)
 	relative=${url#*/node/}
 	[ -f "$FAKE_SOURCE/$relative" ] || exit 22
@@ -123,7 +186,13 @@ cat >"$FAKE_BIN/id" <<'FAKE_ID'
 #!/bin/sh
 [ "${1:-}" = -u ] && printf '%s\n' 0
 FAKE_ID
-chmod 0755 "$FAKE_BIN/curl" "$FAKE_BIN/id"
+# Entrypoints pick their lifecycle by `uname -s`; FAKE_UNAME_S picks the host.
+cat >"$FAKE_BIN/uname" <<'FAKE_UNAME'
+#!/bin/sh
+[ "${1:-}" = -s ] && { printf '%s\n' "${FAKE_UNAME_S:-Linux}"; exit 0; }
+exec /usr/bin/uname "$@"
+FAKE_UNAME
+chmod 0755 "$FAKE_BIN/curl" "$FAKE_BIN/id" "$FAKE_BIN/uname"
 
 # Entrypoints run from outside the source tree, like a piped download.
 RUN="$TEST_TEMP_DIR/run"
@@ -162,6 +231,16 @@ grep -F "one-action/${COMMIT}/node/scripts/install/main.sh" "$FAKE_CURL_LOG" >/d
 grep -F "one-action/${COMMIT}/node/install.sh" "$FAKE_CURL_LOG" >/dev/null
 grep -F 'one-node-v1.2.3/SHA256SUMS.sig' "$FAKE_CURL_LOG" >/dev/null
 
+# macOS loads only its own module, verified against the same manifest.
+run_entrypoint env FAKE_UNAME_S=Darwin "$RUN/install.sh" >/dev/null
+grep -F "one-action/${COMMIT}/node/scripts/darwin/main.sh" "$FAKE_CURL_LOG" >/dev/null ||
+	fail "macOS entrypoint did not load the macOS module"
+if grep -F "/node/scripts/install/" "$FAKE_CURL_LOG" >/dev/null; then
+	fail "macOS entrypoint loaded Linux modules"
+fi
+expect_failure 'does not match signed release one-node-v1.2.3' \
+	env FAKE_UNAME_S=Darwin FAKE_TAMPER=scripts/darwin/main.sh "$RUN/install.sh"
+
 # Resolve the target release even when a parent supplied a commit.
 run_entrypoint env ONE_ACTION_COMMIT=$COMMIT ONE_NODE_VERSION=$VERSION "$RUN/upgrade.sh"
 if ! grep -F 'commits/one-node-v1.2.3' "$FAKE_CURL_LOG" >/dev/null; then
@@ -199,6 +278,28 @@ cp "$TEST_TEMP_DIR/good.sig" "$RELEASE/SHA256SUMS.sig"
 printf '%s\n' "$(printf '%064d' 0)  node/scripts/install/extra.sh" >>"$RELEASE/SHA256SUMS"
 expect_failure 'release checksum signature verification failed' "$RUN/install.sh"
 cp "$TEST_TEMP_DIR/release.SHA256SUMS" "$RELEASE/SHA256SUMS"
+
+# Hosts without an Ed25519 verifier (macOS LibreSSL, OpenSSL 1.1 without
+# python3-cryptography) verify the RSA signature instead.
+NO_ED25519_BIN="$TEST_TEMP_DIR/no-ed25519-bin"
+install -d -m 0755 "$NO_ED25519_BIN"
+real_openssl=$(command -v openssl)
+cat >"$NO_ED25519_BIN/openssl" <<EOF
+#!/bin/sh
+[ "\${1:-}" = version ] && { printf '%s\\n' 'LibreSSL 3.3.6'; exit 0; }
+exec "$real_openssl" "\$@"
+EOF
+printf '%s\n' '#!/bin/sh' 'exit 1' >"$NO_ED25519_BIN/python3"
+chmod 0755 "$NO_ED25519_BIN/openssl" "$NO_ED25519_BIN/python3"
+run_entrypoint env PATH="$NO_ED25519_BIN:$FAKE_BIN:$PATH" "$RUN/install.sh" >"$TEST_TEMP_DIR/rsa.log"
+grep -F 'one-node-v1.2.3/SHA256SUMS.rsa.sig' "$FAKE_CURL_LOG" >/dev/null || fail "RSA signature was not fetched"
+if grep -Fx 'https://github.com/voiceofhu/one-action/releases/download/one-node-v1.2.3/SHA256SUMS.sig' "$FAKE_CURL_LOG" >/dev/null; then
+	fail "host without an Ed25519 verifier fetched the Ed25519 signature"
+fi
+cp "$RELEASE/SHA256SUMS.rsa.sig" "$TEST_TEMP_DIR/good.rsa.sig"
+"$real_openssl" dgst -sha256 -sign "$TEST_TEMP_DIR/other-rsa.pem" -out "$RELEASE/SHA256SUMS.rsa.sig" "$RELEASE/SHA256SUMS"
+expect_failure 'release checksum RSA signature verification failed' env PATH="$NO_ED25519_BIN:$FAKE_BIN:$PATH" "$RUN/install.sh"
+cp "$TEST_TEMP_DIR/good.rsa.sig" "$RELEASE/SHA256SUMS.rsa.sig"
 
 # The persistent manager verifies upgrade.sh before running it.
 install -d -m 0700 "$TEST_TEMP_DIR/managed"

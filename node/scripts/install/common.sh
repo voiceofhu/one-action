@@ -66,14 +66,31 @@ canonical_path() {
 
 show_help() {
 	printf '%s\n' \
-		"Install the One Node data plane (Xray-core + Hysteria2)." \
+		"Install the One Node data plane (Xray-core + Hysteria2) or a monitor-only node." \
 		"" \
-		"Usage: install.sh --mode <native|docker> [--reset]" \
+		"Usage: install.sh --mode <native|docker> [--role <proxy|monitor>] [--reset]" \
 		"" \
 		"  native  Install one one-node systemd service." \
 		"  docker  Install one complete immutable One Node image." \
+		"  --role  proxy (default) serves the managed protocols; monitor only reports" \
+		"          host metrics and probes, opens no ports, and needs --mode native." \
 		"  Existing managed installations are removed before the new command is applied." \
 		"  --reset Remove the existing One Node development installation first."
+}
+
+# A monitor node runs no data plane: it opens no ports, so it needs neither
+# the nftables port manager nor host network tuning.
+node_role_is_monitor() {
+	[ "${ONE_NODE_ROLE:-proxy}" = "monitor" ]
+}
+
+# The installed role lives in the root-owned environment file; installs that
+# predate roles are proxies.
+load_installed_node_role() {
+	ONE_NODE_ROLE="proxy"
+	if [ -f "$1" ] && [ ! -L "$1" ] && grep -Fx 'NODE_ROLE="monitor"' "$1" >/dev/null 2>&1; then
+		ONE_NODE_ROLE="monitor"
+	fi
 }
 
 require_value() {

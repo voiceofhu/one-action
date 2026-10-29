@@ -92,11 +92,52 @@ contains the compatibility fix, then run the downloaded script with
 `sudo /bin/sh ./install.sh --upgrade <version>`. A successful upgrade atomically
 refreshes `/opt/one-node/install.sh`, so later panel upgrades use the new verifier.
 
-Native mode supports Linux amd64/arm64 hosts using systemd, including the major
+Native proxy mode supports Linux amd64/arm64 hosts using systemd, including the major
 Debian/Ubuntu, RHEL-compatible, Fedora, Amazon Linux, SUSE, and Arch families.
 Docker mode works on supported systemd Linux hosts with nftables, Docker Engine, and Compose v2;
 Debian/Ubuntu may install those packages automatically, while other families
 must provide Docker first. Docker and Native installations use the same menu.
+
+## Node roles and platforms
+
+| Role | What it installs | Platforms |
+|---|---|---|
+| `proxy` (default) | Xray-core + Hysteria2 data plane, nftables port manager, host tuning | Linux amd64/arm64, Native or Docker |
+| `monitor` | Host metrics, carrier probes and location only; no protocols, no listening ports, no nftables, no sysctl changes | Linux (Native), macOS 12+, Windows Server 2016+ / Windows 10+ |
+
+Root is always required: `sudo` on Linux and macOS, an elevated PowerShell on
+Windows. The panel picks the role at enrollment (`--role monitor` on Linux,
+implied on macOS and Windows); switching role means regenerating the install
+command and reinstalling. A Linux monitor runs the same hardened
+`one-node.service` with only `CAP_NET_RAW`, and `--status` / `--doctor` show
+and respect the role (`NODE_ROLE="monitor"` in `/opt/one-node/.env`).
+
+macOS: `install.sh`, `upgrade.sh` and `uninstall.sh` detect Darwin and load
+only `scripts/darwin/main.sh`. It keeps the Linux paths (`/opt/one-node`,
+`/var/lib/one-node`, plus logs in `/var/log/one-node`) and installs two root
+LaunchDaemons: `com.voiceofhu.one-node` and `com.voiceofhu.one-node-updater`,
+which launchd starts when the node writes `update/request` (`WatchPaths`, the
+counterpart of `one-node-updater.path`). A failed reinstall restores the
+previous installation; a failed upgrade restores `previous/`.
+
+Windows: `install.ps1` (PowerShell 5.1 and 7) installs the `OneNode` service
+(LocalSystem) from `%ProgramFiles%\OneNode` with data in
+`%ProgramData%\OneNode` (SYSTEM and Administrators only). Management:
+`powershell -NoProfile -ExecutionPolicy Bypass -File "$env:ProgramFiles\OneNode\install.ps1" -Status`
+(also `-Doctor`, `-Upgrade [VERSION]`, `-Rollback`, `-Restart`, `-Logs [-Follow]`,
+`-Uninstall -Yes`). The node starts `install.ps1 -ProcessUpgradeRequest`
+detached after it queues a panel upgrade.
+
+## Release signatures
+
+Every release signs the same `SHA256SUMS` twice: Ed25519 (`SHA256SUMS.sig`,
+secret `ONE_NODE_RELEASE_SIGNING_KEY`) and RSA-3072 PKCS#1 v1.5 SHA-256
+(`SHA256SUMS.rsa.sig`, secret `ONE_NODE_RELEASE_RSA_SIGNING_KEY`). Hosts that can
+verify Ed25519 (OpenSSL 3, or python3-cryptography) use it; others (macOS
+LibreSSL, OpenSSL 1.1) verify the RSA signature with any `openssl`, and Windows
+verifies it with .NET. `scripts/shared/bootstrap.sh` embeds both public keys and
+`install.ps1` embeds the same RSA modulus; `scripts/sign-release.sh` refuses a
+release whose secrets do not match them.
 
 ## Host network tuning
 
@@ -143,6 +184,8 @@ sh tests/reconfigure_test.sh
 sh tests/reset_test.sh
 sh tests/native_recovery_test.sh
 sh tests/updater_test.sh
+sh tests/signing_test.sh
+sh tests/install_ps1_test.sh   # pwsh, or Docker mcr.microsoft.com/powershell
 ```
 
 A commit-pinned remote invocation has this form:

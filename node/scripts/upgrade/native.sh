@@ -45,7 +45,9 @@ migrate_native_bootstrap_environment() {
 migrate_native_service_hardening() {
 	ensure_native_service_user || return 1
 	migrate_native_bootstrap_environment || return 1
-	install -d -m 0700 "${ONE_NODE_STATE_DIR}/firewall" || return 1
+	if ! node_role_is_monitor; then
+		install -d -m 0700 "${ONE_NODE_STATE_DIR}/firewall" || return 1
+	fi
 	if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
 		install -d -m 0700 "${ONE_NODE_STATE_DIR}/update" || return 1
 	fi

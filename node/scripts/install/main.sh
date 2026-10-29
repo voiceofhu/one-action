@@ -59,9 +59,13 @@ main() {
 	fi
 	install_host_updater
 	wait_for_ready_heartbeat
-	log "firewall: active runtime ports applied"
 
 	INSTALL_COMMITTED="true"
 	discard_replaced_installation
-	log "${INSTALL_MODE} installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION}"
+	if node_role_is_monitor; then
+		log "native monitor installation is ready"
+	else
+		log "firewall: active runtime ports applied"
+		log "${INSTALL_MODE} installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION}"
+	fi
 }

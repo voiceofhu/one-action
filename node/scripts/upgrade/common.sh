@@ -84,12 +84,15 @@ load_upgrade_manifest() {
 	case "$ONE_NODE_ID" in
 	''|*[!0-9]*|0) die "One Node environment has an invalid node id" ;;
 	esac
+	load_installed_node_role "$ENV_FILE"
 }
 
 validate_upgrade_host() {
 	[ "$(id -u)" -eq 0 ] || die "run this upgrade as root"
-	command -v systemctl >/dev/null 2>&1 || die "systemd is required for One Node firewall management"
-	command -v nft >/dev/null 2>&1 || die "nftables is required for One Node firewall management"
+	command -v systemctl >/dev/null 2>&1 || die "systemd is required for One Node"
+	if ! node_role_is_monitor; then
+		command -v nft >/dev/null 2>&1 || die "nftables is required for One Node firewall management"
+	fi
 	command -v stat >/dev/null 2>&1 || die "stat is required (install coreutils)"
 	command -v sync >/dev/null 2>&1 || die "sync is required (install coreutils)"
 	case "$INSTALL_MODE" in

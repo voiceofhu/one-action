@@ -14,7 +14,21 @@ cat >"$FAKE_BIN/id" <<'SCRIPT'
 SCRIPT
 cat >"$FAKE_BIN/ps" <<'SCRIPT'
 #!/bin/sh
-printf '%s\n' '01:02:03'
+case "$*" in
+*rss=*) printf '%s\n' 51200 ;;
+*) printf '%s\n' '01:02:03' ;;
+esac
+SCRIPT
+# The entrypoint picks its lifecycle by `uname -s`; tests choose the host.
+cat >"$FAKE_BIN/uname" <<'SCRIPT'
+#!/bin/sh
+[ "${1:-}" = -s ] && { printf '%s\n' "${FAKE_UNAME_S:-Linux}"; exit 0; }
+exec /usr/bin/uname "$@"
+SCRIPT
+cat >"$FAKE_BIN/launchctl" <<'SCRIPT'
+#!/bin/sh
+[ "$1" = print ] && [ "$2" = system/com.voiceofhu.one-node ] || exit 1
+printf '%s\n' 'system/com.voiceofhu.one-node = {' '	state = running' '	pid = 777' '}'
 SCRIPT
 cat >"$FAKE_BIN/systemctl" <<'SCRIPT'
 #!/bin/sh
@@ -100,6 +114,42 @@ if grep -F 'warning:' "$TEST_TEMP_DIR/doctor.log" >/dev/null; then
 	printf '%s\n' 'doctor warned without an active host firewall' >&2
 	exit 1
 fi
+
+# A monitor node has no nftables port manager to check.
+write_fixture native
+printf '%s\n' 'NODE_NODE_ID="42"' 'NODE_ROLE="monitor"' >"$INSTALL_DIR/.env"
+rm -f "$FAKE_BIN/nft"
+monitor_status=$(ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" "$ROOT_DIR/install.sh" --status)
+printf '%s\n' "$monitor_status" | grep -F 'role:             monitor' >/dev/null
+ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" \
+	"$ROOT_DIR/install.sh" --doctor >"$TEST_TEMP_DIR/doctor.log" 2>&1
+grep -F 'environment check passed' "$TEST_TEMP_DIR/doctor.log" >/dev/null
+
+# macOS status reads launchd without downloading anything.
+cat >"$INSTALL_DIR/.installation" <<EOF
+format=one-node-darwin-v1
+mode=launchd
+role=monitor
+current_version=26.1029.1200
+previous_version=
+EOF
+chmod 0600 "$INSTALL_DIR/.installation"
+darwin_status=$(FAKE_UNAME_S=Darwin ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" "$ROOT_DIR/install.sh" --status)
+for expected in \
+	'mode:             launchd' \
+	'role:             monitor' \
+	'version:          26.1029.1200' \
+	'node id:          42' \
+	'state:            running' \
+	'pid:              777' \
+	'memory:           50.0 MiB' \
+	'uptime:           01:02:03'; do
+	printf '%s\n' "$darwin_status" | grep -F "$expected" >/dev/null || {
+		printf 'macOS status lacks %s:\n%s\n' "$expected" "$darwin_status" >&2
+		exit 1
+	}
+done
+write_fixture native
 
 for malformed_version in 1.2 1..2 1.2.3.4 .1.2 1.2.; do
 	if ONE_NODE_INSTALL_DIR="$INSTALL_DIR" PATH="$FAKE_BIN:$PATH" \

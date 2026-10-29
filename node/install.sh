@@ -11,6 +11,12 @@ ONE_NODE_ENTRYPOINT_MODULES=$ONE_NODE_INSTALL_MODULES
 ONE_NODE_INSTALLER_SOURCE=""
 ONE_NODE_INSTALL_DIR=${ONE_NODE_INSTALL_DIR:-/opt/one-node}
 ONE_NODE_INSTALL_RECORD="${ONE_NODE_INSTALL_DIR}/.installation"
+# macOS hosts run monitor-only nodes through a launchd lifecycle of their own.
+ONE_NODE_PLATFORM="linux"
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+	ONE_NODE_PLATFORM="darwin"
+	ONE_NODE_ENTRYPOINT_MODULES="darwin/main.sh"
+fi
 
 # >>> one-node bootstrap: generated from scripts/shared/bootstrap.sh by scripts/sync-bootstrap.sh; edit the source >>>
 # Shared entrypoint bootstrap: resolve one signed One Node release, fetch the
@@ -32,6 +38,21 @@ ONE_NODE_INSTALL_RECORD="${ONE_NODE_INSTALL_DIR}/.installation"
 # environment cannot replace the trust root.
 ONE_NODE_RELEASE_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA7mYUrYzvr0ww9+0Jk3SenePddMSItqognahRMJs0fLc=
+-----END PUBLIC KEY-----'
+# RSA-3072 key whose private half also signs every release SHA256SUMS
+# (secret ONE_NODE_RELEASE_RSA_SIGNING_KEY, detached SHA256SUMS.rsa.sig) for
+# hosts that cannot verify Ed25519: macOS LibreSSL and OpenSSL 1.1 without
+# python3-cryptography. Windows install.ps1 embeds the same key.
+ONE_NODE_RELEASE_RSA_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAwpZSFZX6/OjPHr+OJtl0
+zBT8uqXgfKrqptLQRHCO9myeLh9geka7TMZ8IlK0g4NSstx+qQWWjyND7sCQnydZ
+DBxbfIsM2v25Fj3N3Tp0i0Rwf6Qim6neVCxrI0Y0k2hAlRBaBo4abxvmvmAJXkoS
+6IRWq8GOow3Km6Rxj8AgXRrqLq2c475RwFTpnBSjXnD/9sb/VLMkUvH047TJb18R
+9L2iwxFNEj/3urzsL5pLHj7yXGDQs/SR5KHQd1Je+TOlJfDGeDVTGUlmQ04+v6ks
+Xc3bKmUItCx3Kh2NAB5d9qO1Wzzhw0mNghfSxv4GOQyK6DgBTqKYc0OgriGl26U+
+nY496CMUZW2HQvHfSdvGSkNMQ5FgyXpZlTm+zhdbMmY3mWH6q5ZZNXPw7ntJnU4m
+0v0UwgoGpHgtmEtuVCTDbw5KlBEEhIVR4PS52Ajm3UNQlShJMYCWfVpNJiXxlN5P
+cPezF6z2Ef7Brz/sSORfTwXEPqI7nb2HggDV6gn/O/j7AgMBAAE=
 -----END PUBLIC KEY-----'
 ONE_NODE_ACTION_REPOSITORY="voiceofhu/one-action"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
@@ -105,6 +126,27 @@ bootstrap_has_openssl3() {
 	esac
 }
 
+bootstrap_can_verify_ed25519() {
+	bootstrap_has_openssl3 && return 0
+	command -v python3 >/dev/null 2>&1 &&
+		python3 -I -c 'import cryptography.hazmat.primitives.asymmetric.ed25519' >/dev/null 2>&1
+}
+
+# Verifies an RSA PKCS#1 v1.5 SHA-256 signature; any OpenSSL or LibreSSL can.
+bootstrap_verify_rsa_signature() {
+	command -v openssl >/dev/null 2>&1 || {
+		printf '%s\n' "[one-node] error: signed release verification requires openssl" >&2
+		return 1
+	}
+	bootstrap_rsa_key_file=$(mktemp "${1}.rsa-key.XXXXXX") || return 1
+	printf '%s\n' "$ONE_NODE_RELEASE_RSA_PUBLIC_KEY" >"$bootstrap_rsa_key_file"
+	bootstrap_rsa_result=0
+	openssl dgst -sha256 -verify "$bootstrap_rsa_key_file" -signature "$2" "$1" >/dev/null 2>&1 ||
+		bootstrap_rsa_result=$?
+	rm -f -- "$bootstrap_rsa_key_file"
+	return "$bootstrap_rsa_result"
+}
+
 # Verifies an Ed25519 signature over the raw file against the embedded key.
 bootstrap_verify_signature() {
 	bootstrap_signed_file=$1
@@ -155,16 +197,27 @@ bootstrap_verify_checksums_signature() {
 	https://*) bootstrap_sig_protocols='=https' ;;
 	*) bootstrap_sig_protocols='=http,https' ;;
 	esac
-	rm -f -- "${bootstrap_sums_file}.sig"
+	# Ed25519 stays the primary signature; the RSA copy only serves hosts
+	# without an Ed25519 verifier.
+	bootstrap_sig_suffix=".sig"
+	if ! bootstrap_can_verify_ed25519; then
+		bootstrap_sig_suffix=".rsa.sig"
+	fi
+	rm -f -- "${bootstrap_sums_file}${bootstrap_sig_suffix}"
 	if ! curl -q --proto "$bootstrap_sig_protocols" --proto-redir "$bootstrap_sig_protocols" --tlsv1.2 \
 		--fail --silent --show-error --location \
 		--connect-timeout 10 --max-time 30 --max-filesize 65536 \
-		"${bootstrap_sums_url}.sig" --output "${bootstrap_sums_file}.sig"; then
-		bootstrap_trust_fail "release checksums are unsigned: ${bootstrap_sums_url}.sig is unavailable"
+		"${bootstrap_sums_url}${bootstrap_sig_suffix}" --output "${bootstrap_sums_file}${bootstrap_sig_suffix}"; then
+		bootstrap_trust_fail "release checksums are unsigned: ${bootstrap_sums_url}${bootstrap_sig_suffix} is unavailable"
 		return 0
 	fi
-	bootstrap_verify_signature "$bootstrap_sums_file" "${bootstrap_sums_file}.sig" ||
-		bootstrap_trust_fail "release checksum signature verification failed for ${bootstrap_sums_url}"
+	if [ "$bootstrap_sig_suffix" = ".sig" ]; then
+		bootstrap_verify_signature "$bootstrap_sums_file" "${bootstrap_sums_file}.sig" ||
+			bootstrap_trust_fail "release checksum signature verification failed for ${bootstrap_sums_url}"
+	else
+		bootstrap_verify_rsa_signature "$bootstrap_sums_file" "${bootstrap_sums_file}.rsa.sig" ||
+			bootstrap_trust_fail "release checksum RSA signature verification failed for ${bootstrap_sums_url}"
+	fi
 }
 
 bootstrap_installed_version() {
@@ -440,11 +493,20 @@ manager_process_details() {
 	fi
 }
 
+manager_role() {
+	if [ "$(manager_env_value NODE_ROLE 2>/dev/null || true)" = "monitor" ]; then
+		printf '%s\n' monitor
+	else
+		printf '%s\n' proxy
+	fi
+}
+
 manager_status() {
 	manager_require_root
 	[ -f "$ONE_NODE_INSTALL_RECORD" ] && [ ! -L "$ONE_NODE_INSTALL_RECORD" ] ||
 		manager_die "One Node installation manifest was not found"
 	manager_mode=$(manager_manifest_value mode) || manager_die "installation mode is missing"
+	manager_node_role=$(manager_role)
 	manager_version=$(manager_manifest_value current_version) || manager_die "current version is missing"
 	manager_previous=$(manager_manifest_value previous_version 2>/dev/null || true)
 	manager_node_id=$(manager_env_value NODE_NODE_ID 2>/dev/null || true)
@@ -479,6 +541,7 @@ manager_status() {
 	printf '%s\n' \
 		"One Node status" \
 		"  mode:             $manager_mode" \
+		"  role:             $manager_node_role" \
 		"  version:          $manager_version" \
 		"  previous version: $manager_previous" \
 		"  node id:          $manager_node_id" \
@@ -503,11 +566,13 @@ manager_doctor() {
 		docker inspect -f '{{.State.Running}}' one-node 2>/dev/null | grep -qx true || manager_die "One Node container is not running"
 		;;
 	esac
-	command -v nft >/dev/null 2>&1 || manager_die "nftables is unavailable"
-	command -v systemctl >/dev/null 2>&1 || manager_die "systemctl is unavailable"
-	systemctl is-active --quiet one-node-firewall.path || manager_die "one-node-firewall.path is not active"
-	nft -nn list table inet one_node >/dev/null 2>&1 || manager_die "One Node nftables table is unavailable"
-	manager_warn_host_firewalls
+	if [ "$(manager_role)" = "proxy" ]; then
+		command -v nft >/dev/null 2>&1 || manager_die "nftables is unavailable"
+		command -v systemctl >/dev/null 2>&1 || manager_die "systemctl is unavailable"
+		systemctl is-active --quiet one-node-firewall.path || manager_die "one-node-firewall.path is not active"
+		nft -nn list table inet one_node >/dev/null 2>&1 || manager_die "One Node nftables table is unavailable"
+		manager_warn_host_firewalls
+	fi
 	printf '%s\n' '[one-node] environment check passed'
 }
 
@@ -675,6 +740,118 @@ entrypoint_management_requested() {
 	esac
 	return 1
 }
+
+# macOS: status, logs and restart read launchd directly; everything else
+# loads the macOS module from a signed release.
+darwin_manager_label="com.voiceofhu.one-node"
+
+darwin_manager_status() {
+	manager_require_root
+	[ -f "$ONE_NODE_INSTALL_RECORD" ] && [ ! -L "$ONE_NODE_INSTALL_RECORD" ] ||
+		manager_die "One Node installation manifest was not found"
+	darwin_manager_job=$(launchctl print "system/${darwin_manager_label}" 2>/dev/null || true)
+	darwin_manager_state=$(printf '%s\n' "$darwin_manager_job" | awk '$1 == "state" && $2 == "=" { print $3; exit }')
+	darwin_manager_pid=$(printf '%s\n' "$darwin_manager_job" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
+	darwin_manager_memory="-"
+	darwin_manager_uptime="-"
+	case "$darwin_manager_pid" in
+	''|*[!0-9]*) darwin_manager_pid="-" ;;
+	*)
+		darwin_manager_memory=$(ps -o rss= -p "$darwin_manager_pid" 2>/dev/null |
+			awk 'NF { printf "%.1f MiB", $1 / 1024 }')
+		darwin_manager_uptime=$(ps -o etime= -p "$darwin_manager_pid" 2>/dev/null | sed 's/^[[:space:]]*//')
+		;;
+	esac
+	printf '%s\n' \
+		"One Node status" \
+		"  mode:             launchd" \
+		"  role:             monitor" \
+		"  version:          $(manager_manifest_value current_version 2>/dev/null || printf '%s' -)" \
+		"  previous version: $(manager_manifest_value previous_version 2>/dev/null || printf '%s' -)" \
+		"  node id:          $(manager_env_value NODE_NODE_ID 2>/dev/null || printf '%s' -)" \
+		"  state:            ${darwin_manager_state:-not loaded}" \
+		"  pid:              $darwin_manager_pid" \
+		"  memory:           ${darwin_manager_memory:--}" \
+		"  uptime:           ${darwin_manager_uptime:--}"
+}
+
+darwin_manager_logs() {
+	manager_require_root
+	if [ "$1" = true ]; then
+		exec tail -n 100 -F /var/log/one-node/one-node.log
+	fi
+	tail -n 100 /var/log/one-node/one-node.log
+}
+
+darwin_manager_interactive() {
+	while :; do
+		printf '%s\n' '' 'One Node (macOS)' '  1. Status' '  2. Upgrade to latest' '  3. Upgrade to version' \
+			'  4. Roll back' '  5. Restart' '  6. Logs' '  7. Follow logs' '  8. Uninstall' '  0. Exit'
+		printf '%s' 'Select: '
+		read -r manager_choice || return 0
+		case "$manager_choice" in
+		1) darwin_manager_status ;;
+		2) "$0" --upgrade latest ;;
+		3) printf '%s' 'Version: '; read -r manager_version; "$0" --upgrade "$manager_version" ;;
+		4) "$0" --rollback ;;
+		5) "$0" --restart ;;
+		6) darwin_manager_logs false ;;
+		7) darwin_manager_logs true ;;
+		8) manager_confirm_uninstall && "$0" --uninstall --yes ;;
+		0) return 0 ;;
+		*) printf '%s\n' '[one-node] invalid selection' ;;
+		esac
+	done
+}
+
+# Returns after selecting the release whose module handles the request.
+darwin_manager_main() {
+	manager_require_root
+	if [ "$#" -eq 0 ]; then
+		if [ -t 0 ] && [ -t 1 ]; then
+			darwin_manager_interactive
+		else
+			manager_help
+		fi
+		exit 0
+	fi
+	case "$1" in
+	--status|--doctor) darwin_manager_status; exit $? ;;
+	--restart)
+		launchctl kickstart -k "system/${darwin_manager_label}" || manager_die "launchd could not restart One Node"
+		darwin_manager_status
+		exit $?
+		;;
+	--logs) [ "${2:-}" = --follow ] && darwin_manager_logs true || darwin_manager_logs false; exit $? ;;
+	--help|-h) manager_help; exit 0 ;;
+	--upgrade)
+		darwin_manager_target=${2:-latest}
+		if [ "$darwin_manager_target" = latest ]; then
+			darwin_manager_target=$(bootstrap_latest_version) || exit 1
+		fi
+		bootstrap_validate_version "$darwin_manager_target" ||
+			manager_die "upgrade version must contain three numeric components"
+		ONE_NODE_VERSION=$darwin_manager_target
+		;;
+	--rollback) ONE_NODE_VERSION=$(bootstrap_installed_version) || manager_die "installed version is unknown" ;;
+	--uninstall)
+		if [ "${2:-}" != --yes ]; then
+			[ -t 0 ] || manager_die "--uninstall requires --yes outside an interactive terminal"
+			manager_confirm_uninstall || exit 1
+		fi
+		ONE_NODE_VERSION=$(bootstrap_installed_version) || manager_die "installed version is unknown"
+		;;
+	*) manager_die "unknown management option: $1" ;;
+	esac
+	export ONE_NODE_VERSION
+}
+
+if [ "$ONE_NODE_PLATFORM" = "darwin" ] && entrypoint_management_requested "$@"; then
+	darwin_manager_main "$@"
+	bootstrap_load_modules true
+	main "$1"
+	exit $?
+fi
 
 if entrypoint_management_requested "$@"; then
 	manager_main "$@"

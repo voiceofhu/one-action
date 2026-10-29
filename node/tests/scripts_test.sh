@@ -174,11 +174,25 @@ if grep -R -E '/etc/os-release|only Debian|dpkg' \
 	exit 1
 fi
 
-"$ROOT_DIR/install.sh" --help | grep -F "native" >/dev/null
-"$ROOT_DIR/install.sh" --help | grep -F "docker" >/dev/null
-"$ROOT_DIR/uninstall.sh" --help | grep -F "native" >/dev/null
-"$ROOT_DIR/uninstall.sh" --help | grep -F "docker" >/dev/null
-"$ROOT_DIR/upgrade.sh" --help | grep -F "roll back" >/dev/null
+# Entrypoints pick the Linux or macOS lifecycle by `uname -s`.
+for fake_os in Linux Darwin; do
+	install -d -m 0700 "$TEST_TEMP_DIR/uname-$fake_os"
+	cat >"$TEST_TEMP_DIR/uname-$fake_os/uname" <<EOF
+#!/bin/sh
+[ "\${1:-}" = -s ] && { printf '%s\\n' $fake_os; exit 0; }
+exec /usr/bin/uname "\$@"
+EOF
+	chmod 0755 "$TEST_TEMP_DIR/uname-$fake_os/uname"
+done
+LINUX_PATH="$TEST_TEMP_DIR/uname-Linux:$PATH"
+PATH="$LINUX_PATH" "$ROOT_DIR/install.sh" --help | grep -F "native" >/dev/null
+PATH="$LINUX_PATH" "$ROOT_DIR/install.sh" --help | grep -F "docker" >/dev/null
+PATH="$LINUX_PATH" "$ROOT_DIR/install.sh" --help | grep -F -- "--role" >/dev/null
+PATH="$LINUX_PATH" "$ROOT_DIR/uninstall.sh" --help | grep -F "native" >/dev/null
+PATH="$LINUX_PATH" "$ROOT_DIR/uninstall.sh" --help | grep -F "docker" >/dev/null
+PATH="$LINUX_PATH" "$ROOT_DIR/upgrade.sh" --help | grep -F "roll back" >/dev/null
+PATH="$TEST_TEMP_DIR/uname-Darwin:$PATH" "$ROOT_DIR/install.sh" --help |
+	grep -F "Install a monitor-only One Node on macOS" >/dev/null
 
 if "$ROOT_DIR/install.sh" --mode package >/dev/null 2>&1; then
 	printf '%s\n' "installer accepted an unsupported mode" >&2
@@ -240,6 +254,8 @@ https://api.github.com/repos/voiceofhu/one-action/commits/main)
 esac
 FAKE_CURL
 chmod 0755 "$TEST_TEMP_DIR/bin/curl"
+# Remote module loading is exercised through the Linux lifecycle.
+cp "$TEST_TEMP_DIR/uname-Linux/uname" "$TEST_TEMP_DIR/bin/uname"
 
 export ONE_NODE_TEST_ROOT="$ROOT_DIR"
 TEST_ACTION_COMMIT=0123456789abcdef0123456789abcdef01234567

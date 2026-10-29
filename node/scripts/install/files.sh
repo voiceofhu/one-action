@@ -74,11 +74,21 @@ write_native_source() {
 	case "$ONE_NODE_STATE_DIR" in
 	*[!A-Za-z0-9._/-]*) die "ONE_NODE_STATE_DIR contains characters systemd units cannot carry" ;;
 	esac
+	# A monitor node listens on nothing: it keeps only the raw socket for its
+	# ICMP probe and does not wait for the port manager.
+	unit_description="One Node runtime (Xray-core + Hysteria2)"
+	unit_after="network-online.target one-node-firewall.path"
+	unit_capabilities="CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW"
+	if node_role_is_monitor; then
+		unit_description="One Node monitor"
+		unit_after="network-online.target"
+		unit_capabilities="CAP_NET_RAW"
+	fi
 	cat >"$UNIT_SOURCE" <<EOF
 [Unit]
-Description=One Node runtime (Xray-core + Hysteria2)
-Wants=network-online.target one-node-firewall.path
-After=network-online.target one-node-firewall.path
+Description=${unit_description}
+Wants=${unit_after}
+After=${unit_after}
 
 [Service]
 Type=simple
@@ -96,8 +106,8 @@ RestartSec=5s
 UMask=0077
 TimeoutStopSec=30s
 LimitNOFILE=1048576
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=${unit_capabilities}
+CapabilityBoundingSet=${unit_capabilities}
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -229,12 +239,17 @@ write_environment_source() {
 	: >"$ENV_SOURCE"
 	chmod 0600 "$ENV_SOURCE"
 	write_env "NODE_NODE_ID" "$ONE_NODE_ID"
+	if node_role_is_monitor; then
+		write_env "NODE_ROLE" "monitor"
+	fi
 	write_env "NODE_HEARTBEAT_INTERVAL" "60s"
 	write_env "NODE_STATE_DIR" "$ONE_NODE_STATE_DIR"
 	if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
 		write_env "NODE_UPGRADE_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/update/request"
 	fi
-	write_env "NODE_FIREWALL_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/firewall/request"
+	if ! node_role_is_monitor; then
+		write_env "NODE_FIREWALL_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/firewall/request"
+	fi
 	write_env "CONTROL_ADDR" "$ONE_NODE_SERVER"
 	write_env "CONTROL_BOOTSTRAP_ENV_FILE" "$BOOTSTRAP_ENV_FILE"
 	write_env "LOG_LEVEL" "info"

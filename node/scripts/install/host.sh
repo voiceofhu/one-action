@@ -8,9 +8,11 @@ validate_install_host() {
 	done
 	[ "$(uname -s)" = "Linux" ] || die "only Linux is supported"
 	command -v systemctl >/dev/null 2>&1 ||
-		die "systemd is required for One Node firewall management"
-	command -v nft >/dev/null 2>&1 ||
-		die "nftables is required for One Node firewall management"
+		die "systemd is required for One Node"
+	if ! node_role_is_monitor; then
+		command -v nft >/dev/null 2>&1 ||
+			die "nftables is required for One Node firewall management"
+	fi
 
 	resolve_host_architecture
 	if [ "$INSTALL_MODE" = "native" ]; then

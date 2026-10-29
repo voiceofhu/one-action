@@ -15,6 +15,7 @@ node-check:
 	@sh $(PROJECT_ROOT)/node/tests/signing_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/tuning_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/firewall_host_rules_test.sh
+	@sh $(PROJECT_ROOT)/node/tests/install_ps1_test.sh
 
 NODE_INSTALLER_DIST ?= $(PROJECT_ROOT)/node/dist
 

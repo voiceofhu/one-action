@@ -20,7 +20,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
 | `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
-| `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、双架构二进制、`SHA256SUMS` 和公开 One Action Release |
+| `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
 
 `deploy-node` 只触发 Runtime 编译上传；Browser App 只发布产物。One Node 的 Backend 是 Go
 （`products.json` 中 `"backend_language": "go"`）：发布时运行 `go vet` 与 `make test`，不提交版本号，

@@ -8,6 +8,7 @@ configure_host_firewall() {
 }
 
 record_host_firewall_manifest_paths() {
+	node_role_is_monitor && return 0
 	for host_firewall_path in \
 		"$MANIFEST_FIREWALL_PATH" \
 		"$MANIFEST_FIREWALL_SERVICE_PATH" \
@@ -34,6 +35,7 @@ write_host_firewall_environment() {
 }
 
 enable_host_firewall_for_upgrade() {
+	node_role_is_monitor && return 0
 	configure_host_firewall
 	# A new table starts with every managed port closed. When an upgrade adds
 	# the firewall to an install that never had it, the running runtime still
@@ -53,6 +55,7 @@ enable_host_firewall_for_upgrade() {
 }
 
 stage_host_firewall_transition() {
+	node_role_is_monitor && return 0
 	configure_host_firewall
 	command -v nft >/dev/null 2>&1 || return 1
 	[ -x "$FIREWALL_FILE" ] && [ ! -L "$FIREWALL_FILE" ] || return 1
@@ -71,6 +74,10 @@ stage_host_firewall_transition() {
 }
 
 install_host_firewall() {
+	if node_role_is_monitor; then
+		log "firewall: skipped for a monitor node (no inbound ports)"
+		return 0
+	fi
 	configure_host_firewall
 	log "firewall: installing dynamic nftables port manager"
 	command -v nft >/dev/null 2>&1 || die "nftables is required for One Node firewall management"

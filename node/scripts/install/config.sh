@@ -16,6 +16,7 @@ initialize_install_config() {
 	CONTAINER_NAME="one-node"
 
 	INSTALL_MODE="native"
+	ONE_NODE_ROLE=${ONE_NODE_ROLE:-proxy}
 	INSTALL_OPERATION="fresh"
 	INSTALL_MANIFEST_KIND="none"
 	RESET_EXISTING="false"
@@ -49,6 +50,11 @@ parse_install_arguments() {
 			INSTALL_MODE=$2
 			shift 2
 			;;
+		--role)
+			[ "$#" -ge 2 ] || die "--role requires proxy or monitor"
+			ONE_NODE_ROLE=$2
+			shift 2
+			;;
 		--reset)
 			RESET_EXISTING="true"
 			shift
@@ -63,6 +69,14 @@ parse_install_arguments() {
 	case "$INSTALL_MODE" in
 	native|docker) ;;
 	*) die "--mode must be native or docker" ;;
+	esac
+	case "$ONE_NODE_ROLE" in
+	proxy) ;;
+	monitor)
+		[ "$INSTALL_MODE" = "native" ] ||
+			die "monitor nodes install with --mode native; Docker cannot see host metrics"
+		;;
+	*) die "--role must be proxy or monitor" ;;
 	esac
 }
 

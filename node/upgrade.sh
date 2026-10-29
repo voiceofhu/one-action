@@ -9,6 +9,12 @@ ONE_NODE_UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh i
 ONE_NODE_ENTRYPOINT_KIND="upgrade"
 ONE_NODE_ENTRYPOINT_MODULES=$ONE_NODE_UPGRADE_MODULES
 ONE_NODE_INSTALLER_SOURCE=""
+# macOS hosts run monitor-only nodes through a launchd lifecycle of their own.
+ONE_NODE_PLATFORM="linux"
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+	ONE_NODE_PLATFORM="darwin"
+	ONE_NODE_ENTRYPOINT_MODULES="darwin/main.sh"
+fi
 
 # >>> one-node bootstrap: generated from scripts/shared/bootstrap.sh by scripts/sync-bootstrap.sh; edit the source >>>
 # Shared entrypoint bootstrap: resolve one signed One Node release, fetch the
@@ -30,6 +36,21 @@ ONE_NODE_INSTALLER_SOURCE=""
 # environment cannot replace the trust root.
 ONE_NODE_RELEASE_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA7mYUrYzvr0ww9+0Jk3SenePddMSItqognahRMJs0fLc=
+-----END PUBLIC KEY-----'
+# RSA-3072 key whose private half also signs every release SHA256SUMS
+# (secret ONE_NODE_RELEASE_RSA_SIGNING_KEY, detached SHA256SUMS.rsa.sig) for
+# hosts that cannot verify Ed25519: macOS LibreSSL and OpenSSL 1.1 without
+# python3-cryptography. Windows install.ps1 embeds the same key.
+ONE_NODE_RELEASE_RSA_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAwpZSFZX6/OjPHr+OJtl0
+zBT8uqXgfKrqptLQRHCO9myeLh9geka7TMZ8IlK0g4NSstx+qQWWjyND7sCQnydZ
+DBxbfIsM2v25Fj3N3Tp0i0Rwf6Qim6neVCxrI0Y0k2hAlRBaBo4abxvmvmAJXkoS
+6IRWq8GOow3Km6Rxj8AgXRrqLq2c475RwFTpnBSjXnD/9sb/VLMkUvH047TJb18R
+9L2iwxFNEj/3urzsL5pLHj7yXGDQs/SR5KHQd1Je+TOlJfDGeDVTGUlmQ04+v6ks
+Xc3bKmUItCx3Kh2NAB5d9qO1Wzzhw0mNghfSxv4GOQyK6DgBTqKYc0OgriGl26U+
+nY496CMUZW2HQvHfSdvGSkNMQ5FgyXpZlTm+zhdbMmY3mWH6q5ZZNXPw7ntJnU4m
+0v0UwgoGpHgtmEtuVCTDbw5KlBEEhIVR4PS52Ajm3UNQlShJMYCWfVpNJiXxlN5P
+cPezF6z2Ef7Brz/sSORfTwXEPqI7nb2HggDV6gn/O/j7AgMBAAE=
 -----END PUBLIC KEY-----'
 ONE_NODE_ACTION_REPOSITORY="voiceofhu/one-action"
 ONE_NODE_ENTRYPOINT_TEMP_DIR=""
@@ -103,6 +124,27 @@ bootstrap_has_openssl3() {
 	esac
 }
 
+bootstrap_can_verify_ed25519() {
+	bootstrap_has_openssl3 && return 0
+	command -v python3 >/dev/null 2>&1 &&
+		python3 -I -c 'import cryptography.hazmat.primitives.asymmetric.ed25519' >/dev/null 2>&1
+}
+
+# Verifies an RSA PKCS#1 v1.5 SHA-256 signature; any OpenSSL or LibreSSL can.
+bootstrap_verify_rsa_signature() {
+	command -v openssl >/dev/null 2>&1 || {
+		printf '%s\n' "[one-node] error: signed release verification requires openssl" >&2
+		return 1
+	}
+	bootstrap_rsa_key_file=$(mktemp "${1}.rsa-key.XXXXXX") || return 1
+	printf '%s\n' "$ONE_NODE_RELEASE_RSA_PUBLIC_KEY" >"$bootstrap_rsa_key_file"
+	bootstrap_rsa_result=0
+	openssl dgst -sha256 -verify "$bootstrap_rsa_key_file" -signature "$2" "$1" >/dev/null 2>&1 ||
+		bootstrap_rsa_result=$?
+	rm -f -- "$bootstrap_rsa_key_file"
+	return "$bootstrap_rsa_result"
+}
+
 # Verifies an Ed25519 signature over the raw file against the embedded key.
 bootstrap_verify_signature() {
 	bootstrap_signed_file=$1
@@ -153,16 +195,27 @@ bootstrap_verify_checksums_signature() {
 	https://*) bootstrap_sig_protocols='=https' ;;
 	*) bootstrap_sig_protocols='=http,https' ;;
 	esac
-	rm -f -- "${bootstrap_sums_file}.sig"
+	# Ed25519 stays the primary signature; the RSA copy only serves hosts
+	# without an Ed25519 verifier.
+	bootstrap_sig_suffix=".sig"
+	if ! bootstrap_can_verify_ed25519; then
+		bootstrap_sig_suffix=".rsa.sig"
+	fi
+	rm -f -- "${bootstrap_sums_file}${bootstrap_sig_suffix}"
 	if ! curl -q --proto "$bootstrap_sig_protocols" --proto-redir "$bootstrap_sig_protocols" --tlsv1.2 \
 		--fail --silent --show-error --location \
 		--connect-timeout 10 --max-time 30 --max-filesize 65536 \
-		"${bootstrap_sums_url}.sig" --output "${bootstrap_sums_file}.sig"; then
-		bootstrap_trust_fail "release checksums are unsigned: ${bootstrap_sums_url}.sig is unavailable"
+		"${bootstrap_sums_url}${bootstrap_sig_suffix}" --output "${bootstrap_sums_file}${bootstrap_sig_suffix}"; then
+		bootstrap_trust_fail "release checksums are unsigned: ${bootstrap_sums_url}${bootstrap_sig_suffix} is unavailable"
 		return 0
 	fi
-	bootstrap_verify_signature "$bootstrap_sums_file" "${bootstrap_sums_file}.sig" ||
-		bootstrap_trust_fail "release checksum signature verification failed for ${bootstrap_sums_url}"
+	if [ "$bootstrap_sig_suffix" = ".sig" ]; then
+		bootstrap_verify_signature "$bootstrap_sums_file" "${bootstrap_sums_file}.sig" ||
+			bootstrap_trust_fail "release checksum signature verification failed for ${bootstrap_sums_url}"
+	else
+		bootstrap_verify_rsa_signature "$bootstrap_sums_file" "${bootstrap_sums_file}.rsa.sig" ||
+			bootstrap_trust_fail "release checksum RSA signature verification failed for ${bootstrap_sums_url}"
+	fi
 }
 
 bootstrap_installed_version() {
@@ -411,5 +464,6 @@ bootstrap_load_modules true
 
 if [ "${ONE_NODE_UPGRADER_LIBRARY_ONLY:-0}" != "1" ]; then
 	main "$@"
-	persist_management_installer
+	# The macOS module replaces its retained installer during the upgrade.
+	[ "$ONE_NODE_PLATFORM" = "darwin" ] || persist_management_installer
 fi

@@ -71,6 +71,10 @@ bbr_is_persisted() {
 }
 
 apply_network_tuning() {
+	if node_role_is_monitor; then
+		log "network tuning: skipped for a monitor node"
+		return 0
+	fi
 	configure_network_tuning
 	log "network tuning: checking BBR, fq, TCP buffer, backlog, and conntrack settings"
 	command -v sysctl >/dev/null 2>&1 || die "sysctl is required for One Node network tuning"

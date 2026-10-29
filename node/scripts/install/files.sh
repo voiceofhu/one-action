@@ -76,7 +76,7 @@ write_native_source() {
 	esac
 	cat >"$UNIT_SOURCE" <<EOF
 [Unit]
-Description=One Node sing-box runtime
+Description=One Node runtime (Xray-core + Hysteria2)
 Wants=network-online.target one-node-firewall.path
 After=network-online.target one-node-firewall.path
 

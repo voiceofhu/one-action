@@ -66,7 +66,7 @@ canonical_path() {
 
 show_help() {
 	printf '%s\n' \
-		"Install the One Node sing-box data plane." \
+		"Install the One Node data plane (Xray-core + Hysteria2)." \
 		"" \
 		"Usage: install.sh --mode <native|docker> [--reset]" \
 		"" \

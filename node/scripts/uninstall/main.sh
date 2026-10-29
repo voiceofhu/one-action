@@ -32,5 +32,5 @@ main() {
 	remove_owned_files
 	remove_network_tuning
 	command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
-	log "One Node sing-box runtime and all runtime state were removed"
+	log "One Node runtime (Xray-core + Hysteria2) and all runtime state were removed"
 }

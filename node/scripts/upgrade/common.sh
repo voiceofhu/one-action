@@ -61,7 +61,7 @@ parse_upgrade_arguments() {
 			;;
 		--help|-h)
 			printf '%s\n' \
-				"Upgrade or roll back the One Node sing-box runtime." \
+				"Upgrade or roll back the One Node runtime (Xray-core + Hysteria2)." \
 				"" \
 				"Usage: upgrade.sh [--rollback]"
 			exit 0

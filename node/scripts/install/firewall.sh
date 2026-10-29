@@ -468,6 +468,36 @@ validate_restricted() {
 	done
 }
 
+# udp_hops=<first>-<last>><port>;... redirects a UDP range inside the managed
+# range to a listed UDP port (Hysteria2 port hopping). Validated entries are
+# collected into hop_rules as nft commands.
+validate_hops() {
+	hop_rules=""
+	[ -n "$udp_hops" ] || return 0
+	case "$udp_hops" in
+	\;*|*\;|*\;\;*|*[!0-9'>;'-]*) return 1 ;;
+	esac
+	hop_count=0
+	hop_rest=$udp_hops
+	while :; do
+		entry=${hop_rest%%;*}
+		hop_count=$((hop_count + 1))
+		[ "$hop_count" -le 8 ] || return 1
+		case "$entry" in *-*'>'*) ;; *) return 1 ;; esac
+		hop_first=${entry%%-*}
+		hop_last=${entry#*-}
+		hop_last=${hop_last%%'>'*}
+		hop_port=${entry#*'>'}
+		valid_decimal "$hop_first" 65535 && valid_decimal "$hop_last" 65535 && valid_decimal "$hop_port" 65535 || return 1
+		[ "$hop_first" -ge 20000 ] && [ "$hop_last" -le 60000 ] && [ "$hop_last" -gt "$hop_first" ] || return 1
+		[ $((hop_last - hop_first)) -lt 10000 ] || return 1
+		port_listed "$hop_port" "$udp_ports" || return 1
+		hop_rules="${hop_rules}add rule inet one_node hop udp dport ${hop_first}-${hop_last} redirect to :${hop_port} comment \"one-node-port-hop\"
+"
+		case "$hop_rest" in *";"*) hop_rest=${hop_rest#*;} ;; *) return 0 ;; esac
+	done
+}
+
 validate_ports() {
 	ports=$1
 	[ -n "$ports" ] || return 0
@@ -512,7 +542,9 @@ apply_ports() {
 		"flush set inet one_node udp_ports" >"$temporary"
 	[ -z "$tcp_ports" ] || printf '%s\n' "add element inet one_node tcp_ports { ${tcp_ports} }" >>"$temporary"
 	[ -z "$udp_ports" ] || printf '%s\n' "add element inet one_node udp_ports { ${udp_ports} }" >>"$temporary"
-	# One nft transaction: the sets and the restricted chain change together.
+	# One nft transaction: the sets, the restricted chain and the port-hopping
+	# redirects change together. Redirected datagrams reach chain input with
+	# the listener port, which @udp_ports accepts.
 	{
 		write_restricted_chain
 		printf '%s\n' \
@@ -520,6 +552,10 @@ apply_ports() {
 			"add rule inet one_node restricted iifname \"lo\" accept comment \"one-node-restricted-loopback\"" \
 			"add rule inet one_node restricted ct state established,related accept comment \"one-node-restricted-established\""
 		printf '%s' "$restricted_rules"
+		printf '%s\n' \
+			"add chain inet one_node hop { type nat hook prerouting priority dstnat; policy accept; }" \
+			"flush chain inet one_node hop"
+		printf '%s' "$hop_rules"
 	} >>"$temporary"
 	if ! nft -f "$temporary"; then
 		rm -f -- "$temporary"
@@ -549,12 +585,14 @@ processing_request=true
 request_id=$(sed -n 's/^request_id=//p' "$request_file")
 request_lines=$(wc -l <"$request_file" | tr -d ' ')
 restricted_lines=$(grep -c '^restricted=' "$request_file" || true)
-# Older nodes send three lines; restricted= is the optional fourth.
-[ "$request_lines" = $((3 + restricted_lines)) ] && [ "$restricted_lines" -le 1 ] ||
+hop_lines=$(grep -c '^udp_hops=' "$request_file" || true)
+# Older nodes send three lines; restricted= and udp_hops= are optional.
+[ "$request_lines" = $((3 + restricted_lines + hop_lines)) ] && [ "$restricted_lines" -le 1 ] && [ "$hop_lines" -le 1 ] ||
 	die "request has an invalid field count"
 tcp_ports=$(sed -n 's/^tcp_ports=//p' "$request_file")
 udp_ports=$(sed -n 's/^udp_ports=//p' "$request_file")
 restricted=$(sed -n 's/^restricted=//p' "$request_file")
+udp_hops=$(sed -n 's/^udp_hops=//p' "$request_file")
 [ "$(grep -c '^request_id=' "$request_file")" = 1 ] || die "request_id is invalid"
 [ "$(grep -c '^tcp_ports=' "$request_file")" = 1 ] || die "tcp_ports is invalid"
 [ "$(grep -c '^udp_ports=' "$request_file")" = 1 ] || die "udp_ports is invalid"
@@ -563,6 +601,7 @@ case "$request_id" in *[!0-9a-f-]*) die "request_id is invalid" ;; esac
 validate_ports "$tcp_ports" || die "tcp_ports is invalid"
 validate_ports "$udp_ports" || die "udp_ports is invalid"
 validate_restricted || die "restricted is invalid"
+validate_hops || die "udp_hops is invalid"
 
 mv -f -- "$request_file" "$running_file"
 if apply_ports; then

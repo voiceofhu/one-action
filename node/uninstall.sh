@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Canonical sing-box uninstaller entrypoint. It removes the installed One Node
+# Canonical One Node uninstaller entrypoint. It removes the installed One Node
 # runtime and its complete state directory, but never manages host proxy
 # software or the Docker engine.
 

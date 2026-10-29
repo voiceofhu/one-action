@@ -37,7 +37,7 @@ die() {
 
 show_help() {
 	printf '%s\n' \
-		"Uninstall the One Node sing-box runtime." \
+		"Uninstall the One Node runtime (Xray-core + Hysteria2)." \
 		"" \
 		"Usage: uninstall.sh [--mode <native|docker>]" \
 		"" \

@@ -179,6 +179,72 @@ grep -Fx 'request_id=44444444-4444-4444-8444-444444444444' "${ONE_NODE_STATE_DIR
 grep -Fx 'message=request has an invalid field count' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
 [ ! -e "$FIREWALL_REQUEST_FILE" ]
 
+# Hysteria2 port hopping: a UDP range redirected to the listener in the same
+# transaction, alongside restrictions (the CDN origin port).
+: >"$TEST_LOG"
+cat >"$FIREWALL_REQUEST_FILE" <<'EOF'
+request_id=55555555-5555-4555-8555-555555555555
+tcp_ports=443,28443
+udp_ports=443
+restricted=tcp:28443:173.245.48.0/20|2400:cb00::/32
+udp_hops=40000-40999>443
+EOF
+chmod 0600 "$FIREWALL_REQUEST_FILE"
+ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE"
+grep -F 'state=succeeded' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
+[ "$(grep -c '^-f ' "$TEST_LOG")" = 1 ]
+grep -Fx 'add chain inet one_node hop { type nat hook prerouting priority dstnat; policy accept; }' "$TEST_LOG" >/dev/null
+grep -Fx 'flush chain inet one_node hop' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node hop udp dport 40000-40999 redirect to :443 comment "one-node-port-hop"' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node restricted tcp dport 28443 ip saddr { 173.245.48.0/20 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
+
+# Requests from older nodes (no udp_hops) clear the redirects.
+: >"$TEST_LOG"
+printf '%s\n' 'request_id=66666666-6666-4666-8666-666666666666' 'tcp_ports=443' 'udp_ports=443' >"$FIREWALL_REQUEST_FILE"
+chmod 0600 "$FIREWALL_REQUEST_FILE"
+ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE"
+grep -Fx 'flush chain inet one_node hop' "$TEST_LOG" >/dev/null
+grep -F 'one-node-port-hop' "$TEST_LOG" >/dev/null && exit 1
+
+# Hop ranges outside 20000-60000, wider than 10000 ports, aimed at an unlisted
+# port or carrying anything but digits are rejected before nft runs.
+request_number=7
+for hops in \
+	'1000-1999>443' \
+	'40000-50000>443' \
+	'40999-40000>443' \
+	'40000-40999>8443' \
+	'40000-40999>443; flush ruleset' \
+	'40000-40999' \
+	'40000-40999>443;;41000-41999>443'
+do
+	: >"$TEST_LOG"
+	printf '%s\n' \
+		"request_id=77777777-7777-4777-8777-$(printf '%012d' "$request_number")" \
+		'tcp_ports=443' \
+		'udp_ports=443' \
+		"udp_hops=${hops}" >"$FIREWALL_REQUEST_FILE"
+	chmod 0600 "$FIREWALL_REQUEST_FILE"
+	if ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE" 2>/dev/null; then
+		printf '%s\n' "hop request was accepted: ${hops}" >&2
+		exit 1
+	fi
+	grep -Fx 'message=udp_hops is invalid' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
+	grep -F -- '-f ' "$TEST_LOG" >/dev/null && exit 1
+	request_number=$((request_number + 1))
+done
+
+# A repeated udp_hops line is never accepted.
+printf '%s\n' \
+	'request_id=88888888-8888-4888-8888-888888888888' \
+	'tcp_ports=443' \
+	'udp_ports=443' \
+	'udp_hops=40000-40999>443' \
+	'udp_hops=40000-40999>443' >"$FIREWALL_REQUEST_FILE"
+chmod 0600 "$FIREWALL_REQUEST_FILE"
+if ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE" 2>/dev/null; then exit 1; fi
+grep -Fx 'message=request has an invalid field count' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
+
 stage_host_firewall_transition
 grep -F 'add element inet one_node tcp_ports { 20000-60000 }' "$TEST_LOG" >/dev/null
 grep -F 'add element inet one_node udp_ports { 20000-60000 }' "$TEST_LOG" >/dev/null

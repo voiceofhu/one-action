@@ -85,13 +85,9 @@ node_ref="$(git -C "$ONE_NODE_DIR" rev-parse HEAD)"
   exit 1
 }
 
-upstream_version="$(tr -d '\r\n' <"$ONE_NODE_DIR/one/version/UPSTREAM_VERSION")"
-upstream_commit="$(tr -d '\r\n' <"$ONE_NODE_DIR/one/version/UPSTREAM_COMMIT")"
 make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
   ONE_NODE_VERSION="$VERSION" \
-  ONE_NODE_COMMIT="$node_ref" \
-  ONE_NODE_UPSTREAM_VERSION="$upstream_version" \
-  ONE_NODE_UPSTREAM_COMMIT="$upstream_commit"
+  ONE_NODE_COMMIT="$node_ref"
 
 [[ "$(git -C "$ONE_NODE_DIR" rev-parse HEAD)" == "$node_ref" \
   && -z "$(git -C "$ONE_NODE_DIR" status --porcelain --untracked-files=all)" ]] || {

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Canonical sing-box installer entrypoint.
+# Canonical One Node installer entrypoint.
 
 set -eu
 umask 077

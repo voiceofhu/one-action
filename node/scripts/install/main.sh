@@ -63,5 +63,5 @@ main() {
 
 	INSTALL_COMMITTED="true"
 	discard_replaced_installation
-	log "${INSTALL_MODE} sing-box installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION}"
+	log "${INSTALL_MODE} installation is ready at config revision ${ONE_NODE_EXPECTED_CONFIG_REVISION}"
 }

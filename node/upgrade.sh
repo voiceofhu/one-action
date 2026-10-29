@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Upgrade and explicit rollback entrypoint for manifest-owned sing-box installs.
+# Upgrade and explicit rollback entrypoint for manifest-owned One Node installs.
 
 set -eu
 umask 077

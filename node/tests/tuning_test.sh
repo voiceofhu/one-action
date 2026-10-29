@@ -30,6 +30,9 @@ case "${1:-}" in
 	if [ -f "$TUNING_SYSCTL_STATE" ]; then
 		sed -n "s|^${key}[[:space:]]*=[[:space:]]*||p" "$TUNING_SYSCTL_STATE" |
 			awk '{$1=$1; print}'
+	elif [ "$key" = net.ipv4.ip_local_reserved_ports ]; then
+		# The kernel prints an empty line when no port is reserved.
+		printf '\n'
 	else
 		printf '%s\n' 0
 	fi
@@ -88,6 +91,7 @@ grep -F 'net.netfilter.nf_conntrack_max = 124928' "$NETWORK_TUNING_FILE" >/dev/n
 grep -F 'net.ipv4.tcp_congestion_control = bbr' "$NETWORK_TUNING_FILE" >/dev/null
 grep -F 'net.ipv4.tcp_notsent_lowat = 131072' "$NETWORK_TUNING_FILE" >/dev/null
 grep -F 'net.ipv4.tcp_mtu_probing = 1' "$NETWORK_TUNING_FILE" >/dev/null
+grep -Fx 'net.ipv4.ip_local_reserved_ports = 20000-29999' "$NETWORK_TUNING_FILE" >/dev/null
 [ "$(cat "$SYSCTL_COUNT")" = 1 ]
 
 apply_network_tuning
@@ -103,5 +107,22 @@ if grep -F 'nf_conntrack_max' "$NETWORK_TUNING_FILE" >/dev/null; then
 	exit 1
 fi
 [ "$(cat "$SYSCTL_COUNT")" = 2 ]
+
+# An administrator's reserved ports are kept; a reservation that already covers
+# the managed range is left as it is; hosts without the key get no line.
+printf '%s\n' 'net.ipv4.ip_local_reserved_ports = 8080,9000-9100' >"$SYSCTL_STATE"
+apply_network_tuning
+grep -Fx 'net.ipv4.ip_local_reserved_ports = 8080,9000-9100,20000-29999' "$NETWORK_TUNING_FILE" >/dev/null
+printf '%s\n' 'net.ipv4.ip_local_reserved_ports = 8080,10000-30000' >"$SYSCTL_STATE"
+apply_network_tuning
+grep -Fx 'net.ipv4.ip_local_reserved_ports = 8080,10000-30000' "$NETWORK_TUNING_FILE" >/dev/null
+printf '%s\n' 'net.ipv4.ip_local_reserved_ports = 20000-25000' >"$SYSCTL_STATE"
+apply_network_tuning
+grep -Fx 'net.ipv4.ip_local_reserved_ports = 20000-25000,20000-29999' "$NETWORK_TUNING_FILE" >/dev/null
+TUNING_SYSCTL_MISSING=net.ipv4.ip_local_reserved_ports apply_network_tuning
+if grep -F 'ip_local_reserved_ports' "$NETWORK_TUNING_FILE" >/dev/null; then
+	printf '%s\n' "reserved ports were written without the kernel key" >&2
+	exit 1
+fi
 
 printf '%s\n' 'One Node dynamic network tuning checks passed.'

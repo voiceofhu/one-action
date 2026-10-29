@@ -85,9 +85,26 @@ install_host_firewall
 grep -F 'one-node-unused-tcp' "$TEST_LOG" >/dev/null
 grep -F 'iifname "lo" accept comment "one-node-loopback"' "$TEST_LOG" >/dev/null
 grep -F 'one-node-unused-udp' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node input tcp dport 20000-29999 drop comment "one-node-unused-tcp"' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node input udp dport 20000-29999 drop comment "one-node-unused-udp"' "$TEST_LOG" >/dev/null
+# Well-known services the pool never hands out stay with the host firewall;
+# One Node's own CDN origin (28443) does not.
+grep -F 'tcp dport { 20000, 21025-21027, 21114-21119, 22000, 22222, 25565, 25575, 25672, 26257, 27015-27036, 28015-28017 } accept comment "one-node-common-tcp"' "$TEST_LOG" >/dev/null
+grep -F 'udp dport { 20000, 21025-21027, 21114-21119, 22000, 22222, 25565, 25575, 25672, 26257, 27015-27036, 28015-28017 } accept comment "one-node-common-udp"' "$TEST_LOG" >/dev/null
+grep -F '28443' "$TEST_LOG" >/dev/null && exit 1
+grep -F '60000' "$TEST_LOG" >/dev/null && exit 1
 # A fresh table opens no managed port until the runtime sends its list.
 grep -F 'add set inet one_node tcp_ports { type inet_service; flags interval; }' "$TEST_LOG" >/dev/null
-grep -F 'elements = { 20000-60000 }' "$TEST_LOG" >/dev/null && exit 1
+grep -F 'add element inet one_node' "$TEST_LOG" >/dev/null && exit 1
+
+# Installs and upgrades re-render an existing table's chain input in one
+# transaction, which migrates tables that dropped all of 20000-60000.
+: >"$TEST_LOG"
+ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE" --initialize
+[ "$(grep -c '^-f ' "$TEST_LOG")" = 1 ]
+grep -Fx 'flush chain inet one_node input' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node input tcp dport 20000-29999 drop comment "one-node-unused-tcp"' "$TEST_LOG" >/dev/null
+grep -F 'add set inet one_node' "$TEST_LOG" >/dev/null && exit 1
 grep -F "PathExists=${FIREWALL_REQUEST_FILE}" "$FIREWALL_PATH_FILE" >/dev/null
 
 cat >"$FIREWALL_REQUEST_FILE" <<'EOF'
@@ -110,26 +127,28 @@ grep -F 'one-node-restricted-drop' "$TEST_LOG" >/dev/null && exit 1
 : >"$TEST_LOG"
 cat >"$FIREWALL_REQUEST_FILE" <<'EOF'
 request_id=22222222-2222-4222-8222-222222222222
-tcp_ports=23837,24080,43555
-udp_ports=43555
-restricted=tcp:24080:;tcp:43555:198.51.100.7/32|203.0.113.0/24|2001:db8::/32;udp:43555:198.51.100.7/32
+tcp_ports=23837,24080,26555
+udp_ports=26555
+restricted=tcp:24080:;tcp:26555:198.51.100.7/32|203.0.113.0/24|2001:db8::/32;udp:26555:198.51.100.7/32
 EOF
 chmod 0600 "$FIREWALL_REQUEST_FILE"
 ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE"
 grep -F 'state=succeeded' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
 [ "$(grep -c '^-f ' "$TEST_LOG")" = 1 ]
-grep -F 'add element inet one_node tcp_ports { 23837,24080,43555 }' "$TEST_LOG" >/dev/null
+grep -F 'add element inet one_node tcp_ports { 23837,24080,26555 }' "$TEST_LOG" >/dev/null
+# Chain input is re-rendered in the same transaction as the sets.
+grep -Fx 'flush chain inet one_node input' "$TEST_LOG" >/dev/null
 grep -Fx 'add rule inet one_node restricted tcp dport 24080 drop comment "one-node-restricted-drop"' "$TEST_LOG" >/dev/null
 grep -F 'restricted tcp dport 24080 ip' "$TEST_LOG" >/dev/null && exit 1
-grep -Fx 'add rule inet one_node restricted tcp dport 43555 ip saddr { 198.51.100.7/32, 203.0.113.0/24 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
-grep -Fx 'add rule inet one_node restricted tcp dport 43555 ip6 saddr { 2001:db8::/32 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
-grep -Fx 'add rule inet one_node restricted tcp dport 43555 drop comment "one-node-restricted-drop"' "$TEST_LOG" >/dev/null
-grep -Fx 'add rule inet one_node restricted udp dport 43555 ip saddr { 198.51.100.7/32 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
-grep -F 'restricted udp dport 43555 ip6' "$TEST_LOG" >/dev/null && exit 1
+grep -Fx 'add rule inet one_node restricted tcp dport 26555 ip saddr { 198.51.100.7/32, 203.0.113.0/24 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node restricted tcp dport 26555 ip6 saddr { 2001:db8::/32 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node restricted tcp dport 26555 drop comment "one-node-restricted-drop"' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node restricted udp dport 26555 ip saddr { 198.51.100.7/32 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
+grep -F 'restricted udp dport 26555 ip6' "$TEST_LOG" >/dev/null && exit 1
 grep -Fx 'add rule inet one_node restricted ct state established,related accept comment "one-node-restricted-established"' "$TEST_LOG" >/dev/null
 [ ! -e "$FIREWALL_REQUEST_FILE" ] && [ ! -e "${FIREWALL_REQUEST_FILE}.running" ]
 
-# Anything but a validated IPv4/IPv6 CIDR on a listed port in 20000-60000 is
+# Anything but a validated IPv4/IPv6 CIDR on a listed port in 20000-29999 is
 # rejected before nft runs, and the request is cleared with a failed status.
 request_number=3
 # shellcheck disable=SC2016
@@ -145,12 +164,13 @@ for restricted in \
 	'tcp:24080:;tcp:24080:' \
 	'udp:24080:198.51.100.7/32' \
 	'tcp:24081:198.51.100.7/32' \
-	'tcp:22:198.51.100.7/32'
+	'tcp:22:198.51.100.7/32' \
+	'tcp:43555:198.51.100.7/32'
 do
 	: >"$TEST_LOG"
 	printf '%s\n' \
 		"request_id=33333333-3333-4333-8333-$(printf '%012d' "$request_number")" \
-		'tcp_ports=22,24080' \
+		'tcp_ports=22,24080,43555' \
 		'udp_ports=' \
 		"restricted=${restricted}" >"$FIREWALL_REQUEST_FILE"
 	chmod 0600 "$FIREWALL_REQUEST_FILE"
@@ -187,7 +207,7 @@ request_id=55555555-5555-4555-8555-555555555555
 tcp_ports=443,28443
 udp_ports=443
 restricted=tcp:28443:173.245.48.0/20|2400:cb00::/32
-udp_hops=40000-40999>443
+udp_hops=24000-24099>443
 EOF
 chmod 0600 "$FIREWALL_REQUEST_FILE"
 ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE"
@@ -195,7 +215,7 @@ grep -F 'state=succeeded' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
 [ "$(grep -c '^-f ' "$TEST_LOG")" = 1 ]
 grep -Fx 'add chain inet one_node hop { type nat hook prerouting priority dstnat; policy accept; }' "$TEST_LOG" >/dev/null
 grep -Fx 'flush chain inet one_node hop' "$TEST_LOG" >/dev/null
-grep -Fx 'add rule inet one_node hop udp dport 40000-40999 redirect to :443 comment "one-node-port-hop"' "$TEST_LOG" >/dev/null
+grep -Fx 'add rule inet one_node hop fib daddr type local udp dport 24000-24099 redirect to :443 comment "one-node-port-hop"' "$TEST_LOG" >/dev/null
 grep -Fx 'add rule inet one_node restricted tcp dport 28443 ip saddr { 173.245.48.0/20 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
 
 # Requests from older nodes (no udp_hops) clear the redirects.
@@ -206,17 +226,19 @@ ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE"
 grep -Fx 'flush chain inet one_node hop' "$TEST_LOG" >/dev/null
 grep -F 'one-node-port-hop' "$TEST_LOG" >/dev/null && exit 1
 
-# Hop ranges outside 20000-60000, wider than 10000 ports, aimed at an unlisted
+# Hop ranges outside 20000-29999, wider than 1000 ports, aimed at an unlisted
 # port or carrying anything but digits are rejected before nft runs.
 request_number=7
 for hops in \
 	'1000-1999>443' \
-	'40000-50000>443' \
-	'40999-40000>443' \
-	'40000-40999>8443' \
-	'40000-40999>443; flush ruleset' \
-	'40000-40999' \
-	'40000-40999>443;;41000-41999>443'
+	'40000-40999>443' \
+	'29950-30049>443' \
+	'24000-25000>443' \
+	'24099-24000>443' \
+	'24000-24099>8443' \
+	'24000-24099>443; flush ruleset' \
+	'24000-24099' \
+	'24000-24099>443;;25000-25099>443'
 do
 	: >"$TEST_LOG"
 	printf '%s\n' \
@@ -239,15 +261,15 @@ printf '%s\n' \
 	'request_id=88888888-8888-4888-8888-888888888888' \
 	'tcp_ports=443' \
 	'udp_ports=443' \
-	'udp_hops=40000-40999>443' \
-	'udp_hops=40000-40999>443' >"$FIREWALL_REQUEST_FILE"
+	'udp_hops=24000-24099>443' \
+	'udp_hops=24000-24099>443' >"$FIREWALL_REQUEST_FILE"
 chmod 0600 "$FIREWALL_REQUEST_FILE"
 if ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE" 2>/dev/null; then exit 1; fi
 grep -Fx 'message=request has an invalid field count' "${ONE_NODE_STATE_DIR}/firewall/status" >/dev/null
 
 stage_host_firewall_transition
-grep -F 'add element inet one_node tcp_ports { 20000-60000 }' "$TEST_LOG" >/dev/null
-grep -F 'add element inet one_node udp_ports { 20000-60000 }' "$TEST_LOG" >/dev/null
+grep -F 'add element inet one_node tcp_ports { 20000-29999 }' "$TEST_LOG" >/dev/null
+grep -F 'add element inet one_node udp_ports { 20000-29999 }' "$TEST_LOG" >/dev/null
 
 remove_host_firewall
 [ ! -f "$TABLE_STATE" ]

@@ -185,7 +185,7 @@ printf '%s\n' \
 chmod 0600 "$FIREWALL_REQUEST_FILE"
 if ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" \
 	ONE_NODE_FIREWALL_HOST_RULES="$HOST_RULES" "$FIREWALL_FILE" 2>>"${TEST_TEMP_DIR}/firewall.log"; then
-	fail "restricted port outside 20000-60000 was accepted"
+	fail "restricted port outside 20000-29999 was accepted"
 fi
 cmp -s "$FAKE_STATE/ufw.rules" "${TEST_TEMP_DIR}/ufw.before" || fail "rejected request changed ufw rules"
 

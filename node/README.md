@@ -59,8 +59,8 @@ Native and Docker installation requires systemd and nftables. It owns
 `one-node-firewall.path` and `one-node-firewall.service`; the Node writes only
 validated inbound TCP/UDP ports under its state directory, while the host
 service atomically replaces the dedicated nftables sets. Unused ports in the
-managed `20000-60000` allocation range are dropped. Existing host firewall and
-cloud security-group policy remain separate.
+managed `20000-29999` range are dropped; everything else stays with the host
+firewall and cloud security-group policy.
 
 The installation also owns
 `one-node-updater.path` and `one-node-updater.service`. The Node process can
@@ -147,8 +147,11 @@ provides it, and dynamic socket-buffer limits in
 `/etc/sysctl.d/99-zz-one-node.conf`. TCP maxima scale at 64 MiB per rounded GiB of
 RAM, with a 32 MiB floor for hosts below roughly 768 MiB and a 512 MiB ceiling.
 Initial receive/send buffers scale more conservatively and stop at 16 MiB.
-Matching settings are left untouched, while changed settings are applied
-immediately and reported in the installation output. Host tuning files are
+The managed `20000-29999` port range is added to
+`net.ipv4.ip_local_reserved_ports` (keeping any existing reservations), so
+outbound sockets never take a listener port even when `ip_local_port_range`
+was widened. Matching settings are left untouched, while changed settings are
+applied immediately and reported in the installation output. Host tuning files are
 preserved on uninstall because they may benefit other host services.
 
 ## Migration record
@@ -199,8 +202,21 @@ curl -fsSL "https://raw.githubusercontent.com/voiceofhu/one-action/<action-commi
 
 One Node dynamically publishes only the inbound TCP/UDP ports in the active
 runtime configuration. The host service accepts those ports and drops unused
-ports in the managed `20000-60000` allocation range. A configuration switch
-updates the nftables sets before listeners are exposed and restores the prior
-set if the runtime transaction fails. Cloud security groups, provider
+ports in the managed `20000-29999` range, which is also where listener ports,
+`allowedSources` ports and Hysteria2 hop blocks (a random 100-port block per
+node) live. A drop in any nftables base chain is final, so the range stays
+narrow: ports of well-known co-hosted services inside it (Syncthing, RustDesk,
+Minecraft, Steam, MongoDB and similar, the backend pool never hands them out)
+and every port outside it, including the kernel's ephemeral range, are left to
+the host's own firewall. Port-hopping redirects only rewrite packets addressed
+to the host itself, never forwarded container or VPN traffic.
+
+A configuration switch updates the nftables sets before listeners are exposed
+and restores the prior set if the runtime transaction fails. Every request
+transaction also re-renders chain `input`, and install/upgrade does the same
+immediately, which migrates tables from older installs that dropped all of
+`20000-60000`. Upgrade the Server before the installer: the new firewall
+service rejects hop blocks outside `20000-29999`, and the Server moves existing
+blocks into the range on its next render. Cloud security groups, provider
 firewalls, and router ACLs cannot be changed by the host and must still permit
-the allocation range.
+the managed range.

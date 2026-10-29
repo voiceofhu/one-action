@@ -56,6 +56,37 @@ network_setting_at_least() {
 	esac
 }
 
+# One Node's managed port range (runtimeconfig.ManagedPortMin/Max).
+NETWORK_MANAGED_PORTS=20000-29999
+
+# Prints the kernel's reserved local ports with the managed range added, so an
+# administrator's own reservations are kept. Reserved ports are never handed
+# to outbound sockets, which matters on hosts whose ip_local_port_range was
+# widened below the default 32768: a listener could otherwise find its port
+# taken, and replies to such a socket would meet the managed-range drop.
+network_reserved_ports() {
+	current_value=$(sysctl -n net.ipv4.ip_local_reserved_ports 2>/dev/null | normalize_tuning_value) || current_value=""
+	case "$current_value" in
+	'') printf '%s\n' "$NETWORK_MANAGED_PORTS" ;;
+	*[!0-9,-]*) return 1 ;;
+	*)
+		if printf '%s\n' "$current_value" | awk -v managed="$NETWORK_MANAGED_PORTS" '
+			BEGIN { RS = ","; split(managed, bounds, "-") }
+			{
+				count = split($0, range, "-")
+				first = range[1] + 0
+				last = (count > 1 ? range[2] : range[1]) + 0
+				if (first <= bounds[1] + 0 && last >= bounds[2] + 0) covered = 1
+			}
+			END { exit !covered }'; then
+			printf '%s\n' "$current_value"
+		else
+			printf '%s\n' "${current_value},${NETWORK_MANAGED_PORTS}"
+		fi
+		;;
+	esac
+}
+
 bbr_is_persisted() {
 	for modules_file in \
 		/etc/modules \
@@ -76,7 +107,7 @@ apply_network_tuning() {
 		return 0
 	fi
 	configure_network_tuning
-	log "network tuning: checking BBR, fq, TCP buffer, backlog, and conntrack settings"
+	log "network tuning: checking BBR, fq, TCP buffer, backlog, conntrack, and reserved port settings"
 	command -v sysctl >/dev/null 2>&1 || die "sysctl is required for One Node network tuning"
 	command -v cmp >/dev/null 2>&1 || die "cmp is required for One Node network tuning"
 	tuning_temp_dir=$(mktemp -d "/tmp/one-node-network-tuning.XXXXXX")
@@ -96,7 +127,11 @@ apply_network_tuning() {
 	if sysctl -n net.netfilter.nf_conntrack_max >/dev/null 2>&1; then
 		conntrack_value=$(network_setting_at_least net.netfilter.nf_conntrack_max "$conntrack_max")
 	fi
-	log "network tuning: detected ${memory_mib} MiB RAM; TCP buffer max ${tcp_max_mib} MiB (initial windows at kernel defaults), listen backlog ${somaxconn_value}, conntrack max ${conntrack_value:-unavailable}"
+	reserved_ports_value=""
+	if sysctl -n net.ipv4.ip_local_reserved_ports >/dev/null 2>&1; then
+		reserved_ports_value=$(network_reserved_ports) || die "unable to parse net.ipv4.ip_local_reserved_ports"
+	fi
+	log "network tuning: detected ${memory_mib} MiB RAM; TCP buffer max ${tcp_max_mib} MiB (initial windows at kernel defaults), listen backlog ${somaxconn_value}, conntrack max ${conntrack_value:-unavailable}, reserved ports ${reserved_ports_value:-unavailable}"
 
 	if sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null |
 		grep -Eq '(^|[[:space:]])bbr($|[[:space:]])'; then
@@ -121,6 +156,11 @@ net.ipv4.tcp_mtu_probing = 1
 EOF
 	if [ -n "$conntrack_value" ]; then
 		printf '%s\n' "net.netfilter.nf_conntrack_max = ${conntrack_value}" >>"$tuning_source"
+	fi
+	if [ -n "$reserved_ports_value" ]; then
+		printf '%s\n' \
+			'# Keep outbound sockets out of the managed listener range.' \
+			"net.ipv4.ip_local_reserved_ports = ${reserved_ports_value}" >>"$tuning_source"
 	fi
 	if [ "$bbr_enabled" = true ]; then
 		printf '%s\n' 'net.ipv4.tcp_congestion_control = bbr' >>"$tuning_source"
@@ -167,6 +207,10 @@ EOF
 	fi
 	if [ -n "$conntrack_value" ] &&
 		! network_setting_matches net.netfilter.nf_conntrack_max "$conntrack_value"; then
+		effective_changed=true
+	fi
+	if [ -n "$reserved_ports_value" ] &&
+		! network_setting_matches net.ipv4.ip_local_reserved_ports "$reserved_ports_value"; then
 		effective_changed=true
 	fi
 

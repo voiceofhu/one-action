@@ -64,8 +64,8 @@ stage_host_firewall_transition() {
 	printf '%s\n' \
 		"flush set inet one_node tcp_ports" \
 		"flush set inet one_node udp_ports" \
-		"add element inet one_node tcp_ports { 20000-60000 }" \
-		"add element inet one_node udp_ports { 20000-60000 }" >"$transition_source"
+		"add element inet one_node tcp_ports { 20000-29999 }" \
+		"add element inet one_node udp_ports { 20000-29999 }" >"$transition_source"
 	if ! nft -f "$transition_source"; then
 		rm -f -- "$transition_source"
 		return 1
@@ -106,6 +106,15 @@ running_file="${firewall_dir}/request.running"
 status_file="${firewall_dir}/status"
 table_family=inet
 table_name=one_node
+# The only range One Node manages (runtimeconfig.ManagedPortMin/Max in the
+# backend, hostfirewall in the node): unused ports here are dropped, while
+# everything outside it, the kernel's ephemeral range included, is left to the
+# host's own firewall.
+managed_min=20000
+managed_max=29999
+# Co-hosted services the backend pool never hands out (port.managedPortAvoid
+# minus 28443, One Node's own CDN origin); the host's own firewall decides them.
+common_ports='20000, 21025-21027, 21114-21119, 22000, 22222, 25565, 25575, 25672, 26257, 27015-27036, 28015-28017'
 request_id=unknown
 processing_request=false
 
@@ -293,19 +302,30 @@ sync_host_firewalls() {
 
 write_table_source() {
 	target=$1
-	cat >"$target" <<'NFT'
-add table inet one_node
-add set inet one_node tcp_ports { type inet_service; flags interval; }
-add set inet one_node udp_ports { type inet_service; flags interval; }
-add chain inet one_node input { type filter hook input priority -10; policy accept; }
-add rule inet one_node input iifname "lo" accept comment "one-node-loopback"
-add rule inet one_node input ct state established,related accept comment "one-node-established"
-add rule inet one_node input tcp dport @tcp_ports accept comment "one-node-active-tcp"
-add rule inet one_node input udp dport @udp_ports accept comment "one-node-active-udp"
-add rule inet one_node input tcp dport 20000-60000 drop comment "one-node-unused-tcp"
-add rule inet one_node input udp dport 20000-60000 drop comment "one-node-unused-udp"
-NFT
+	printf '%s\n' \
+		"add table inet one_node" \
+		"add set inet one_node tcp_ports { type inet_service; flags interval; }" \
+		"add set inet one_node udp_ports { type inet_service; flags interval; }" >"$target"
+	write_input_chain >>"$target"
 	write_restricted_chain >>"$target"
+}
+
+# Chain input is re-rendered in every transaction, which also migrates tables
+# from older installs (they dropped all of 20000-60000, loopback included). A
+# drop in any base chain is final, so it only covers unused ports of the
+# managed range that no co-hosted service may own.
+write_input_chain() {
+	printf '%s\n' \
+		"add chain inet one_node input { type filter hook input priority -10; policy accept; }" \
+		"flush chain inet one_node input" \
+		"add rule inet one_node input iifname \"lo\" accept comment \"one-node-loopback\"" \
+		"add rule inet one_node input ct state established,related accept comment \"one-node-established\"" \
+		"add rule inet one_node input tcp dport @tcp_ports accept comment \"one-node-active-tcp\"" \
+		"add rule inet one_node input udp dport @udp_ports accept comment \"one-node-active-udp\"" \
+		"add rule inet one_node input tcp dport { ${common_ports} } accept comment \"one-node-common-tcp\"" \
+		"add rule inet one_node input udp dport { ${common_ports} } accept comment \"one-node-common-udp\"" \
+		"add rule inet one_node input tcp dport ${managed_min}-${managed_max} drop comment \"one-node-unused-tcp\"" \
+		"add rule inet one_node input udp dport ${managed_min}-${managed_max} drop comment \"one-node-unused-udp\""
 }
 
 # The restricted base chain runs before chain input (priority -10), so its
@@ -335,17 +355,22 @@ validate_table() {
 initialize_table() {
 	if table=$(nft -nn list table "$table_family" "$table_name" 2>/dev/null); then
 		validate_table "$table" || die "existing nftables table inet one_node is not managed by One Node"
-		# Tables from older installs dropped loopback too, hiding local services (nginx upstreams) in 20000-60000.
-		case "$table" in
-		*'comment "one-node-loopback"'*) ;;
-		*) nft insert rule inet one_node input iifname '"lo"' accept comment '"one-node-loopback"' || die "unable to exempt loopback in nftables table inet one_node" ;;
-		esac
+		table_existed=true
 		return
 	fi
 	temporary=$(mktemp "${firewall_dir}/.table.XXXXXX")
 	trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
 	write_table_source "$temporary"
 	nft -f "$temporary" || die "unable to initialize nftables table inet one_node"
+	rm -f -- "$temporary"
+	trap - EXIT HUP INT TERM
+}
+
+migrate_input_chain() {
+	temporary=$(mktemp "${firewall_dir}/.input.XXXXXX")
+	trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
+	write_input_chain >"$temporary"
+	nft -f "$temporary" || die "unable to update chain input of nftables table inet one_node"
 	rm -f -- "$temporary"
 	trap - EXIT HUP INT TERM
 }
@@ -443,7 +468,7 @@ validate_restricted() {
 		*) return 1 ;;
 		esac
 		valid_decimal "$port" 65535 || return 1
-		[ "$port" -ge 20000 ] && [ "$port" -le 60000 ] || return 1
+		[ "$port" -ge "$managed_min" ] && [ "$port" -le "$managed_max" ] || return 1
 		case "$restricted_seen" in *";${protocol}:${port};"*) return 1 ;; esac
 		restricted_seen="${restricted_seen}${protocol}:${port};"
 
@@ -496,10 +521,10 @@ validate_hops() {
 		hop_last=${hop_last%%'>'*}
 		hop_port=${entry#*'>'}
 		valid_decimal "$hop_first" 65535 && valid_decimal "$hop_last" 65535 && valid_decimal "$hop_port" 65535 || return 1
-		[ "$hop_first" -ge 20000 ] && [ "$hop_last" -le 60000 ] && [ "$hop_last" -gt "$hop_first" ] || return 1
-		[ $((hop_last - hop_first)) -lt 10000 ] || return 1
+		[ "$hop_first" -ge "$managed_min" ] && [ "$hop_last" -le "$managed_max" ] && [ "$hop_last" -gt "$hop_first" ] || return 1
+		[ $((hop_last - hop_first)) -lt 1000 ] || return 1
 		port_listed "$hop_port" "$udp_ports" || return 1
-		hop_rules="${hop_rules}add rule inet one_node hop udp dport ${hop_first}-${hop_last} redirect to :${hop_port} comment \"one-node-port-hop\"
+		hop_rules="${hop_rules}add rule inet one_node hop fib daddr type local udp dport ${hop_first}-${hop_last} redirect to :${hop_port} comment \"one-node-port-hop\"
 "
 		case "$hop_rest" in *";"*) hop_rest=${hop_rest#*;} ;; *) return 0 ;; esac
 	done
@@ -549,10 +574,11 @@ apply_ports() {
 		"flush set inet one_node udp_ports" >"$temporary"
 	[ -z "$tcp_ports" ] || printf '%s\n' "add element inet one_node tcp_ports { ${tcp_ports} }" >>"$temporary"
 	[ -z "$udp_ports" ] || printf '%s\n' "add element inet one_node udp_ports { ${udp_ports} }" >>"$temporary"
-	# One nft transaction: the sets, the restricted chain and the port-hopping
-	# redirects change together. Redirected datagrams reach chain input with
-	# the listener port, which @udp_ports accepts.
+	# One nft transaction: chain input, the sets, the restricted chain and the
+	# port-hopping redirects change together. Redirected datagrams reach chain
+	# input with the listener port, which @udp_ports accepts.
 	{
+		write_input_chain
 		write_restricted_chain
 		printf '%s\n' \
 			"flush chain inet one_node restricted" \
@@ -581,8 +607,14 @@ if [ "${1:-}" = "--remove-host-rules" ]; then
 fi
 
 install -d -m 0700 "$firewall_dir"
+table_existed=false
 initialize_table
-[ "${1:-}" != "--initialize" ] || exit 0
+if [ "${1:-}" = "--initialize" ]; then
+	# Installs and upgrades bring an existing table's input chain up to date
+	# right away instead of at the runtime's next request.
+	[ "$table_existed" = false ] || migrate_input_chain
+	exit 0
+fi
 
 processing_request=true
 [ -f "$request_file" ] && [ ! -L "$request_file" ] || die "request is missing or unsafe"

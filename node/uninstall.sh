@@ -11,9 +11,7 @@ ONE_NODE_UNINSTALL_MODULES="install/common.sh install/firewall.sh uninstall/comm
 ONE_NODE_ENTRYPOINT_KIND="uninstall"
 ONE_NODE_ENTRYPOINT_MODULES=$ONE_NODE_UNINSTALL_MODULES
 # macOS hosts run monitor-only nodes through a launchd lifecycle of their own.
-ONE_NODE_PLATFORM="linux"
 if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
-	ONE_NODE_PLATFORM="darwin"
 	ONE_NODE_ENTRYPOINT_MODULES="darwin/main.sh"
 fi
 

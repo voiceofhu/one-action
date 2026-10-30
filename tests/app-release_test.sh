@@ -42,6 +42,8 @@ ruby -ryaml -e '
   File.write("#{ARGV[1]}/prepare.sh", prepare.fetch("run"))
   plan = workflow.fetch("jobs").fetch("prepare").fetch("steps").find { |s| s["id"] == "plan" }
   File.write("#{ARGV[1]}/plan.sh", plan.fetch("run"))
+  pnpm = workflow.fetch("jobs").fetch("prepare").fetch("steps").find { |s| s["id"] == "pnpm" }
+  File.write("#{ARGV[1]}/pnpm.sh", pnpm.fetch("run"))
   build = workflow.fetch("jobs").fetch("build")
   abort "build matrix must come from the platform plan" unless
     build.dig("strategy", "matrix") == "${{ fromJSON(needs.prepare.outputs.matrix) }}"
@@ -97,6 +99,17 @@ export WEB_REPOSITORY="$APP_WEB_REPOSITORY" WEB_SHA=
 [[ -z "$WEB_REPOSITORY" ]] || WEB_SHA=cccccccccccccccccccccccccccccccccccccccc
 export BACKEND_REPOSITORY="$APP_BACKEND_REPOSITORY" BACKEND_SHA=
 [[ -z "$BACKEND_REPOSITORY" ]] || BACKEND_SHA=dddddddddddddddddddddddddddddddddddddddd
+
+# pnpm installer: native pnpm/setup from pnpm 11, pnpm/action-setup before.
+for case in "11.7.0 true" "12.0.1 true" "10.32.1 false" "9.15.0 false"; do
+  : >"$GITHUB_OUTPUT"
+  PNPM_VERSION="${case% *}" bash "$test_dir/pnpm.sh"
+  [[ "$(cat "$GITHUB_OUTPUT")" == "native=${case#* }" ]] || {
+    printf 'pnpm %s chose %s\n' "${case% *}" "$(cat "$GITHUB_OUTPUT")" >&2
+    exit 1
+  }
+done
+: >"$GITHUB_OUTPUT"
 
 # Platform plan: the App's platforms (default all four), unknown names rejected.
 PLATFORMS="$APP_PLATFORMS" bash "$test_dir/plan.sh"

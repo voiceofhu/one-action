@@ -40,6 +40,7 @@ jobs:
       backend_repository: ${{ steps.app.outputs.backend_repository }}
       go_version_file: ${{ steps.app.outputs.go_version_file }}
       release_prefix: ${{ steps.app.outputs.release_prefix }}
+      pnpm_native: ${{ steps.pnpm.outputs.native }}
     steps:
       - name: Checkout exact app manifest
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +61,20 @@ jobs:
         env:
           APP: ${{ inputs.app }}
         run: bash action/scripts/lib/app.sh "$APP" >>"$GITHUB_OUTPUT"
+
+      # pnpm 11+ ships native executables, installed by pnpm/setup; the Node-based
+      # self-installer of pnpm/action-setup fails for them on some runners
+      # (pnpm/action-setup#251), and pnpm/setup takes only pnpm 11+.
+      - name: Choose pnpm installer
+        id: pnpm
+        shell: bash
+        env:
+          PNPM_VERSION: ${{ steps.app.outputs.pnpm_version }}
+        run: |
+          set -Eeuo pipefail
+          native=false
+          (( ${PNPM_VERSION%%.*} < 11 )) || native=true
+          printf 'native=%s\n' "$native" >>"$GITHUB_OUTPUT"
 
       - name: Read deploy tag
         id: trigger
@@ -89,7 +104,7 @@ jobs:
                assets: "app/src-tauri/target/release/bundle/appimage/*.AppImage\napp/src-tauri/target/release/bundle/deb/*.deb"},
               {name: "windows-amd64", runner: "windows-latest", rust_target: "", bundles: "nsis",
                assets: "app/src-tauri/target/release/bundle/nsis/*.exe"},
-              {name: "macos-arm64", runner: "macos-14", rust_target: "aarch64-apple-darwin", bundles: "dmg",
+              {name: "macos-arm64", runner: "macos-15", rust_target: "aarch64-apple-darwin", bundles: "dmg",
                assets: "app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"},
               {name: "macos-amd64", runner: "macos-15-intel", rust_target: "x86_64-apple-darwin", bundles: "dmg",
                assets: "app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"}
@@ -203,10 +218,17 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
+        if: needs.prepare.outputs.pnpm_native != 'true'
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: ${{ needs.prepare.outputs.pnpm_version }}
           run_install: false
+
+      - name: Set up native pnpm
+        if: needs.prepare.outputs.pnpm_native == 'true'
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: ${{ needs.prepare.outputs.pnpm_version }}
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

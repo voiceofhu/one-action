@@ -104,7 +104,7 @@ case "$scope" in
     )
     run_node_check=true
     ;;
-  browser-app|mail-app)
+  browser-app|mail-app|node-app)
     active_tests=("$PROJECT_ROOT/tests/app-release_test.sh")
     shell_files=(
       "$PROJECT_ROOT/scripts/lib/app.sh"

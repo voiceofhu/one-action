@@ -1,4 +1,4 @@
-.PHONY: node-check node-bundle-installers deploy-node-server deploy-node
+.PHONY: node-check node-bundle-installers deploy-node-server deploy-node deploy-node-app
 
 node-check:
 	@sh $(PROJECT_ROOT)/node/tests/scripts_test.sh
@@ -31,6 +31,11 @@ deploy-node: DRY_RUN = false
 deploy-node:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/deploy-node-release.sh
+
+deploy-node-app: DRY_RUN = false
+deploy-node-app:
+	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
+		bash $(PROJECT_ROOT)/scripts/release/release-app.sh node
 
 .PHONY: deploy-node-web
 deploy-node-web: DRY_RUN = false

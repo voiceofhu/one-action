@@ -1,0 +1,24 @@
+name: One Node App
+run-name: ${{ github.workflow }}
+
+# Runs on deploy/node-app/<version> tags pushed by `make deploy-node-app`.
+'on':
+  push:
+    tags: ["deploy/node-app/*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-node-app-publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/reusable-publish-tauri-app.yml
+    with:
+      app: node
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

@@ -19,7 +19,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 |---|---|---|
 | `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
-| `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包、`SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
+| `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node（PC 客户端）：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
 
 `deploy-node` 只触发 Runtime 编译上传；Browser App 只发布产物。One Node 的 Backend 是 Go
@@ -135,20 +135,28 @@ flowchart TD
 
 ## 桌面客户端（apps.json）
 
-One Browser 与 One Mail 的 Tauri 客户端共用 `reusable-publish-tauri-app.yml`。`apps.json` 记录源码仓库、
+One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publish-tauri-app.yml`。`apps.json` 记录源码仓库、
 本地目录、Cargo 包名、pnpm 版本和 macOS 专用配置；Release 标签统一为
-`one-<key>-app-v<version>`，入口为 `<key>-app.yml`。
+`one-<key>-app-v<version>`，入口为 `<key>-app.yml`。可选字段：
+
+- `platforms`：构建矩阵名（`linux-amd64`、`windows-amd64`、`macos-arm64`、`macos-amd64`），默认全部；
+- `web_repository`：随包内置的 Web，CI 检出到客户端旁的 `../web`，deploy 标签另以 `web_ref` 固定其 SHA；
+- `go_version_file`：客户端内 go.mod 路径，CI 据此安装 Go，用于构建 sidecar。
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |
 | browser | `voiceofhu/one-browser-app` | `../one-browser/app` | `https://browser.aicbe.com` |
 | mail | `voiceofhu/one-mail-app` | `../one-mail/app` | `https://mail.aicbe.com` |
+| node | `voiceofhu/one-node-pc` | `../one-node/pc`（Web：`../one-node/web`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 
 - `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
   `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后推送 `deploy/<key>-app/<version>` 标签固定精确源码 SHA。
 - 客户端仓库须提供 `scripts/update-version.mjs`；CI 在各平台打包前写入 package.json、`tauri.conf.json`、Cargo.toml 与 Cargo.lock 的版本。
+- 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：离线 Web 副本、Go `onecore` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
+  CI 由 Tauri 的 `beforeBuildCommand` 按目标平台运行。带 `web_repository` 的客户端，其 `../web` 同样须干净、与 `main`（`ONE_<KEY>_APP_WEB_REF`）一致且已推送；
+  带 `go_version_file` 的客户端另跑 `go vet` 与 `go test`。
 - 已存在的 Release 或标签不会被覆盖；源码仓库不打发布标签，标签只在 One Action 上绑定本次 Action SHA。
-- 客户端只加载远端页面：正式版连接上表地址，开发版连接本机 Backend；对应的 Server/Web 先按「Server + Web 产品」部署。
+- 客户端加载远端页面：正式版连接上表地址，开发版连接本机 Backend；对应的 Server/Web 先按「Server + Web 产品」部署（One Node 客户端的 `/pc` 页面随 `deploy-node-web` 上线，宜先于客户端发布；线上缺 `/pc` 时客户端 8 秒后改用内置副本）。
 
 ## 使用
 
@@ -159,6 +167,7 @@ make deploy-user-server VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
 make deploy-browser-app
+make deploy-node-app
 make deploy-browser-server
 ```
 
@@ -170,6 +179,7 @@ make deploy-user-server DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
 make deploy-browser-app DRY_RUN=true
+make deploy-node-app DRY_RUN=true
 make deploy-browser-server DRY_RUN=true
 ```
 

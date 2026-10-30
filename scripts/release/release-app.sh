@@ -17,6 +17,26 @@ require_tool() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+# Sets checkout_sha to the HEAD of DIR once it is the clean root checkout of
+# REPOSITORY, on BRANCH and already pushed to origin.
+verify_checkout() {
+  local label=$1 dir=$2 repository=$3 branch=$4 branch_variable=$5 missing_hint=$6 root
+  root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" ||
+    die "$label Git repository is unavailable or incomplete: $dir; $missing_hint"
+  [[ "$(cd "$dir" && pwd -P)" == "$(cd "$root" && pwd -P)" ]] ||
+    die "$label directory must be the $label repository root: $dir"
+  checkout_sha="$(git -C "$dir" rev-parse --verify HEAD)"
+  [[ "$checkout_sha" == "$(git -C "$dir" rev-parse --verify "${branch}^{commit}")" ]] ||
+    die "$label HEAD must match $branch_variable ($branch) before validation"
+  is_github_remote "$(origin_remote_url "$dir")" "$repository" ||
+    die "$label origin differs from the configured source repository"
+  [[ -z "$(git -C "$dir" status --porcelain --untracked-files=all)" ]] ||
+    die "$label worktree must be clean before release validation"
+  git -C "$dir" fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+  git -C "$dir" merge-base --is-ancestor "$checkout_sha" "refs/remotes/origin/$branch" ||
+    die "$label HEAD is not pushed to origin/$branch"
+}
+
 [[ "$#" -eq 1 ]] || die 'usage: release-app.sh APP'
 load_app "$1"
 : "${VERSION:?VERSION is required}"
@@ -26,13 +46,23 @@ app_dir_variable="${app_env_prefix}_DIR"
 app_ref_variable="${app_env_prefix}_REF"
 app_dir=${!app_dir_variable:-$SOURCE_ROOT/$APP_SOURCE_DIR}
 app_ref=${!app_ref_variable:-main}
+# A bundled web is read from ../web, the layout CI checks out as well.
+web_dir="$(dirname -- "$app_dir")/web"
+web_ref_variable="${app_env_prefix}_WEB_REF"
+web_ref=${!web_ref_variable:-main}
 [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die 'Invalid App version'
-[[ "$app_ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$ && "$app_ref" != *..* ]] ||
-  die "$app_ref_variable must be a branch name"
+for ref_variable in "$app_ref_variable" "$web_ref_variable"; do
+  ref=${!ref_variable:-main}
+  [[ "$ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$ && "$ref" != *..* ]] ||
+    die "$ref_variable must be a branch name"
+done
 require_tool git
 
 printf '%s release: %s-v%s from %s branch %s (tag deploy/%s-app/%s)\n' \
   "$APP_TITLE" "$APP_RELEASE_PREFIX" "$VERSION" "$APP_REPOSITORY" "$app_ref" "$APP_KEY" "$VERSION" >&2
+[[ -z "$APP_WEB_REPOSITORY" ]] ||
+  printf 'Bundled web: %s branch %s from %s (pinned as web_ref)\n' \
+    "$APP_WEB_REPOSITORY" "$web_ref" "$web_dir" >&2
 case "${DRY_RUN:-true}" in
   true|1|yes)
     printf '%s\n' 'DRY_RUN=true: no checks ran and no deploy tag was pushed.'
@@ -55,31 +85,36 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
 require_tool pnpm
 require_tool node
 require_tool cargo
-app_root="$(git -C "$app_dir" rev-parse --show-toplevel 2>/dev/null)" ||
-  die "App Git repository is unavailable or incomplete: $app_dir; restore its Git metadata or set $app_dir_variable to a valid App checkout"
-[[ "$(cd "$app_dir" && pwd -P)" == "$(cd "$app_root" && pwd -P)" ]] ||
-  die "$app_dir_variable must point to the App repository root: $app_dir"
-app_sha="$(git -C "$app_dir" rev-parse --verify HEAD)"
-[[ "$app_sha" == "$(git -C "$app_dir" rev-parse --verify "${app_ref}^{commit}")" ]] ||
-  die "App HEAD must match $app_ref_variable ($app_ref) before validation"
-app_origin="$(origin_remote_url "$app_dir")"
-is_github_remote "$app_origin" "$APP_REPOSITORY" ||
-  die 'App origin differs from the configured source repository'
-[[ -z "$(git -C "$app_dir" status --porcelain --untracked-files=all)" ]] ||
-  die 'App worktree must be clean before release validation'
-git -C "$app_dir" fetch --no-tags origin "+refs/heads/$app_ref:refs/remotes/origin/$app_ref"
-git -C "$app_dir" merge-base --is-ancestor "$app_sha" "refs/remotes/origin/$app_ref" ||
-  die "App HEAD is not pushed to origin/$app_ref"
+[[ -z "$APP_GO_VERSION_FILE" ]] || require_tool go
+verify_checkout App "$app_dir" "$APP_REPOSITORY" "$app_ref" "$app_ref_variable" \
+  "restore its Git metadata or set $app_dir_variable to a valid App checkout"
+app_sha=$checkout_sha
+pins=("app_ref=$app_sha")
+if [[ -n "$APP_WEB_REPOSITORY" ]]; then
+  verify_checkout Web "$web_dir" "$APP_WEB_REPOSITORY" "$web_ref" "$web_ref_variable" \
+    'the App bundles the web checked out next to it as ../web'
+  web_sha=$checkout_sha
+  pins+=("web_ref=$web_sha")
+fi
 [[ -f "$app_dir/scripts/update-version.mjs" ]] ||
   die 'App source must provide scripts/update-version.mjs for CI release version stamping'
 
 printf 'Validating %s before tagging...\n' "$APP_TITLE"
 pnpm --dir "$app_dir" install --frozen-lockfile
+[[ -z "$APP_WEB_REPOSITORY" ]] || pnpm --dir "$web_dir" install --frozen-lockfile
 for script in "$app_dir"/scripts/*.mjs; do
   node --check "$script"
 done
 if compgen -G "$app_dir/scripts/tests/*.test.mjs" >/dev/null; then
   node --test "$app_dir"/scripts/tests/*.test.mjs
+fi
+if [[ -n "$APP_GO_VERSION_FILE" ]]; then
+  (cd -- "$(dirname -- "$app_dir/$APP_GO_VERSION_FILE")" && go vet ./... && go test -count=1 ./...)
+fi
+# The bundle inputs Tauri's beforeBuildCommand prepares in CI (web copy, sidecars),
+# which the Rust build checks for.
+if [[ -f "$app_dir/scripts/prepare-bundle.mjs" ]]; then
+  node "$app_dir/scripts/prepare-bundle.mjs"
 fi
 cargo fmt --manifest-path "$app_dir/src-tauri/Cargo.toml" --all --check
 cargo clippy --manifest-path "$app_dir/src-tauri/Cargo.toml" \
@@ -90,8 +125,13 @@ cargo test --manifest-path "$app_dir/src-tauri/Cargo.toml" \
 [[ "$app_sha" == "$(git -C "$app_dir" rev-parse HEAD)" \
   && -z "$(git -C "$app_dir" status --porcelain --untracked-files=all)" ]] ||
   die 'App source changed during local validation'
+if [[ -n "$APP_WEB_REPOSITORY" ]]; then
+  [[ "$web_sha" == "$(git -C "$web_dir" rev-parse HEAD)" \
+    && -z "$(git -C "$web_dir" status --porcelain --untracked-files=all)" ]] ||
+    die 'Web source changed during local validation'
+fi
 [[ "$action_sha" == "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" ]] ||
   die 'Action HEAD changed during local validation'
 
 DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
-  "$APP_WORKFLOW" "$action_sha" "$VERSION" "app_ref=$app_sha"
+  "$APP_WORKFLOW" "$action_sha" "$VERSION" "${pins[@]}"

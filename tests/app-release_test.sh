@@ -37,7 +37,11 @@ ruby -ryaml -e '
   end
   prepare = workflow.fetch("jobs").fetch("prepare").fetch("steps").find { |s| s["id"] == "release" }
   File.write("#{ARGV[1]}/prepare.sh", prepare.fetch("run"))
+  plan = workflow.fetch("jobs").fetch("prepare").fetch("steps").find { |s| s["id"] == "plan" }
+  File.write("#{ARGV[1]}/plan.sh", plan.fetch("run"))
   build = workflow.fetch("jobs").fetch("build")
+  abort "build matrix must come from the platform plan" unless
+    build.dig("strategy", "matrix") == "${{ fromJSON(needs.prepare.outputs.matrix) }}"
   steps = build.fetch("steps")
   stamp = steps.find { |s| s["name"] == "Set App release version" }
   abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ needs.prepare.outputs.version }}"
@@ -68,7 +72,7 @@ case "$2" in
       denied) printf '%s\n' '{"status":"403"}'; exit 1 ;;
       transport) exit 1 ;;
     esac ;;
-  */commits/*) printf '{"sha":"%s"}\n' "$APP_SHA" ;;
+  */commits/*) printf '{"sha":"%s"}\n' "${2##*/}" ;;
   *) exit 99 ;;
 esac
 SCRIPT
@@ -81,8 +85,23 @@ export CALLER_WORKFLOW="voiceofhu/one-action/.github/workflows/$APP_WORKFLOW@ref
 export APP_KEY APP_TITLE APP_REPOSITORY RELEASE_PREFIX="$APP_RELEASE_PREFIX"
 export APP_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb VERSION=26.906.1234
 export GH_TOKEN=fixture-token
+export WEB_REPOSITORY="$APP_WEB_REPOSITORY" WEB_SHA=
+[[ -z "$WEB_REPOSITORY" ]] || WEB_SHA=cccccccccccccccccccccccccccccccccccccccc
 
-for bad in CALLER_WORKFLOW APP_SHA VERSION; do
+# Platform plan: the App's platforms (default all four), unknown names rejected.
+PLATFORMS="$APP_PLATFORMS" bash "$test_dir/plan.sh"
+expected_platforms="$(jq -c '. // ["linux-amd64","windows-amd64","macos-arm64","macos-amd64"]' <<<"$APP_PLATFORMS")"
+[[ "$(sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -c '[.include[].name]')" == "$expected_platforms" ]]
+sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -e '.include | all(.runner != "" and .bundles != "" and .assets != "")' >/dev/null
+: >"$GITHUB_OUTPUT"
+if PLATFORMS='["macos-arm64","solaris-sparc"]' bash "$test_dir/plan.sh" >/dev/null 2>&1; then
+  printf 'platform plan accepted an unknown platform\n' >&2
+  exit 1
+fi
+
+bad_inputs=(CALLER_WORKFLOW APP_SHA VERSION)
+[[ -z "$WEB_REPOSITORY" ]] || bad_inputs+=(WEB_SHA)
+for bad in "${bad_inputs[@]}"; do
   export RELEASE_STATE=missing
   : >"$GITHUB_OUTPUT"
   if env "$bad=wrong" bash "$test_dir/prepare.sh" >/dev/null 2>&1; then
@@ -97,6 +116,12 @@ for state in missing exists denied transport; do
   if bash "$test_dir/prepare.sh" >"$test_dir/stdout" 2>"$test_dir/stderr"; then
     [[ "$state" == missing ]]
     grep -q "release_tag=$APP_RELEASE_PREFIX-v26.906.1234" "$GITHUB_OUTPUT"
+    if [[ -n "$WEB_REPOSITORY" ]]; then
+      grep -q "web_sha=$WEB_SHA" "$GITHUB_OUTPUT"
+      grep -q "repos/$WEB_REPOSITORY/commits/$WEB_SHA" "$API_LOG"
+    else
+      ! grep -q web_sha "$GITHUB_OUTPUT"
+    fi
   else
     [[ "$state" != missing ]]
     [[ ! -s "$GITHUB_OUTPUT" ]]
@@ -170,4 +195,4 @@ for state in missing matching mismatch denied transport; do
     ! grep -q '^release create ' "$API_LOG"
   fi
 done
-printf '%s version, CI stamping, duplicate guards and immutable tag publication tests passed.\n' "$APP_TITLE"
+printf '%s version, platform plan, CI stamping, duplicate guards and immutable tag publication tests passed.\n' "$APP_TITLE"

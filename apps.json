@@ -14,5 +14,16 @@
     "cargo_package": "onemail",
     "pnpm_version": "10.34.1",
     "macos_config": ""
+  },
+  "node": {
+    "title": "One Node App",
+    "repository": "voiceofhu/one-node-pc",
+    "source_dir": "one-node/pc",
+    "cargo_package": "one-node",
+    "pnpm_version": "11.7.0",
+    "macos_config": "",
+    "platforms": ["windows-amd64", "macos-arm64", "macos-amd64"],
+    "web_repository": "voiceofhu/one-node-web",
+    "go_version_file": "core/go.mod"
   }
 }

@@ -12,9 +12,11 @@ validate-node-runtime:
 validate-browser-app:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-app
 
-.PHONY: validate-mail-app
+.PHONY: validate-mail-app validate-node-app
 validate-mail-app:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh mail-app
+validate-node-app:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh node-app
 
 .PHONY: validate-user-web
 validate-user-web:

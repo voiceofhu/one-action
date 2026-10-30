@@ -24,6 +24,9 @@ for input in '' v26.907.101; do
   grep -Fq "$APP_RELEASE_PREFIX-v$expected from $APP_REPOSITORY branch main (tag deploy/$APP_KEY-app/$expected)" \
     "$test_dir/plan"
   grep -Fq 'DRY_RUN=true: no checks ran and no deploy tag was pushed.' "$test_dir/plan"
+  if [[ -n "$APP_BACKEND_REPOSITORY" ]]; then
+    grep -Fq "Shared backend: $APP_BACKEND_REPOSITORY branch main" "$test_dir/plan"
+  fi
 done
 
 ruby -ryaml -e '
@@ -43,6 +46,11 @@ ruby -ryaml -e '
   abort "build matrix must come from the platform plan" unless
     build.dig("strategy", "matrix") == "${{ fromJSON(needs.prepare.outputs.matrix) }}"
   steps = build.fetch("steps")
+  backend = steps.find { |s| s["name"] == "Checkout exact Backend source" }
+  abort "backend checkout must pin backend_sha at ../backend of the App" unless backend &&
+    backend.dig("with", "path") == "backend" &&
+    backend.dig("with", "ref") == "${{ needs.prepare.outputs.backend_sha }}" &&
+    backend["if"] == "needs.prepare.outputs.backend_repository != \u0027\u0027"
   stamp = steps.find { |s| s["name"] == "Set App release version" }
   abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ needs.prepare.outputs.version }}"
   abort "stamp must precede bundle" unless steps.index(stamp) < steps.index(steps.find { |s| s["name"] == "Build desktop bundle" })
@@ -87,6 +95,8 @@ export APP_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb VERSION=26.906.1234
 export GH_TOKEN=fixture-token
 export WEB_REPOSITORY="$APP_WEB_REPOSITORY" WEB_SHA=
 [[ -z "$WEB_REPOSITORY" ]] || WEB_SHA=cccccccccccccccccccccccccccccccccccccccc
+export BACKEND_REPOSITORY="$APP_BACKEND_REPOSITORY" BACKEND_SHA=
+[[ -z "$BACKEND_REPOSITORY" ]] || BACKEND_SHA=dddddddddddddddddddddddddddddddddddddddd
 
 # Platform plan: the App's platforms (default all four), unknown names rejected.
 PLATFORMS="$APP_PLATFORMS" bash "$test_dir/plan.sh"
@@ -101,6 +111,7 @@ fi
 
 bad_inputs=(CALLER_WORKFLOW APP_SHA VERSION)
 [[ -z "$WEB_REPOSITORY" ]] || bad_inputs+=(WEB_SHA)
+[[ -z "$BACKEND_REPOSITORY" ]] || bad_inputs+=(BACKEND_SHA)
 for bad in "${bad_inputs[@]}"; do
   export RELEASE_STATE=missing
   : >"$GITHUB_OUTPUT"
@@ -121,6 +132,12 @@ for state in missing exists denied transport; do
       grep -q "repos/$WEB_REPOSITORY/commits/$WEB_SHA" "$API_LOG"
     else
       ! grep -q web_sha "$GITHUB_OUTPUT"
+    fi
+    if [[ -n "$BACKEND_REPOSITORY" ]]; then
+      grep -q "backend_sha=$BACKEND_SHA" "$GITHUB_OUTPUT"
+      grep -q "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA" "$API_LOG"
+    else
+      ! grep -q backend_sha "$GITHUB_OUTPUT"
     fi
   else
     [[ "$state" != missing ]]

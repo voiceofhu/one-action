@@ -3,7 +3,8 @@ name: Reusable Publish Tauri App
 # Builds one apps.json desktop client on Linux, Windows and macOS (or the App's
 # `platforms`) and publishes an immutable one-<key>-app-v<version> Release on One
 # Action. Entry workflows (<key>-app.yml) run on a deploy/<key>-app/<version> tag
-# whose message pins the exact App commit (and web_ref for an App's bundled web).
+# whose message pins the exact App commit (and web_ref for an App's bundled web,
+# backend_ref for the server packages a sidecar builds against).
 'on':
   workflow_call:
     inputs:

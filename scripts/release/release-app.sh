@@ -46,12 +46,16 @@ app_dir_variable="${app_env_prefix}_DIR"
 app_ref_variable="${app_env_prefix}_REF"
 app_dir=${!app_dir_variable:-$SOURCE_ROOT/$APP_SOURCE_DIR}
 app_ref=${!app_ref_variable:-main}
-# A bundled web is read from ../web, the layout CI checks out as well.
+# A bundled web is read from ../web and shared server packages from ../backend,
+# the layout CI checks out as well.
 web_dir="$(dirname -- "$app_dir")/web"
 web_ref_variable="${app_env_prefix}_WEB_REF"
 web_ref=${!web_ref_variable:-main}
+backend_dir="$(dirname -- "$app_dir")/backend"
+backend_ref_variable="${app_env_prefix}_BACKEND_REF"
+backend_ref=${!backend_ref_variable:-main}
 [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die 'Invalid App version'
-for ref_variable in "$app_ref_variable" "$web_ref_variable"; do
+for ref_variable in "$app_ref_variable" "$web_ref_variable" "$backend_ref_variable"; do
   ref=${!ref_variable:-main}
   [[ "$ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$ && "$ref" != *..* ]] ||
     die "$ref_variable must be a branch name"
@@ -63,6 +67,9 @@ printf '%s release: %s-v%s from %s branch %s (tag deploy/%s-app/%s)\n' \
 [[ -z "$APP_WEB_REPOSITORY" ]] ||
   printf 'Bundled web: %s branch %s from %s (pinned as web_ref)\n' \
     "$APP_WEB_REPOSITORY" "$web_ref" "$web_dir" >&2
+[[ -z "$APP_BACKEND_REPOSITORY" ]] ||
+  printf 'Shared backend: %s branch %s from %s (pinned as backend_ref)\n' \
+    "$APP_BACKEND_REPOSITORY" "$backend_ref" "$backend_dir" >&2
 case "${DRY_RUN:-true}" in
   true|1|yes)
     printf '%s\n' 'DRY_RUN=true: no checks ran and no deploy tag was pushed.'
@@ -95,6 +102,12 @@ if [[ -n "$APP_WEB_REPOSITORY" ]]; then
     'the App bundles the web checked out next to it as ../web'
   web_sha=$checkout_sha
   pins+=("web_ref=$web_sha")
+fi
+if [[ -n "$APP_BACKEND_REPOSITORY" ]]; then
+  verify_checkout Backend "$backend_dir" "$APP_BACKEND_REPOSITORY" "$backend_ref" "$backend_ref_variable" \
+    'the App builds shared server packages from the backend checked out next to it as ../backend'
+  backend_sha=$checkout_sha
+  pins+=("backend_ref=$backend_sha")
 fi
 [[ -f "$app_dir/scripts/update-version.mjs" ]] ||
   die 'App source must provide scripts/update-version.mjs for CI release version stamping'
@@ -129,6 +142,11 @@ if [[ -n "$APP_WEB_REPOSITORY" ]]; then
   [[ "$web_sha" == "$(git -C "$web_dir" rev-parse HEAD)" \
     && -z "$(git -C "$web_dir" status --porcelain --untracked-files=all)" ]] ||
     die 'Web source changed during local validation'
+fi
+if [[ -n "$APP_BACKEND_REPOSITORY" ]]; then
+  [[ "$backend_sha" == "$(git -C "$backend_dir" rev-parse HEAD)" \
+    && -z "$(git -C "$backend_dir" status --porcelain --untracked-files=all)" ]] ||
+    die 'Backend source changed during local validation'
 fi
 [[ "$action_sha" == "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" ]] ||
   die 'Action HEAD changed during local validation'

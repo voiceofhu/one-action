@@ -27,6 +27,7 @@ jobs:
     outputs:
       app_sha: ${{ steps.release.outputs.app_sha }}
       web_sha: ${{ steps.release.outputs.web_sha }}
+      backend_sha: ${{ steps.release.outputs.backend_sha }}
       matrix: ${{ steps.plan.outputs.matrix }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.trigger.outputs.version }}
@@ -35,6 +36,7 @@ jobs:
       pnpm_version: ${{ steps.app.outputs.pnpm_version }}
       macos_config: ${{ steps.app.outputs.macos_config }}
       web_repository: ${{ steps.app.outputs.web_repository }}
+      backend_repository: ${{ steps.app.outputs.backend_repository }}
       go_version_file: ${{ steps.app.outputs.go_version_file }}
       release_prefix: ${{ steps.app.outputs.release_prefix }}
     steps:
@@ -65,10 +67,12 @@ jobs:
         env:
           APP: ${{ inputs.app }}
           WEB_REPOSITORY: ${{ steps.app.outputs.web_repository }}
+          BACKEND_REPOSITORY: ${{ steps.app.outputs.backend_repository }}
         run: |
           set -Eeuo pipefail
           pins=(app_ref)
           [[ -z "$WEB_REPOSITORY" ]] || pins+=(web_ref)
+          [[ -z "$BACKEND_REPOSITORY" ]] || pins+=(backend_ref)
           bash scripts/github/read-trigger.sh "$APP-app" "${pins[@]}" >>"$GITHUB_OUTPUT"
 
       - name: Plan platform builds
@@ -112,6 +116,8 @@ jobs:
           APP_SHA: ${{ steps.trigger.outputs.app_ref }}
           WEB_REPOSITORY: ${{ steps.app.outputs.web_repository }}
           WEB_SHA: ${{ steps.trigger.outputs.web_ref }}
+          BACKEND_REPOSITORY: ${{ steps.app.outputs.backend_repository }}
+          BACKEND_SHA: ${{ steps.trigger.outputs.backend_ref }}
           VERSION: ${{ steps.trigger.outputs.version }}
         run: |
           set -Eeuo pipefail
@@ -121,6 +127,7 @@ jobs:
             && "$ACTION_SHA" =~ ^[0-9a-f]{40}$ \
             && "$APP_SHA" =~ ^[0-9a-f]{40}$ \
             && ( -z "$WEB_REPOSITORY" || "$WEB_SHA" =~ ^[0-9a-f]{40}$ ) \
+            && ( -z "$BACKEND_REPOSITORY" || "$BACKEND_SHA" =~ ^[0-9a-f]{40}$ ) \
             && "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
             && -n "$GH_TOKEN" ]] || {
             echo "Invalid $APP_TITLE deploy tag or Action trust root." >&2
@@ -142,6 +149,11 @@ jobs:
             gh api "repos/$WEB_REPOSITORY/commits/$WEB_SHA" >"$commit_file"
             [[ "$(jq -er .sha "$commit_file")" == "$WEB_SHA" ]]
             printf 'web_sha=%s\n' "$WEB_SHA" >>"$GITHUB_OUTPUT"
+          fi
+          if [[ -n "$BACKEND_REPOSITORY" ]]; then
+            gh api "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA" >"$commit_file"
+            [[ "$(jq -er .sha "$commit_file")" == "$BACKEND_SHA" ]]
+            printf 'backend_sha=%s\n' "$BACKEND_SHA" >>"$GITHUB_OUTPUT"
           fi
           printf 'app_sha=%s\n' "$APP_SHA" >>"$GITHUB_OUTPUT"
           printf 'release_tag=%s\n' "$release_tag" >>"$GITHUB_OUTPUT"
@@ -173,6 +185,18 @@ jobs:
           repository: ${{ needs.prepare.outputs.web_repository }}
           ref: ${{ needs.prepare.outputs.web_sha }}
           path: web
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # A sidecar's go.mod replaces shared server packages with ../backend.
+      - name: Checkout exact Backend source
+        if: needs.prepare.outputs.backend_repository != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prepare.outputs.backend_repository }}
+          ref: ${{ needs.prepare.outputs.backend_sha }}
+          path: backend
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 1
           persist-credentials: false
@@ -278,6 +302,8 @@ jobs:
           APP_SHA: ${{ needs.prepare.outputs.app_sha }}
           WEB_REPOSITORY: ${{ needs.prepare.outputs.web_repository }}
           WEB_SHA: ${{ needs.prepare.outputs.web_sha }}
+          BACKEND_REPOSITORY: ${{ needs.prepare.outputs.backend_repository }}
+          BACKEND_SHA: ${{ needs.prepare.outputs.backend_sha }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -Eeuo pipefail
@@ -292,6 +318,7 @@ jobs:
           (cd release-assets && sha256sum ./* >SHA256SUMS)
           body="$APP_TITLE source: $APP_REPOSITORY@$APP_SHA"
           [[ -z "$WEB_REPOSITORY" ]] || body+=$'\n'"Bundled web: $WEB_REPOSITORY@$WEB_SHA"
+          [[ -z "$BACKEND_REPOSITORY" ]] || body+=$'\n'"Shared backend packages: $BACKEND_REPOSITORY@$BACKEND_SHA"
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; refusing to mutate it." >&2
             exit 1

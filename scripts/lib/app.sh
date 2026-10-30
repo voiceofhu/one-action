@@ -8,7 +8,9 @@
 #
 # Optional fields: `platforms` (build matrix names, default every platform of
 # the shared publisher), `web_repository` (a web checked out next to the App as
-# ../web, pinned as web_ref) and `go_version_file` (App-relative go.mod that
+# ../web, pinned as web_ref), `backend_repository` (a server checked out next
+# to the App as ../backend, pinned as backend_ref, for a sidecar's Go `replace`
+# of shared server packages) and `go_version_file` (App-relative go.mod that
 # selects the Go toolchain for a sidecar).
 
 APP_MANIFEST="${APP_MANIFEST:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/apps.json}"
@@ -49,6 +51,7 @@ load_app() {
   ' "$APP_MANIFEST" 2>/dev/null)" ||
     app_die "apps.json: $APP_KEY.platforms must be a non-empty list of unique names"
   APP_WEB_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].web_repository // ""' "$APP_MANIFEST")"
+  APP_BACKEND_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].backend_repository // ""' "$APP_MANIFEST")"
   APP_GO_VERSION_FILE="$(jq -r --arg key "$APP_KEY" '.[$key].go_version_file // ""' "$APP_MANIFEST")"
 
   app_require "$APP_TITLE" '^One [A-Za-z0-9 ]+$' title
@@ -59,6 +62,7 @@ load_app() {
   app_require "$APP_MACOS_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' macos_config
   app_require "$APP_PLATFORMS" '^(null|\["[a-z0-9]+-[a-z0-9]+"(,"[a-z0-9]+-[a-z0-9]+")*\])$' platforms
   app_require "$APP_WEB_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' web_repository
+  app_require "$APP_BACKEND_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' backend_repository
   app_require "$APP_GO_VERSION_FILE" '^(([a-z0-9_-]+/)*go\.mod)?$' go_version_file
 
   APP_RELEASE_PREFIX="one-$APP_KEY-app"
@@ -75,6 +79,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     macos_config "$APP_MACOS_CONFIG" \
     platforms "$APP_PLATFORMS" \
     web_repository "$APP_WEB_REPOSITORY" \
+    backend_repository "$APP_BACKEND_REPOSITORY" \
     go_version_file "$APP_GO_VERSION_FILE" \
     release_prefix "$APP_RELEASE_PREFIX"
 fi

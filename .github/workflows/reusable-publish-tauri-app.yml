@@ -96,9 +96,10 @@ jobs:
         shell: bash
         env:
           PLATFORMS: ${{ steps.app.outputs.platforms }}
+          RUNNERS: ${{ steps.app.outputs.runners }}
         run: |
           set -Eeuo pipefail
-          matrix="$(jq -cn --argjson wanted "$PLATFORMS" '
+          matrix="$(jq -cn --argjson wanted "$PLATFORMS" --argjson runners "$RUNNERS" '
             [
               {name: "linux-amd64", runner: "ubuntu-24.04", rust_target: "", bundles: "appimage,deb",
                assets: "app/src-tauri/target/release/bundle/appimage/*.AppImage\napp/src-tauri/target/release/bundle/deb/*.deb"},
@@ -108,9 +109,13 @@ jobs:
                assets: "app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"},
               {name: "macos-amd64", runner: "macos-15-intel", rust_target: "x86_64-apple-darwin", bundles: "dmg",
                assets: "app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"}
-            ]
-            | ($wanted // map(.name)) as $names
-            | map(select(.name as $name | $names | index($name)))
+            ] as $all
+            | ($all | map(.name)) as $known
+            | if ($runners | keys) - $known == [] then .
+              else error("unknown platform in runners \($runners | keys)") end
+            | ($wanted // $known) as $names
+            | $all
+            | map(select(.name as $name | $names | index($name)) | .runner = ($runners[.name] // .runner))
             | if length == ($names | length) then {include: .}
               else error("unknown platform in \($names)") end
           ')"
@@ -225,22 +230,23 @@ jobs:
           run_install: false
 
       - name: Set up native pnpm
-        if: needs.prepare.outputs.pnpm_native == 'true' && matrix.name != 'macos-amd64'
+        if: needs.prepare.outputs.pnpm_native == 'true' && (runner.os != 'macOS' || runner.arch != 'X64')
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
           version: ${{ needs.prepare.outputs.pnpm_version }}
 
-      # pnpm 11 ships no working Intel macOS binary (pnpm/pnpm#11423); npm
-      # installs its JavaScript build on a Node.js set up first. The version is
-      # the exact pin from apps.json and is checked after installing.
+      # pnpm 11 ships no working Intel macOS binary (pnpm/pnpm#11423); on an
+      # Intel Mac runner npm installs its JavaScript build on a Node.js set up
+      # first. The version is the exact pin from apps.json and is checked after
+      # installing.
       - name: Set up Node.js for npm-installed pnpm
-        if: needs.prepare.outputs.pnpm_native == 'true' && matrix.name == 'macos-amd64'
+        if: needs.prepare.outputs.pnpm_native == 'true' && runner.os == 'macOS' && runner.arch == 'X64'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
 
       - name: Set up pnpm from npm
-        if: needs.prepare.outputs.pnpm_native == 'true' && matrix.name == 'macos-amd64'
+        if: needs.prepare.outputs.pnpm_native == 'true' && runner.os == 'macOS' && runner.arch == 'X64'
         shell: bash
         env:
           PNPM_VERSION: ${{ needs.prepare.outputs.pnpm_version }}

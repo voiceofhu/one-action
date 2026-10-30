@@ -10,8 +10,9 @@
 # the shared publisher), `web_repository` (a web checked out next to the App as
 # ../web, pinned as web_ref), `backend_repository` (a server checked out next
 # to the App as ../backend, pinned as backend_ref, for a sidecar's Go `replace`
-# of shared server packages) and `go_version_file` (App-relative go.mod that
-# selects the Go toolchain for a sidecar).
+# of shared server packages), `go_version_file` (App-relative go.mod that
+# selects the Go toolchain for a sidecar) and `runners` (platform name to
+# runner label, replacing the publisher's default runner for that platform).
 
 APP_MANIFEST="${APP_MANIFEST:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/apps.json}"
 
@@ -50,6 +51,11 @@ load_app() {
         and (unique | length) == length) then . else error("invalid") end
   ' "$APP_MANIFEST" 2>/dev/null)" ||
     app_die "apps.json: $APP_KEY.platforms must be a non-empty list of unique names"
+  APP_RUNNERS="$(jq -c --arg key "$APP_KEY" '
+    .[$key].runners // {}
+    | if type == "object" and all(.[]; type == "string") then . else error("invalid") end
+  ' "$APP_MANIFEST" 2>/dev/null)" ||
+    app_die "apps.json: $APP_KEY.runners must map platform names to runner labels"
   APP_WEB_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].web_repository // ""' "$APP_MANIFEST")"
   APP_BACKEND_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].backend_repository // ""' "$APP_MANIFEST")"
   APP_GO_VERSION_FILE="$(jq -r --arg key "$APP_KEY" '.[$key].go_version_file // ""' "$APP_MANIFEST")"
@@ -61,6 +67,7 @@ load_app() {
   app_require "$APP_PNPM_VERSION" '^[0-9]+\.[0-9]+\.[0-9]+$' pnpm_version
   app_require "$APP_MACOS_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' macos_config
   app_require "$APP_PLATFORMS" '^(null|\["[a-z0-9]+-[a-z0-9]+"(,"[a-z0-9]+-[a-z0-9]+")*\])$' platforms
+  app_require "$APP_RUNNERS" '^\{("[a-z0-9]+-[a-z0-9]+":"[a-z0-9][a-z0-9.-]*"(,"[a-z0-9]+-[a-z0-9]+":"[a-z0-9][a-z0-9.-]*")*)?\}$' runners
   app_require "$APP_WEB_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' web_repository
   app_require "$APP_BACKEND_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' backend_repository
   app_require "$APP_GO_VERSION_FILE" '^(([a-z0-9_-]+/)*go\.mod)?$' go_version_file
@@ -78,6 +85,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     pnpm_version "$APP_PNPM_VERSION" \
     macos_config "$APP_MACOS_CONFIG" \
     platforms "$APP_PLATFORMS" \
+    runners "$APP_RUNNERS" \
     web_repository "$APP_WEB_REPOSITORY" \
     backend_repository "$APP_BACKEND_REPOSITORY" \
     go_version_file "$APP_GO_VERSION_FILE" \

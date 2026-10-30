@@ -23,6 +23,7 @@
     "pnpm_version": "11.7.0",
     "macos_config": "",
     "platforms": ["windows-amd64", "macos-arm64", "macos-amd64"],
+    "runners": {"macos-amd64": "macos-15"},
     "web_repository": "voiceofhu/one-node-web",
     "backend_repository": "voiceofhu/one-node-server",
     "go_version_file": "core/go.mod"

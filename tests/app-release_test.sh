@@ -56,9 +56,10 @@ ruby -ryaml -e '
   # pnpm 11 cannot run natively on Intel macOS (pnpm/pnpm#11423).
   native = steps.find { |s| s["name"] == "Set up native pnpm" }
   npm_pnpm = steps.find { |s| s["name"] == "Set up pnpm from npm" }
+  # The runner decides, as an App may cross-build macos-amd64 on Apple Silicon.
   abort "Intel macOS must install pnpm 11 from npm" unless
-    native && native["if"].include?("matrix.name != \u0027macos-amd64\u0027") &&
-    npm_pnpm && npm_pnpm["if"].include?("matrix.name == \u0027macos-amd64\u0027")
+    native && native["if"].include?("(runner.os != \u0027macOS\u0027 || runner.arch != \u0027X64\u0027)") &&
+    npm_pnpm && npm_pnpm["if"].include?("runner.os == \u0027macOS\u0027 && runner.arch == \u0027X64\u0027")
   stamp = steps.find { |s| s["name"] == "Set App release version" }
   abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ needs.prepare.outputs.version }}"
   abort "stamp must precede bundle" unless steps.index(stamp) < steps.index(steps.find { |s| s["name"] == "Build desktop bundle" })
@@ -117,16 +118,24 @@ for case in "11.7.0 true" "12.0.1 true" "10.32.1 false" "9.15.0 false"; do
 done
 : >"$GITHUB_OUTPUT"
 
-# Platform plan: the App's platforms (default all four), unknown names rejected.
-PLATFORMS="$APP_PLATFORMS" bash "$test_dir/plan.sh"
+# Platform plan: the App's platforms (default all four) on the App's runner
+# overrides, unknown names rejected.
+PLATFORMS="$APP_PLATFORMS" RUNNERS="$APP_RUNNERS" bash "$test_dir/plan.sh"
 expected_platforms="$(jq -c '. // ["linux-amd64","windows-amd64","macos-arm64","macos-amd64"]' <<<"$APP_PLATFORMS")"
 [[ "$(sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -c '[.include[].name]')" == "$expected_platforms" ]]
 sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -e '.include | all(.runner != "" and .bundles != "" and .assets != "")' >/dev/null
+sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" |
+  jq -e --argjson runners "$APP_RUNNERS" '.include | all(.runner == ($runners[.name] // .runner))' >/dev/null
+plan_rejects() {
+  : >"$GITHUB_OUTPUT"
+  if PLATFORMS="$1" RUNNERS="$2" bash "$test_dir/plan.sh" >/dev/null 2>&1; then
+    printf 'platform plan accepted an unknown platform: %s %s\n' "$1" "$2" >&2
+    exit 1
+  fi
+}
+plan_rejects '["macos-arm64","solaris-sparc"]' '{}'
+plan_rejects null '{"solaris-sparc":"macos-15"}'
 : >"$GITHUB_OUTPUT"
-if PLATFORMS='["macos-arm64","solaris-sparc"]' bash "$test_dir/plan.sh" >/dev/null 2>&1; then
-  printf 'platform plan accepted an unknown platform\n' >&2
-  exit 1
-fi
 
 bad_inputs=(CALLER_WORKFLOW APP_SHA VERSION)
 [[ -z "$WEB_REPOSITORY" ]] || bad_inputs+=(WEB_SHA)

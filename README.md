@@ -143,6 +143,8 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 - `web_repository`：随包内置的 Web，CI 检出到客户端旁的 `../web`，deploy 标签另以 `web_ref` 固定其 SHA；
 - `backend_repository`：sidecar 用 Go `replace` 引用的 Server 共享包（One Node：`pkg/rulespec` 规则语言与规则引擎），CI 检出到客户端旁的 `../backend`，deploy 标签另以 `backend_ref` 固定其 SHA；
 - `go_version_file`：客户端内 go.mod 路径，CI 据此安装 Go，用于构建 sidecar。
+- `runners`：按平台替换默认 runner（One Node：`macos-amd64` 在 Apple Silicon 的 `macos-15` 上交叉编译 x64 包）；
+  Intel Mac runner 上 pnpm 11 由 npm 安装（pnpm/pnpm#11423）。
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |

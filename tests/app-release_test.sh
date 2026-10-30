@@ -53,6 +53,12 @@ ruby -ryaml -e '
     backend.dig("with", "path") == "backend" &&
     backend.dig("with", "ref") == "${{ needs.prepare.outputs.backend_sha }}" &&
     backend["if"] == "needs.prepare.outputs.backend_repository != \u0027\u0027"
+  # pnpm 11 cannot run natively on Intel macOS (pnpm/pnpm#11423).
+  native = steps.find { |s| s["name"] == "Set up native pnpm" }
+  npm_pnpm = steps.find { |s| s["name"] == "Set up pnpm from npm" }
+  abort "Intel macOS must install pnpm 11 from npm" unless
+    native && native["if"].include?("matrix.name != \u0027macos-amd64\u0027") &&
+    npm_pnpm && npm_pnpm["if"].include?("matrix.name == \u0027macos-amd64\u0027")
   stamp = steps.find { |s| s["name"] == "Set App release version" }
   abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ needs.prepare.outputs.version }}"
   abort "stamp must precede bundle" unless steps.index(stamp) < steps.index(steps.find { |s| s["name"] == "Build desktop bundle" })

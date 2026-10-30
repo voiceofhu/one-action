@@ -225,10 +225,29 @@ jobs:
           run_install: false
 
       - name: Set up native pnpm
-        if: needs.prepare.outputs.pnpm_native == 'true'
+        if: needs.prepare.outputs.pnpm_native == 'true' && matrix.name != 'macos-amd64'
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
           version: ${{ needs.prepare.outputs.pnpm_version }}
+
+      # pnpm 11 ships no working Intel macOS binary (pnpm/pnpm#11423); npm
+      # installs its JavaScript build on a Node.js set up first. The version is
+      # the exact pin from apps.json and is checked after installing.
+      - name: Set up Node.js for npm-installed pnpm
+        if: needs.prepare.outputs.pnpm_native == 'true' && matrix.name == 'macos-amd64'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Set up pnpm from npm
+        if: needs.prepare.outputs.pnpm_native == 'true' && matrix.name == 'macos-amd64'
+        shell: bash
+        env:
+          PNPM_VERSION: ${{ needs.prepare.outputs.pnpm_version }}
+        run: | # zizmor: ignore[adhoc-packages]
+          set -Eeuo pipefail
+          npm install --global "pnpm@$PNPM_VERSION"
+          [[ "$(pnpm --version)" == "$PNPM_VERSION" ]]
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

@@ -107,7 +107,7 @@ apply_network_tuning() {
 		return 0
 	fi
 	configure_network_tuning
-	log "network tuning: checking BBR, fq, TCP buffer, backlog, conntrack, and reserved port settings"
+	log "network tuning: checking BBR, fq, TCP buffer, backlog, conntrack, reserved port, and MPTCP settings"
 	command -v sysctl >/dev/null 2>&1 || die "sysctl is required for One Node network tuning"
 	command -v cmp >/dev/null 2>&1 || die "cmp is required for One Node network tuning"
 	tuning_temp_dir=$(mktemp -d "/tmp/one-node-network-tuning.XXXXXX")
@@ -131,7 +131,12 @@ apply_network_tuning() {
 	if sysctl -n net.ipv4.ip_local_reserved_ports >/dev/null 2>&1; then
 		reserved_ports_value=$(network_reserved_ports) || die "unable to parse net.ipv4.ip_local_reserved_ports"
 	fi
-	log "network tuning: detected ${memory_mib} MiB RAM; TCP buffer max ${tcp_max_mib} MiB (initial windows at kernel defaults), listen backlog ${somaxconn_value}, conntrack max ${conntrack_value:-unavailable}, reserved ports ${reserved_ports_value:-unavailable}"
+	# Kernels without MPTCP have no such key and nothing to turn off.
+	mptcp_supported=false
+	if sysctl -n net.mptcp.enabled >/dev/null 2>&1; then
+		mptcp_supported=true
+	fi
+	log "network tuning: detected ${memory_mib} MiB RAM; TCP buffer max ${tcp_max_mib} MiB (initial windows at kernel defaults), listen backlog ${somaxconn_value}, conntrack max ${conntrack_value:-unavailable}, reserved ports ${reserved_ports_value:-unavailable}, MPTCP $([ "$mptcp_supported" = true ] && echo off || echo unavailable)"
 
 	if sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null |
 		grep -Eq '(^|[[:space:]])bbr($|[[:space:]])'; then
@@ -161,6 +166,11 @@ EOF
 		printf '%s\n' \
 			'# Keep outbound sockets out of the managed listener range.' \
 			"net.ipv4.ip_local_reserved_ports = ${reserved_ports_value}" >>"$tuning_source"
+	fi
+	if [ "$mptcp_supported" = true ]; then
+		printf '%s\n' \
+			'# Nothing here uses MPTCP; CVE-2026-98432 is remotely exploitable through MPTCP listeners.' \
+			'net.mptcp.enabled = 0' >>"$tuning_source"
 	fi
 	if [ "$bbr_enabled" = true ]; then
 		printf '%s\n' 'net.ipv4.tcp_congestion_control = bbr' >>"$tuning_source"
@@ -211,6 +221,10 @@ EOF
 	fi
 	if [ -n "$reserved_ports_value" ] &&
 		! network_setting_matches net.ipv4.ip_local_reserved_ports "$reserved_ports_value"; then
+		effective_changed=true
+	fi
+	if [ "$mptcp_supported" = true ] &&
+		! network_setting_matches net.mptcp.enabled 0; then
 		effective_changed=true
 	fi
 

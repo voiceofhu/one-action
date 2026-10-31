@@ -92,6 +92,7 @@ grep -F 'net.ipv4.tcp_congestion_control = bbr' "$NETWORK_TUNING_FILE" >/dev/nul
 grep -F 'net.ipv4.tcp_notsent_lowat = 131072' "$NETWORK_TUNING_FILE" >/dev/null
 grep -F 'net.ipv4.tcp_mtu_probing = 1' "$NETWORK_TUNING_FILE" >/dev/null
 grep -Fx 'net.ipv4.ip_local_reserved_ports = 20000-29999' "$NETWORK_TUNING_FILE" >/dev/null
+grep -Fx 'net.mptcp.enabled = 0' "$NETWORK_TUNING_FILE" >/dev/null
 [ "$(cat "$SYSCTL_COUNT")" = 1 ]
 
 apply_network_tuning
@@ -122,6 +123,17 @@ grep -Fx 'net.ipv4.ip_local_reserved_ports = 20000-25000,20000-29999' "$NETWORK_
 TUNING_SYSCTL_MISSING=net.ipv4.ip_local_reserved_ports apply_network_tuning
 if grep -F 'ip_local_reserved_ports' "$NETWORK_TUNING_FILE" >/dev/null; then
 	printf '%s\n' "reserved ports were written without the kernel key" >&2
+	exit 1
+fi
+
+# A host that turned MPTCP back on is switched off again; kernels without
+# MPTCP get no key that would make sysctl -p fail.
+printf '%s\n' 'net.mptcp.enabled = 1' >"$SYSCTL_STATE"
+apply_network_tuning
+grep -Fx 'net.mptcp.enabled = 0' "$SYSCTL_STATE" >/dev/null
+TUNING_SYSCTL_MISSING=net.mptcp.enabled apply_network_tuning
+if grep -F 'net.mptcp' "$NETWORK_TUNING_FILE" >/dev/null; then
+	printf '%s\n' "MPTCP tuning was written without the kernel key" >&2
 	exit 1
 fi
 

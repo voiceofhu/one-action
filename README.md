@@ -145,6 +145,11 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 - `go_version_file`：客户端内 go.mod 路径，CI 据此安装 Go，用于构建 sidecar。
 - `runners`：按平台替换默认 runner（One Node：`macos-amd64` 在 Apple Silicon 的 `macos-15` 上交叉编译 x64 包）；
   Intel Mac runner 上 pnpm 11 由 npm 安装（pnpm/pnpm#11423）。
+- `updater_config`：打开 Tauri 应用内更新的客户端配置（One Node：`src-tauri/tauri.updater.conf.json`，
+  即 `bundle.createUpdaterArtifacts`）。有此字段时 macOS 另打 `.app`（生成 `.app.tar.gz`），各平台更新包与
+  minisign `.sig` 一并上传，发布作业生成 `latest.json`（Tauri 静态格式，下载地址为本 Release 资源）；
+  签名私钥只由该客户端的入口 workflow 以 `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` 传入（One Node：仓库 Secrets
+  `ONE_NODE_APP_UPDATER_KEY`、`ONE_NODE_APP_UPDATER_KEY_PASSWORD`），缺失时构建前即失败。其他客户端不受影响。
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |

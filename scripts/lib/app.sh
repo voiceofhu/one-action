@@ -12,7 +12,11 @@
 # to the App as ../backend, pinned as backend_ref, for a sidecar's Go `replace`
 # of shared server packages), `go_version_file` (App-relative go.mod that
 # selects the Go toolchain for a sidecar) and `runners` (platform name to
-# runner label, replacing the publisher's default runner for that platform).
+# runner label, replacing the publisher's default runner for that platform)
+# and `updater_config` (App-relative Tauri config that turns on updater
+# artifacts: the release then also carries each platform's minisign-signed
+# updater bundle and a latest.json, signed with the TAURI_SIGNING_PRIVATE_KEY
+# secret that the entry workflow passes).
 
 APP_MANIFEST="${APP_MANIFEST:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/apps.json}"
 
@@ -59,6 +63,7 @@ load_app() {
   APP_WEB_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].web_repository // ""' "$APP_MANIFEST")"
   APP_BACKEND_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].backend_repository // ""' "$APP_MANIFEST")"
   APP_GO_VERSION_FILE="$(jq -r --arg key "$APP_KEY" '.[$key].go_version_file // ""' "$APP_MANIFEST")"
+  APP_UPDATER_CONFIG="$(jq -r --arg key "$APP_KEY" '.[$key].updater_config // ""' "$APP_MANIFEST")"
 
   app_require "$APP_TITLE" '^One [A-Za-z0-9 ]+$' title
   app_require "$APP_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' repository
@@ -71,6 +76,7 @@ load_app() {
   app_require "$APP_WEB_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' web_repository
   app_require "$APP_BACKEND_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' backend_repository
   app_require "$APP_GO_VERSION_FILE" '^(([a-z0-9_-]+/)*go\.mod)?$' go_version_file
+  app_require "$APP_UPDATER_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' updater_config
 
   APP_RELEASE_PREFIX="one-$APP_KEY-app"
   APP_WORKFLOW="$APP_KEY-app.yml"
@@ -89,5 +95,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     web_repository "$APP_WEB_REPOSITORY" \
     backend_repository "$APP_BACKEND_REPOSITORY" \
     go_version_file "$APP_GO_VERSION_FILE" \
+    updater_config "$APP_UPDATER_CONFIG" \
     release_prefix "$APP_RELEASE_PREFIX"
 fi

@@ -22,3 +22,6 @@ jobs:
       app: node
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      # In-app updates: minisign key for the updater bundles (apps.json updater_config).
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.ONE_NODE_APP_UPDATER_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.ONE_NODE_APP_UPDATER_KEY_PASSWORD }}

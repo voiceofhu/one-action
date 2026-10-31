@@ -68,6 +68,12 @@ ruby -ryaml -e '
   stamp = steps.find { |s| s["name"] == "Set App release version" }
   abort "version input missing" unless stamp.dig("env", "VERSION") == "${{ needs.prepare.outputs.version }}"
   abort "stamp must precede bundle" unless steps.index(stamp) < steps.index(steps.find { |s| s["name"] == "Build desktop bundle" })
+  # The updater signing key reaches only the build of an App with updater_config.
+  bundle_env = steps.find { |s| s["name"] == "Build desktop bundle" }.fetch("env")
+  %w[TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD].each do |key|
+    abort "#{key} must be gated on updater_config" unless
+      bundle_env[key] == "${{ needs.prepare.outputs.updater_config != \u0027\u0027 && secrets.#{key} || \u0027\u0027 }}"
+  end
   File.write("#{ARGV[1]}/stamp.sh", stamp.fetch("run"))
   publish = workflow.fetch("jobs").fetch("publish").fetch("steps").find { |s| s["name"] == "Publish release assets" }
   abort "immutable release guard removed" unless publish.fetch("run").include?("refusing to mutate it")
@@ -78,8 +84,15 @@ ruby -ryaml -e '
     release.fetch("uses") == "./.github/workflows/reusable-publish-tauri-app.yml" &&
     release.fetch("with").fetch("app") == ARGV.fetch(3) &&
     release.fetch("permissions") == { "contents" => "write" }
+  signing = release.fetch("secrets").keys.grep(/^TAURI_SIGNING_/).sort
+  if ARGV.fetch(4).empty?
+    abort "#{ARGV[2]} passes an updater key without updater_config" unless signing.empty?
+  else
+    abort "#{ARGV[2]} must pass the updater signing key" unless
+      signing == %w[TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD]
+  end
 ' "$PROJECT_ROOT/.github/workflows/reusable-publish-tauri-app.yml" "$test_dir" \
-  "$PROJECT_ROOT/.github/workflows/$APP_WORKFLOW" "$APP_KEY"
+  "$PROJECT_ROOT/.github/workflows/$APP_WORKFLOW" "$APP_KEY" "$APP_UPDATER_CONFIG"
 
 mkdir -p "$test_dir/bin" "$test_dir/app/scripts"
 cat >"$test_dir/bin/gh" <<'SCRIPT'
@@ -111,6 +124,7 @@ export WEB_REPOSITORY="$APP_WEB_REPOSITORY" WEB_SHA=
 [[ -z "$WEB_REPOSITORY" ]] || WEB_SHA=cccccccccccccccccccccccccccccccccccccccc
 export BACKEND_REPOSITORY="$APP_BACKEND_REPOSITORY" BACKEND_SHA=
 [[ -z "$BACKEND_REPOSITORY" ]] || BACKEND_SHA=dddddddddddddddddddddddddddddddddddddddd
+export UPDATER_CONFIG="$APP_UPDATER_CONFIG" UPDATER_KEY_SET=true
 
 # pnpm installer: native pnpm/setup from pnpm 11, pnpm/action-setup before.
 for case in "11.7.0 true" "12.0.1 true" "10.32.1 false" "9.15.0 false"; do
@@ -131,6 +145,12 @@ expected_platforms="$(jq -c '. // ["linux-amd64","windows-amd64","macos-arm64","
 sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -e '.include | all(.runner != "" and .bundles != "" and .assets != "")' >/dev/null
 sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" |
   jq -e --argjson runners "$APP_RUNNERS" '.include | all(.runner == ($runners[.name] // .runner))' >/dev/null
+# Updater Apps also build the macOS .app (for .app.tar.gz) and upload the signatures.
+sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -e --arg updater "$UPDATER_CONFIG" '
+  .include | all(
+    if $updater == "" then (.assets | contains(".sig") | not) and (.bundles | contains("app,") | not)
+    else (.assets | contains(".sig")) and ((.name | startswith("macos-") | not) or (.bundles == "app,dmg"
+      and (.assets | contains("/bundle/macos/*.app.tar.gz\n")))) end)' >/dev/null || fail
 plan_rejects() {
   : >"$GITHUB_OUTPUT"
   if PLATFORMS="$1" RUNNERS="$2" bash "$test_dir/plan.sh" >/dev/null 2>&1; then
@@ -143,6 +163,7 @@ plan_rejects null '{"solaris-sparc":"macos-15"}'
 : >"$GITHUB_OUTPUT"
 
 bad_inputs=(CALLER_WORKFLOW APP_SHA VERSION)
+[[ -z "$UPDATER_CONFIG" ]] || bad_inputs+=(UPDATER_KEY_SET)
 [[ -z "$WEB_REPOSITORY" ]] || bad_inputs+=(WEB_SHA)
 [[ -z "$BACKEND_REPOSITORY" ]] || bad_inputs+=(BACKEND_SHA)
 for bad in "${bad_inputs[@]}"; do
@@ -231,13 +252,33 @@ for state in missing matching mismatch denied transport; do
   work="$test_dir/publish-$state"
   mkdir -p "$work/dist/$APP_RELEASE_PREFIX-macos-arm64"
   printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-macos-arm64/One App_1.0.0_aarch64.dmg"
+  if [[ -n "$UPDATER_CONFIG" ]]; then
+    mkdir -p "$work/dist/$APP_RELEASE_PREFIX-macos-arm64/macos" "$work/dist/$APP_RELEASE_PREFIX-windows-amd64"
+    printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-macos-arm64/macos/One App.app.tar.gz"
+    printf 'mac-signature\n' >"$work/dist/$APP_RELEASE_PREFIX-macos-arm64/macos/One App.app.tar.gz.sig"
+    printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-windows-amd64/One App_1.0.0_x64-setup.exe"
+    printf 'win-signature' >"$work/dist/$APP_RELEASE_PREFIX-windows-amd64/One App_1.0.0_x64-setup.exe.sig"
+  fi
   if (cd "$work" && bash "$test_dir/publish.sh") >"$test_dir/stdout" 2>"$test_dir/stderr"; then
     [[ "$state" == missing || "$state" == matching ]] || fail
     grep -q '^release create ' "$API_LOG"
     # SHA256SUMS names the files as GitHub stores them (space as ".").
     asset="$APP_RELEASE_PREFIX-macos-arm64-One.App_1.0.0_aarch64.dmg"
-    [[ "$(cut -d' ' -f3- "$work/release-assets/SHA256SUMS")" == "$asset" ]] || fail
+    grep -qxF "$asset" <(cut -d' ' -f3- "$work/release-assets/SHA256SUMS") || fail
+    [[ -n "$UPDATER_CONFIG" || "$(cut -d' ' -f3- "$work/release-assets/SHA256SUMS")" == "$asset" ]] || fail
     (cd "$work/release-assets" && sha256sum --check --status SHA256SUMS)
+    if [[ -n "$UPDATER_CONFIG" ]]; then
+      # latest.json: each platform's updater bundle (by its GitHub name) and signature.
+      base="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+      jq -e --arg version "$VERSION" --arg base "$base" --arg prefix "$APP_RELEASE_PREFIX" '
+        .version == $version and (.pub_date | test("^[0-9-]{10}T[0-9:]{8}Z$")) and .platforms == {
+          "darwin-aarch64": {url: "\($base)/\($prefix)-macos-arm64-One.App.app.tar.gz", signature: "mac-signature"},
+          "windows-x86_64": {url: "\($base)/\($prefix)-windows-amd64-One.App_1.0.0_x64-setup.exe", signature: "win-signature"}
+        }' "$work/release-assets/latest.json" >/dev/null || fail
+      grep -q ' latest.json$' "$work/release-assets/SHA256SUMS" || fail
+    else
+      [[ ! -e "$work/release-assets/latest.json" ]] || fail
+    fi
     if [[ "$state" == missing ]]; then
       [[ -f "$TAG_CREATED" ]] || fail
     else
@@ -249,4 +290,16 @@ for state in missing matching mismatch denied transport; do
     ! grep -q '^release create ' "$API_LOG" || fail
   fi
 done
-printf '%s version, platform plan, CI stamping, duplicate guards and immutable tag publication tests passed.\n' "$APP_TITLE"
+if [[ -n "$UPDATER_CONFIG" ]]; then
+  # A platform without its updater signature must not publish.
+  export TAG_STATE=matching
+  : >"$API_LOG"
+  work="$test_dir/publish-unsigned"
+  mkdir -p "$work/dist/$APP_RELEASE_PREFIX-windows-amd64"
+  printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-windows-amd64/One App_1.0.0_x64-setup.exe"
+  if (cd "$work" && bash "$test_dir/publish.sh") >"$test_dir/stdout" 2>"$test_dir/stderr"; then
+    fail
+  fi
+  ! grep -q '^release create ' "$API_LOG" || fail
+fi
+printf '%s version, platform plan, CI stamping, duplicate guards, updater manifest and immutable tag publication tests passed.\n' "$APP_TITLE"

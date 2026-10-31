@@ -2,6 +2,11 @@
 set -Eeuo pipefail
 # Runs the shared Tauri release entry and workflow scripts for one apps.json
 # client (default: every client).
+# macOS /bin/bash 3.2 ignores a failed [[ ]] or ! under set -e, so checks say `|| fail`.
+fail() {
+  printf '%s: check failed at line %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_LINENO[0]}" >&2
+  exit 1
+}
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "$#" -eq 0 ]]; then
   for app in $(jq -r 'keys[]' "$PROJECT_ROOT/apps.json"); do
@@ -122,7 +127,7 @@ done
 # overrides, unknown names rejected.
 PLATFORMS="$APP_PLATFORMS" RUNNERS="$APP_RUNNERS" bash "$test_dir/plan.sh"
 expected_platforms="$(jq -c '. // ["linux-amd64","windows-amd64","macos-arm64","macos-amd64"]' <<<"$APP_PLATFORMS")"
-[[ "$(sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -c '[.include[].name]')" == "$expected_platforms" ]]
+[[ "$(sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -c '[.include[].name]')" == "$expected_platforms" ]] || fail
 sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" | jq -e '.include | all(.runner != "" and .bundles != "" and .assets != "")' >/dev/null
 sed -n 's/^matrix=//p' "$GITHUB_OUTPUT" |
   jq -e --argjson runners "$APP_RUNNERS" '.include | all(.runner == ($runners[.name] // .runner))' >/dev/null
@@ -153,24 +158,24 @@ for state in missing exists denied transport; do
   : >"$GITHUB_OUTPUT"
   : >"$API_LOG"
   if bash "$test_dir/prepare.sh" >"$test_dir/stdout" 2>"$test_dir/stderr"; then
-    [[ "$state" == missing ]]
+    [[ "$state" == missing ]] || fail
     grep -q "release_tag=$APP_RELEASE_PREFIX-v26.906.1234" "$GITHUB_OUTPUT"
     if [[ -n "$WEB_REPOSITORY" ]]; then
       grep -q "web_sha=$WEB_SHA" "$GITHUB_OUTPUT"
       grep -q "repos/$WEB_REPOSITORY/commits/$WEB_SHA" "$API_LOG"
     else
-      ! grep -q web_sha "$GITHUB_OUTPUT"
+      ! grep -q web_sha "$GITHUB_OUTPUT" || fail
     fi
     if [[ -n "$BACKEND_REPOSITORY" ]]; then
       grep -q "backend_sha=$BACKEND_SHA" "$GITHUB_OUTPUT"
       grep -q "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA" "$API_LOG"
     else
-      ! grep -q backend_sha "$GITHUB_OUTPUT"
+      ! grep -q backend_sha "$GITHUB_OUTPUT" || fail
     fi
   else
-    [[ "$state" != missing ]]
-    [[ ! -s "$GITHUB_OUTPUT" ]]
-    ! grep -q '/commits/' "$API_LOG"
+    [[ "$state" != missing ]] || fail
+    [[ ! -s "$GITHUB_OUTPUT" ]] || fail
+    ! grep -q '/commits/' "$API_LOG" || fail
   fi
 done
 
@@ -193,11 +198,11 @@ printf '%s\n' "$*" >>"$API_LOG"
 case "$1 $2" in
   'release view') exit 1 ;;
   'release create')
-    [[ " $* " == *' --verify-tag '* && " $* " == *' --latest=false '* ]]
-    [[ "$3" == "$RELEASE_TAG" ]]
+    [[ " $* " == *' --verify-tag '* && " $* " == *' --latest=false '* ]] || exit 1
+    [[ "$3" == "$RELEASE_TAG" ]] || exit 1
     ;;
   'api --method')
-    [[ "$*" == *"ref=refs/tags/$RELEASE_TAG"* && "$*" == *"sha=$GITHUB_SHA"* ]]
+    [[ "$*" == *"ref=refs/tags/$RELEASE_TAG"* && "$*" == *"sha=$GITHUB_SHA"* ]] || exit 1
     touch "$TAG_CREATED"
     printf '{"object":{"type":"commit","sha":"%s"}}\n' "$GITHUB_SHA"
     ;;
@@ -225,19 +230,23 @@ for state in missing matching mismatch denied transport; do
   : >"$API_LOG"
   work="$test_dir/publish-$state"
   mkdir -p "$work/dist/$APP_RELEASE_PREFIX-macos-arm64"
-  printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-macos-arm64/app.dmg"
+  printf 'fixture' >"$work/dist/$APP_RELEASE_PREFIX-macos-arm64/One App_1.0.0_aarch64.dmg"
   if (cd "$work" && bash "$test_dir/publish.sh") >"$test_dir/stdout" 2>"$test_dir/stderr"; then
-    [[ "$state" == missing || "$state" == matching ]]
+    [[ "$state" == missing || "$state" == matching ]] || fail
     grep -q '^release create ' "$API_LOG"
+    # SHA256SUMS names the files as GitHub stores them (space as ".").
+    asset="$APP_RELEASE_PREFIX-macos-arm64-One.App_1.0.0_aarch64.dmg"
+    [[ "$(cut -d' ' -f3- "$work/release-assets/SHA256SUMS")" == "$asset" ]] || fail
+    (cd "$work/release-assets" && sha256sum --check --status SHA256SUMS)
     if [[ "$state" == missing ]]; then
-      [[ -f "$TAG_CREATED" ]]
+      [[ -f "$TAG_CREATED" ]] || fail
     else
-      [[ ! -f "$TAG_CREATED" ]]
+      [[ ! -f "$TAG_CREATED" ]] || fail
     fi
   else
-    [[ "$state" != missing && "$state" != matching ]]
-    [[ ! -f "$TAG_CREATED" ]]
-    ! grep -q '^release create ' "$API_LOG"
+    [[ "$state" != missing && "$state" != matching ]] || fail
+    [[ ! -f "$TAG_CREATED" ]] || fail
+    ! grep -q '^release create ' "$API_LOG" || fail
   fi
 done
 printf '%s version, platform plan, CI stamping, duplicate guards and immutable tag publication tests passed.\n' "$APP_TITLE"

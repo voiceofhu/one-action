@@ -356,14 +356,18 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir release-assets
+          # GitHub stores an asset name with other characters (the space in
+          # "One Node_…") as "."; name the files that way first so SHA256SUMS
+          # lists the names a download actually has.
           while IFS= read -r -d '' asset; do
             artifact="${asset#dist/}"
             artifact="${artifact%%/*}"
-            target="release-assets/$artifact-$(basename "$asset")"
+            name="$(sed -E 's/[^A-Za-z0-9._-]+/./g' <<<"$artifact-$(basename "$asset")")"
+            target="release-assets/$name"
             [[ ! -e "$target" ]]
             cp "$asset" "$target"
           done < <(find dist -type f -print0 | sort -z)
-          (cd release-assets && sha256sum ./* >SHA256SUMS)
+          (cd release-assets && sha256sum -- * >SHA256SUMS)
           body="$APP_TITLE source: $APP_REPOSITORY@$APP_SHA"
           [[ -z "$WEB_REPOSITORY" ]] || body+=$'\n'"Bundled web: $WEB_REPOSITORY@$WEB_SHA"
           [[ -z "$BACKEND_REPOSITORY" ]] || body+=$'\n'"Shared backend packages: $BACKEND_REPOSITORY@$BACKEND_SHA"

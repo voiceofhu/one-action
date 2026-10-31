@@ -3,6 +3,11 @@ set -Eeuo pipefail
 
 # Runs the shared Server release entry against throwaway Git remotes for one
 # products.json product (default: every product).
+# macOS /bin/bash 3.2 ignores a failed [[ ]] or ! under set -e, so checks say `|| fail`.
+fail() {
+  printf '%s: check failed at line %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_LINENO[0]}" >&2
+  exit 1
+}
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "$#" -eq 0 ]]; then
   for product in $(jq -r 'keys[]' "$PROJECT_ROOT/products.json"); do
@@ -133,7 +138,7 @@ if [[ "$PRODUCT_BACKEND_LANGUAGE" == rust ]]; then
     grep -Fq 'version = "26.815.1234"'
 else
   # Go has no version file: the Backend must be released at its existing commit.
-  [[ "$(git --git-dir="$backend_bare" rev-list --count refs/heads/main)" == 1 ]]
+  [[ "$(git --git-dir="$backend_bare" rev-list --count refs/heads/main)" == 1 ]] || fail
 fi
 node -e '
   const p = require(process.argv[1]);
@@ -151,7 +156,7 @@ git --git-dir="$web_bare" show refs/heads/main:package.json |
 backend_sha="$(git --git-dir="$backend_bare" rev-parse refs/heads/main)"
 web_sha="$(git --git-dir="$web_bare" rev-parse refs/heads/main)"
 tag="deploy/$PRODUCT_KEY-server/26.815.1234"
-[[ "$(git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags)" == "refs/tags/$tag" ]]
+[[ "$(git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags)" == "refs/tags/$tag" ]] || fail
 action_sha="$(git --git-dir="$action_bare" rev-parse refs/heads/main)"
 
 # The workflow side reads the pushed tag back exactly as Actions would.

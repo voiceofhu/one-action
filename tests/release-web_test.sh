@@ -3,6 +3,11 @@ set -Eeuo pipefail
 
 # Runs the shared Web-only release entry against throwaway Git remotes for one
 # products.json product (default: every product).
+# macOS /bin/bash 3.2 ignores a failed [[ ]] or ! under set -e, so checks say `|| fail`.
+fail() {
+  printf '%s: check failed at line %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_LINENO[0]}" >&2
+  exit 1
+}
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "$#" -eq 0 ]]; then
   for product in $(jq -r 'keys[]' "$PROJECT_ROOT/products.json"); do
@@ -102,7 +107,7 @@ node -e '
 ' "$web_dir/package.json"
 
 tag="deploy/$PRODUCT_KEY-web/26.815.1234"
-[[ "$(git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags)" == "refs/tags/$tag" ]]
+[[ "$(git --git-dir="$action_bare" for-each-ref --format='%(refname)' refs/tags)" == "refs/tags/$tag" ]] || fail
 action_sha="$(git --git-dir="$action_bare" rev-parse refs/heads/main)"
 
 # Read the pushed tag back through the same entry used by the Web workflow.

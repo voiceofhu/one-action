@@ -160,7 +160,7 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 - `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
   `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后推送 `deploy/<key>-app/<version>` 标签固定精确源码 SHA。
 - 客户端仓库须提供 `scripts/update-version.mjs`；CI 在各平台打包前写入 package.json、`tauri.conf.json`、Cargo.toml 与 Cargo.lock 的版本。
-- 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：离线 Web 副本、Go `onecore` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
+- 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：Go `onecore` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
   CI 由 Tauri 的 `beforeBuildCommand` 按目标平台运行。带 `web_repository` 的客户端，其 `../web` 同样须干净、与 `main`（`ONE_<KEY>_APP_WEB_REF`）一致且已推送；
   带 `backend_repository` 的客户端，其 `../backend` 也一样（`ONE_<KEY>_APP_BACKEND_REF`），本地 `go test` 与 CI 构建都用这份源码；
   带 `go_version_file` 的客户端另跑 `go vet` 与 `go test`。

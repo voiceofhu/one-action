@@ -5,15 +5,17 @@
     "source_dir": "one-browser/app",
     "cargo_package": "one-browser",
     "pnpm_version": "10.32.1",
-    "macos_config": "src-tauri/tauri.macos.conf.json"
+    "macos_config": "src-tauri/tauri.macos.conf.json",
+    "updater_config": "src-tauri/tauri.updater.conf.json"
   },
   "mail": {
     "title": "One Mail App",
     "repository": "voiceofhu/one-mail-app",
-    "source_dir": "one-mail/app",
+    "source_dir": "one-mail/pc",
     "cargo_package": "onemail",
     "pnpm_version": "10.34.1",
-    "macos_config": ""
+    "macos_config": "",
+    "updater_config": "src-tauri/tauri.updater.conf.json"
   },
   "node": {
     "title": "One Node App",

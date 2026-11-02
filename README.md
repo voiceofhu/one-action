@@ -148,13 +148,14 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 - `updater_config`：打开 Tauri 应用内更新的客户端配置（One Node：`src-tauri/tauri.updater.conf.json`，
   即 `bundle.createUpdaterArtifacts`）。有此字段时 macOS 另打 `.app`（生成 `.app.tar.gz`），各平台更新包与
   minisign `.sig` 一并上传，发布作业生成 `latest.json`（Tauri 静态格式，下载地址为本 Release 资源）；
-  签名私钥只由该客户端的入口 workflow 以 `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` 传入（One Node：仓库 Secrets
-  `ONE_NODE_APP_UPDATER_KEY`、`ONE_NODE_APP_UPDATER_KEY_PASSWORD`），缺失时构建前即失败。其他客户端不受影响。
+  签名私钥只由该客户端的入口 workflow 以 `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` 传入（仓库 Secrets
+  `ONE_<KEY>_APP_UPDATER_KEY`、`ONE_<KEY>_APP_UPDATER_KEY_PASSWORD`，如 `ONE_NODE_APP_UPDATER_KEY`），缺失时构建前即失败。
+  node、mail、browser 都已开启；私钥只在各客户端仓库的本地目录（node：`updater-signing/`，mail、browser：`cert/`），不提交。
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |
 | browser | `voiceofhu/one-browser-app` | `../one-browser/app` | `https://browser.aicbe.com` |
-| mail | `voiceofhu/one-mail-app` | `../one-mail/app` | `https://mail.aicbe.com` |
+| mail | `voiceofhu/one-mail-app` | `../one-mail/pc` | `https://mail.aicbe.com` |
 | node | `voiceofhu/one-node-pc` | `../one-node/pc`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 
 - `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、

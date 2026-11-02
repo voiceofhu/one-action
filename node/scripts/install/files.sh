@@ -89,6 +89,9 @@ write_native_source() {
 Description=${unit_description}
 Wants=${unit_after}
 After=${unit_after}
+# Never give up restarting: a crashed node serves its last-known-good config
+# again within seconds, and the Server alerts on a node that stays down.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -102,7 +105,11 @@ EnvironmentFile=-${ONE_NODE_STATE_DIR}/bootstrap.env
 ExecStartPre=+/bin/chown -hR ${NATIVE_SERVICE_USER}:${NATIVE_SERVICE_USER} ${ONE_NODE_STATE_DIR}
 ExecStart=/opt/one-node/one-node start
 Restart=always
-RestartSec=5s
+# Restart at once after a crash; a crash loop backs off to 30s (systemd 254+
+# reads RestartSteps/RestartMaxDelaySec, older versions keep 1s).
+RestartSec=1s
+RestartSteps=5
+RestartMaxDelaySec=30s
 UMask=0077
 TimeoutStopSec=30s
 LimitNOFILE=1048576

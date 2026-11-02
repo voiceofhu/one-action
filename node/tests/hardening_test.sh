@@ -93,7 +93,12 @@ reset_accounts() {
 		'LockPersonality=yes' \
 		'RestrictNamespaces=yes' \
 		'LimitNOFILE=1048576' \
-		'UMask=0077'
+		'UMask=0077' \
+		'Restart=always' \
+		'RestartSec=1s' \
+		'RestartSteps=5' \
+		'RestartMaxDelaySec=30s' \
+		'StartLimitIntervalSec=0'
 	do
 		grep -Fx "$directive" "$UNIT_SOURCE" >/dev/null || fail "native unit lacks $directive"
 	done

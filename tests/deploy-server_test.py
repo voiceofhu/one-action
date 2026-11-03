@@ -5,7 +5,8 @@ exactly like OpenSSH, so argument quoting bugs fail here instead of in CI.
 
 For every products.json product it checks a successful release (new image
 running, bundled Web activated, Compose file promoted) and a failed public
-health check (previous image and Web restored, Compose file untouched).
+health check (previous image and Web restored, Compose file untouched). A
+web_runtime next product deploys and restores its Web container instead.
 """
 import json
 import os
@@ -29,21 +30,28 @@ with open(os.environ['FAKE_DOCKER_LOG'], 'a') as log:
     log.write(' '.join(args) + '\n')
 def save():
     json.dump(state, open(state_file, 'w'))
+web = os.environ.get('WEB_SERVICE')
 if args[0] == 'compose':
     if 'config' in args:
         if '--images' in args:
             print(os.environ['DOCKER_IMAGE'])
+            if web:
+                print(os.environ['WEB_DOCKER_IMAGE'])
         sys.exit(0)
     if 'pull' in args:
         sys.exit(0)
     if 'up' in args:
-        state['running'] = os.environ['DOCKER_IMAGE']
+        if os.environ['SERVICE'] in args:
+            state['running'] = os.environ['DOCKER_IMAGE']
+        if web and web in args:
+            state['web_running'] = os.environ['WEB_DOCKER_IMAGE']
         save()
         sys.exit(0)
 elif args[0] == 'inspect':
-    if not state.get('running'):
+    key = 'web_running' if args[-1] == os.environ.get('WEB_CONTAINER') else 'running'
+    if not state.get(key):
         sys.exit(1)
-    print(state['running'])
+    print(state[key])
 elif args[0] == 'create':
     print('extract-container')
 elif args[0] == 'cp':
@@ -52,7 +60,9 @@ elif args[0] == 'cp':
         sys.exit('unexpected Web dist path: ' + source)
     shutil.copytree(os.environ['FAKE_WEB_DIST'], target, dirs_exist_ok=True)
 elif args[0] == 'port':
-    if args[2] != os.environ['EXPECTED_PORT'] + '/tcp':
+    expected = os.environ['EXPECTED_WEB_PORT'] if args[1] == os.environ.get('WEB_CONTAINER') \
+        else os.environ['EXPECTED_PORT']
+    if args[2] != expected + '/tcp':
         sys.exit(1)
     print('127.0.0.1:32768')
 elif args[0] in ('rm', 'logs', 'info'):
@@ -94,7 +104,8 @@ FAKES = {
 
 
 def load_product(key):
-    fields = ('TITLE IMAGE CONTAINER SERVICE NAME WEB_DIST SERVICE_PORT READY_PATH PUBLIC_URL').split()
+    fields = ('TITLE IMAGE CONTAINER SERVICE NAME WEB_DIST SERVICE_PORT READY_PATH PUBLIC_URL '
+              'WEB_RUNTIME WEB_IMAGE WEB_CONTAINER WEB_SERVICE WEB_PORT').split()
     program = 'source scripts/lib/product.sh; load_product "$1"; ' + '; '.join(
         f'printf "%s\\n" "$PRODUCT_{field}"' for field in fields) + \
         '; printf "%s\\n" "${PRODUCT_REMOTE_REQUIRED_DIRS[*]:-}"'
@@ -130,17 +141,25 @@ def run(key, product, tmp, fail_public, missing_dir=None):
 
     previous = f"{product['IMAGE']}:1.0.0@{DIGEST}"
     image = f"{product['IMAGE']}:2.0.0@{DIGEST}"
+    next_web = product['WEB_RUNTIME'] == 'next'
+    previous_web = f"{product['WEB_IMAGE']}:1.0.0@{DIGEST}"
+    web_image = f"{product['WEB_IMAGE']}:2.0.0@{DIGEST}"
     state = tmp / 'state.json'
-    state.write_text(json.dumps({'running': previous}))
+    state.write_text(json.dumps({'running': previous, 'web_running': previous_web if next_web else None}))
+    web_env = dict(WEB_DOCKER_IMAGE=web_image, WEB_SERVICE=product['WEB_SERVICE'],
+                   WEB_CONTAINER=product['WEB_CONTAINER'],
+                   EXPECTED_WEB_PORT=product['WEB_PORT']) if next_web else {}
     env = dict(os.environ, PATH=f'{bin_dir}:{os.environ["PATH"]}', FAKE_DOCKER_STATE=str(state),
                FAKE_DOCKER_LOG=str(tmp / 'docker.log'), FAKE_CURL_LOG=str(tmp / 'curl.log'),
                FAKE_WEB_DIST=str(dist), EXPECTED_WEB_DIST=product['WEB_DIST'],
                EXPECTED_PORT=product['SERVICE_PORT'], PUBLIC_URL=product['PUBLIC_URL'],
                FAIL_PUBLIC='1' if fail_public else '0', REMOTE_ALIAS=REMOTE_ALIAS,
                FAKE_REMOTE=str(remote), PRODUCT=key, SSH_HOST='fake-deploy',
-               REMOTE_DIR=REMOTE_ALIAS, DOCKER_IMAGE=image, COMPOSE_FILE=str(compose_file))
+               REMOTE_DIR=REMOTE_ALIAS, DOCKER_IMAGE=image, COMPOSE_FILE=str(compose_file),
+               SERVICE=product['SERVICE'], **web_env)
     result = subprocess.run(['bash', str(SCRIPT)], text=True, capture_output=True, env=env, cwd=tmp)
-    running = json.loads(state.read_text())['running']
+    final_state = json.loads(state.read_text())
+    running, web_running = final_state['running'], final_state.get('web_running')
     web = (remote / 'web/current/index.html').read_text()
     compose = (remote / 'docker-compose.yml').read_text()
     read = lambda name: (tmp / name).read_text() if (tmp / name).exists() else ''
@@ -159,13 +178,21 @@ def run(key, product, tmp, fail_public, missing_dir=None):
         assert f"{product['TITLE']} deployment failed" in result.stderr, context
         assert running == previous, (running, context)
         assert web == 'old', context
+        if next_web:
+            assert web_running == previous_web, (web_running, context)
         assert compose == 'current compose\n', context
         assert not (remote / 'docker-compose.yml.next').exists(), context
     else:
         assert result.returncode == 0, context
         assert f"{product['TITLE']} public endpoint is ready" in result.stdout, context
         assert running == image, (running, context)
-        assert web == 'new', context
+        if next_web:
+            # The Web runs as its own container; the static web/current is left alone.
+            assert web_running == web_image, (web_running, context)
+            assert web == 'old' and 'create' not in docker_log, context
+            assert f"http://127.0.0.1:32768/" in curl_log, context
+        else:
+            assert web == 'new', context
         assert compose == 'next compose\n', context
         assert f"{product['PUBLIC_URL']}{product['READY_PATH']}" in curl_log, context
 

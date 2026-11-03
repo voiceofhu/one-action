@@ -13,6 +13,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/release-web_test.sh"
       "$PROJECT_ROOT/tests/deploy-server_test.sh"
       "$PROJECT_ROOT/tests/deploy-web_test.sh"
+      "$PROJECT_ROOT/tests/deploy-web-image_test.sh"
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
       "$PROJECT_ROOT/tests/app-release_test.sh"
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
@@ -27,6 +28,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-web-image.sh"
       "$PROJECT_ROOT/node/install.sh"
       "$PROJECT_ROOT/node/scripts/install/firewall.sh"
       "$PROJECT_ROOT/node/scripts/install/tuning.sh"
@@ -58,6 +60,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/release-web_test.sh"
       "$PROJECT_ROOT/tests/deploy-server_test.sh"
       "$PROJECT_ROOT/tests/deploy-web_test.sh"
+      "$PROJECT_ROOT/tests/deploy-web-image_test.sh"
     )
     shell_files=(
       "$PROJECT_ROOT/scripts/deploy/configure-ssh.sh"
@@ -67,6 +70,7 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/release/release-web.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-server.sh"
       "$PROJECT_ROOT/scripts/deploy/deploy-web.sh"
+      "$PROJECT_ROOT/scripts/deploy/deploy-web-image.sh"
       "$PROJECT_ROOT/scripts/github/read-trigger.sh"
       "$PROJECT_ROOT/scripts/release/trigger.sh"
       "$PROJECT_ROOT/scripts/deploy/registry-auth.sh"
@@ -76,6 +80,7 @@ case "$scope" in
     active_workflows=(
       reusable-deploy-server.yml
       reusable-deploy-web.yml
+      reusable-deploy-web-image.yml
       reusable-publish-server-image.yml
     )
     # Only the product being released: the shared tests take its key.

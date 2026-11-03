@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Deploys one products.json Server image over SSH + Compose, activates the Web
-# bundled in that image, and restores the previous container and Web on failure.
+# Deploys one products.json Server image over SSH + Compose, activates its Web
+# (bundled in the Server image, or the separate Web image for web_runtime next),
+# and restores the previous containers and Web on failure.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +32,18 @@ image_reference=${DOCKER_IMAGE#"$PRODUCT_IMAGE":}
   printf 'DOCKER_IMAGE must be a %s version pinned to an OCI index digest\n' "$PRODUCT_IMAGE" >&2
   exit 1
 }
+WEB_DOCKER_IMAGE=${WEB_DOCKER_IMAGE:-}
+if [[ "$PRODUCT_WEB_RUNTIME" == next ]]; then
+  web_image_reference=${WEB_DOCKER_IMAGE#"$PRODUCT_WEB_IMAGE":}
+  [[ "$web_image_reference" != "$WEB_DOCKER_IMAGE" \
+    && "$web_image_reference" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)@sha256:[0-9a-f]{64}$ ]] || {
+    printf 'WEB_DOCKER_IMAGE must be a %s version pinned to an OCI index digest\n' "$PRODUCT_WEB_IMAGE" >&2
+    exit 1
+  }
+elif [[ -n "$WEB_DOCKER_IMAGE" ]]; then
+  printf '%s bundles its Web in the Server image; WEB_DOCKER_IMAGE must be empty\n' "$PRODUCT_TITLE" >&2
+  exit 1
+fi
 [[ -f "$COMPOSE_FILE" && ! -L "$COMPOSE_FILE" ]] || {
   printf 'Compose file is missing or unsafe: %s\n' "$COMPOSE_FILE" >&2
   exit 1
@@ -60,6 +73,8 @@ remote_arguments=(
   "$PRODUCT_CONTAINER" "$PRODUCT_SERVICE" "$PRODUCT_NAME" "$PRODUCT_WEB_DIST"
   "$PRODUCT_SERVICE_PORT" "$PRODUCT_READY_PATH"
   "$PRODUCT_WEB_HEALTH_PATH"
+  "$PRODUCT_WEB_RUNTIME" "$WEB_DOCKER_IMAGE" "$PRODUCT_WEB_IMAGE"
+  "$PRODUCT_WEB_CONTAINER" "$PRODUCT_WEB_SERVICE" "${PRODUCT_WEB_PORT:-0}"
 )
 # ssh joins its arguments into one string for the remote shell, so quote each
 # value (the title contains a space) to keep the positional arguments intact.
@@ -80,6 +95,19 @@ web_dist=$9
 service_port=${10}
 ready_path=${11}
 web_health_path=${12}
+web_runtime=${13}
+web_image=${14}
+web_image_repository=${15}
+web_container_name=${16}
+web_service_name=${17}
+web_port=${18}
+
+services=("$service_name")
+expected_images=$image
+if [[ "$web_runtime" == next ]]; then
+  services+=("$web_service_name")
+  expected_images="$(printf '%s\n' "$image" "$web_image" | LC_ALL=C sort)"
+fi
 
 cd "$remote_dir"
 test -f docker-compose.yml.next
@@ -90,7 +118,8 @@ flock -w 120 9
 compose() {
   local compose_file=$1
   shift
-  env DOCKER_IMAGE="$image" CONTAINER_NAME="$container_name" docker compose \
+  env DOCKER_IMAGE="$image" CONTAINER_NAME="$container_name" \
+    WEB_DOCKER_IMAGE="$web_image" WEB_CONTAINER_NAME="$web_container_name" docker compose \
     --project-name "$project_name" \
     --project-directory "$remote_dir" \
     --env-file .env \
@@ -99,12 +128,16 @@ compose() {
 }
 
 compose docker-compose.yml.next config --quiet
-configured_images="$(compose docker-compose.yml.next config --images)"
-[[ "$configured_images" == "$image" ]] || {
+configured_images="$(compose docker-compose.yml.next config --images | LC_ALL=C sort)"
+[[ "$configured_images" == "$expected_images" ]] || {
   printf 'Compose did not resolve exactly the requested immutable %s image\n' "$title" >&2
   exit 1
 }
 previous_image="$(docker inspect --format '{{.Config.Image}}' "$container_name" 2>/dev/null || true)"
+previous_web_image=
+if [[ "$web_runtime" == next ]]; then
+  previous_web_image="$(docker inspect --format '{{.Config.Image}}' "$web_container_name" 2>/dev/null || true)"
+fi
 
 previous_web="$(readlink web/current 2>/dev/null || true)"
 extract_container=
@@ -129,6 +162,15 @@ rollback() {
     compose docker-compose.yml up -d --no-deps --wait --wait-timeout 120 "$service_name" || true
     image=$failed_image
   fi
+  if [[ "$previous_web_image" == "$web_image_repository":* \
+    && "$previous_web_image" =~ @sha256:[0-9a-f]{64}$ \
+    && "$previous_web_image" != "$web_image" \
+    && -f docker-compose.yml ]]; then
+    local failed_web_image=$web_image
+    web_image=$previous_web_image
+    compose docker-compose.yml up -d --no-deps --wait --wait-timeout 120 "$web_service_name" || true
+    web_image=$failed_web_image
+  fi
   rm -f docker-compose.yml.next
   exit "$exit_code"
 }
@@ -136,39 +178,55 @@ trap rollback ERR
 
 # The workflow logged this product in to its own Docker config (registry-auth.sh).
 DOCKER_CONFIG="$HOME/.docker-deploy/${REGISTRY_CONFIG_NAME:?}" \
-  compose docker-compose.yml.next pull "$service_name"
-# Server releases activate the Web bundled with the new Server image.
-release_web="releases/server-$(date +%s)-$$"
-mkdir "web/$release_web"
-extract_container="$(docker create "$image")"
-docker cp "$extract_container:$web_dist/." "web/$release_web/"
-docker rm "$extract_container" >/dev/null
-extract_container=
-test -f "web/$release_web/index.html"
-if [[ -d web/current/assets ]]; then
-  mkdir -p "web/$release_web/assets"
-  cp -an web/current/assets/. "web/$release_web/assets/"
+  compose docker-compose.yml.next pull "${services[@]}"
+if [[ "$web_runtime" == static ]]; then
+  # Server releases activate the Web bundled with the new Server image.
+  release_web="releases/server-$(date +%s)-$$"
+  mkdir "web/$release_web"
+  extract_container="$(docker create "$image")"
+  docker cp "$extract_container:$web_dist/." "web/$release_web/"
+  docker rm "$extract_container" >/dev/null
+  extract_container=
+  test -f "web/$release_web/index.html"
+  if [[ -d web/current/assets ]]; then
+    mkdir -p "web/$release_web/assets"
+    cp -an web/current/assets/. "web/$release_web/assets/"
+  fi
+  chmod -R a+rX "web/$release_web"
+  ln -s "$release_web" web/current.next
+  mv -Tf web/current.next web/current
 fi
-chmod -R a+rX "web/$release_web"
-ln -s "$release_web" web/current.next
-mv -Tf web/current.next web/current
-compose docker-compose.yml.next up -d --no-deps --wait --wait-timeout 120 "$service_name"
+compose docker-compose.yml.next up -d --no-deps --wait --wait-timeout 120 "${services[@]}"
 
-published_port="$(docker port "$container_name" "$service_port/tcp" 2>/dev/null | sed -n '1s/.*://p' || true)"
-[[ -n "$published_port" ]] \
-  && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-    "http://127.0.0.1:$published_port$ready_path" >/dev/null \
-  && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-    "http://127.0.0.1:$published_port$web_health_path" >/dev/null || {
-  docker logs --tail 120 "$container_name" >&2 || true
-  false
+local_ready() {
+  local container=$1 port=$2 path=$3 published_port
+  published_port="$(docker port "$container" "$port/tcp" 2>/dev/null | sed -n '1s/.*://p' || true)"
+  [[ -n "$published_port" ]] \
+    && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+      "http://127.0.0.1:$published_port$path" >/dev/null || {
+    docker logs --tail 120 "$container" >&2 || true
+    false
+  }
 }
+local_ready "$container_name" "$service_port" "$ready_path"
+if [[ "$web_runtime" == next ]]; then
+  local_ready "$web_container_name" "$web_port" "$web_health_path"
+else
+  local_ready "$container_name" "$service_port" "$web_health_path"
+fi
 
 running_image="$(docker inspect --format '{{.Config.Image}}' "$container_name")"
 [[ "$running_image" == "$image" ]] || {
   printf 'Running container does not use the requested immutable %s image\n' "$title" >&2
   false
 }
+if [[ "$web_runtime" == next ]]; then
+  running_web_image="$(docker inspect --format '{{.Config.Image}}' "$web_container_name")"
+  [[ "$running_web_image" == "$web_image" ]] || {
+    printf 'Running Web container does not use the requested immutable %s Web image\n' "$title" >&2
+    false
+  }
+fi
 
 public_ready=false
 for attempt in $(seq 1 30); do

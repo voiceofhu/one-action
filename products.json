@@ -99,6 +99,8 @@
     "public_url": "https://vps.aicbe.com",
     "service_port": 27545,
     "ready_path": "/readyz",
+    "web_runtime": "next",
+    "web_port": 27546,
     "pnpm_version": "11.7.0",
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]

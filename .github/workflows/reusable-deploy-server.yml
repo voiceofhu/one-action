@@ -1,6 +1,7 @@
 name: Reusable Deploy Server
 
-# Publishes and deploys one products.json Server with its bundled Web. Product
+# Publishes and deploys one products.json Server with its Web: bundled into the
+# Server image (web_runtime static) or as its own Web image (web_runtime next). Product
 # entry workflows (<product>-server.yml) run on a deploy/<product>-server/<version>
 # tag; the tag message pins the exact Backend and Web commits.
 'on':
@@ -38,6 +39,9 @@ jobs:
       pnpm_version: ${{ steps.product.outputs.pnpm_version }}
       public_url: ${{ steps.product.outputs.public_url }}
       remote_dir: ${{ steps.product.outputs.remote_dir }}
+      web_runtime: ${{ steps.product.outputs.web_runtime }}
+      web_image: ${{ steps.product.outputs.web_image }}
+      web_dockerfile: ${{ steps.product.outputs.web_dockerfile }}
     steps:
       - name: Checkout exact product manifest
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -138,6 +142,32 @@ jobs:
       web_sha: ${{ needs.prepare.outputs.web_sha }}
       version: ${{ needs.prepare.outputs.version }}
       created_at: ${{ needs.prepare.outputs.created_at }}
+      stage_web: ${{ needs.prepare.outputs.web_runtime == 'static' }}
+    secrets:
+      source_read_token: ${{ secrets.GH_TOKEN }}
+      package_write_token: ${{ secrets.GH_TOKEN }}
+
+  # Server-rendered Webs ship as their own image, built from the Web repository.
+  publish_web:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.web_runtime == 'next' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-publish-server-image.yml
+    with:
+      workflow_name: ${{ needs.prepare.outputs.name }}-web
+      backend_repository: ${{ needs.prepare.outputs.web_repository }}
+      web_repository: ${{ needs.prepare.outputs.web_repository }}
+      image: ${{ needs.prepare.outputs.web_image }}
+      dockerfile: ${{ needs.prepare.outputs.web_dockerfile }}
+      pnpm_version: ${{ needs.prepare.outputs.pnpm_version }}
+      action_sha: ${{ github.sha }}
+      backend_sha: ${{ needs.prepare.outputs.web_sha }}
+      web_sha: ${{ needs.prepare.outputs.web_sha }}
+      version: ${{ needs.prepare.outputs.version }}
+      created_at: ${{ needs.prepare.outputs.created_at }}
+      stage_web: false
     secrets:
       source_read_token: ${{ secrets.GH_TOKEN }}
       package_write_token: ${{ secrets.GH_TOKEN }}
@@ -147,6 +177,12 @@ jobs:
     needs:
       - prepare
       - publish
+      - publish_web
+    # publish_web is skipped for static Webs.
+    if: >-
+      ${{ !cancelled()
+        && needs.publish.result == 'success'
+        && (needs.publish_web.result == 'success' || needs.publish_web.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -203,6 +239,7 @@ jobs:
           SSH_HOST: one-${{ inputs.product }}-deploy
           REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR || needs.prepare.outputs.remote_dir }}
           DOCKER_IMAGE: ${{ needs.publish.outputs.image_ref }}
+          WEB_DOCKER_IMAGE: ${{ needs.publish_web.outputs.image_ref }}
           COMPOSE_FILE: backend/${{ needs.prepare.outputs.compose_file }}
           PUBLIC_URL: ${{ vars.DEPLOY_URL || needs.prepare.outputs.public_url }}
         run: exec bash action/scripts/deploy/deploy-server.sh

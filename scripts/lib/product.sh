@@ -57,6 +57,11 @@ load_product() {
   PRODUCT_PNPM_VERSION="$(product_field pnpm_version)"
   # Optional: only the Go backend sets it.
   PRODUCT_BACKEND_LANGUAGE="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].backend_language // "rust"' "$PRODUCT_MANIFEST")"
+  # Optional: "static" Webs are built into the Server image and served from
+  # web/current; "next" Webs are their own image (web/Dockerfile) and Compose
+  # service `web` listening on web_port.
+  PRODUCT_WEB_RUNTIME="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].web_runtime // "static"' "$PRODUCT_MANIFEST")"
+  PRODUCT_WEB_PORT="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].web_port // ""' "$PRODUCT_MANIFEST")"
 
   product_require "$PRODUCT_TITLE" '^One [A-Za-z0-9 ]+$' title
   product_require "$PRODUCT_BACKEND_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' backend_repository
@@ -68,6 +73,12 @@ load_product() {
   product_require "$PRODUCT_READY_PATH" '^(/[A-Za-z0-9._-]+)+$' ready_path
   product_require "$PRODUCT_PNPM_VERSION" '^[0-9]+\.[0-9]+\.[0-9]+$' pnpm_version
   product_require "$PRODUCT_BACKEND_LANGUAGE" '^(rust|go)$' backend_language
+  product_require "$PRODUCT_WEB_RUNTIME" '^(static|next)$' web_runtime
+  if [[ "$PRODUCT_WEB_RUNTIME" == next ]]; then
+    product_require "$PRODUCT_WEB_PORT" '^[1-9][0-9]{0,4}$' web_port
+  else
+    [[ -z "$PRODUCT_WEB_PORT" ]] || product_die "products.json: $PRODUCT_KEY.web_port needs web_runtime next"
+  fi
 
   PRODUCT_REMOTE_REQUIRED_DIRS=()
   items="$(product_list remote_required_dirs)" || exit 1
@@ -92,6 +103,10 @@ load_product() {
   PRODUCT_SERVICE="$PRODUCT_KEY"
   PRODUCT_WEB_DIST="/opt/$PRODUCT_NAME/web-dist"
   PRODUCT_WEB_HEALTH_PATH=/
+  PRODUCT_WEB_IMAGE="$PRODUCT_IMAGE-web"
+  PRODUCT_WEB_CONTAINER="$PRODUCT_NAME-web"
+  PRODUCT_WEB_SERVICE=web
+  PRODUCT_WEB_DOCKERFILE=Dockerfile
   PRODUCT_DOCKERFILE='deploy/docker/Dockerfile'
   PRODUCT_COMPOSE_FILE='deploy/docker/docker-compose.yml'
   if [[ "$PRODUCT_KEY" == node ]]; then
@@ -129,5 +144,8 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     environment "$PRODUCT_ENVIRONMENT" \
     remote_dir "$PRODUCT_REMOTE_DIR" \
     pnpm_version "$PRODUCT_PNPM_VERSION" \
-    backend_language "$PRODUCT_BACKEND_LANGUAGE"
+    backend_language "$PRODUCT_BACKEND_LANGUAGE" \
+    web_runtime "$PRODUCT_WEB_RUNTIME" \
+    web_image "$PRODUCT_WEB_IMAGE" \
+    web_dockerfile "$PRODUCT_WEB_DOCKERFILE"
 fi

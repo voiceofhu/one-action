@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   release:
-    uses: ./.github/workflows/reusable-deploy-web.yml
+    # Next.js Web: its own image and Compose service (products.json web_runtime).
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-deploy-web-image.yml
     with:
       product: vps
     secrets:

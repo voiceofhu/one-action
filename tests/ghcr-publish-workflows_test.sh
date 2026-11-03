@@ -97,6 +97,8 @@ require_text "$publisher" 'platform: linux/arm64'
 require_text "$publisher" 'pnpm --dir web install --frozen-lockfile'
 require_text "$publisher" 'pnpm --dir web build'
 require_text "$publisher" 'mkdir backend/web-dist'
+require_text "$publisher" 'if: ${{ inputs.stage_web }}'
+require_text "$product_server" "stage_web: \${{ needs.prepare.outputs.web_runtime == 'static' }}"
 require_text "$publisher" 'cp -R web/dist/. backend/web-dist/'
 reject_text "$publisher" 'web/out'
 require_text "$publisher" 'uses: docker/build-push-action@'

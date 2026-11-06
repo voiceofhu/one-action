@@ -105,6 +105,21 @@
     "remote_required_dirs": [],
     "web_gates": ["lint", "build"]
   },
+  "ip": {
+    "title": "One IP",
+    "backend_repository": "voiceofhu/one-ip-server",
+    "backend_package": "one-ip-backend",
+    "web_repository": "voiceofhu/one-ip-web",
+    "web_package": "one-ip-web",
+    "public_url": "https://ipwhere.net",
+    "service_port": 27547,
+    "ready_path": "/readyz",
+    "web_runtime": "next",
+    "web_port": 27548,
+    "pnpm_version": "11.7.0",
+    "remote_required_dirs": [],
+    "web_gates": ["lint", "build"]
+  },
   "node": {
     "title": "One Node",
     "backend_language": "go",

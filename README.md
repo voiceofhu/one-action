@@ -12,12 +12,11 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 公开安装器按产品命名空间组织：One Node 使用 `node/{install,upgrade,uninstall}.sh`
 及 `node/scripts/`；仓库根目录不提供安装入口。
 
-所有产品都通过 One Action 发布；One IP 是独立项目，不接入（由自身仓库 `make deploy-server`
-部署）。当前本地发布入口如下，未在这里列出的产品不应视为已经具备正式分发或部署能力：
+所有产品都通过 One Action 发布；旧版 One IP（ipbot.net）是独立项目，不接入；新版 One IP（ipwhere.net）以 `ip` 产品接入。当前本地发布入口如下，未在这里列出的产品不应视为已经具备正式分发或部署能力：
 
 | 本地入口 | Action 触发方式 | 发布结果 |
 |---|---|---|
-| `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
+| `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、ip、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
 | `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node（PC 客户端）：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
@@ -69,7 +68,7 @@ one-action 的 Git 远端权限（SSH）。workflow 启动后由 `read-trigger.s
 
 ## Server + Web 产品（products.json）
 
-One User、One Object、One Notify、One Pay、One Template、One VPS、One AMZ、One Mail 共用同一套发布实现，差异只记录在
+One User、One Object、One Notify、One Pay、One Template、One VPS、One IP、One AMZ、One Mail 共用同一套发布实现，差异只记录在
 `products.json`：源码仓库、Cargo/npm 包名、默认公网地址、容器端口、readiness 路径、
 部署目录内必须存在的子目录，以及本地 Web 检查命令。镜像 `ghcr.io/voiceofhu/one-<key>`、
 Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose 项目 `one-<key>`、
@@ -82,6 +81,7 @@ Environment `one-<key>-prod`、部署目录 `/opt/one-<key>`、容器/Compose �
 | notify | `one-notify-server` | `27520/readyz` | `https://notify.aicbe.com` | — | lint、build |
 | pay | `one-pay-server` | `27521/health/ready` | `https://pay.aicbe.com` | — | lint、build |
 | vps | `one-vps-server` | `27545/readyz` | `https://vps.aicbe.com` | — | lint、build |
+| ip | `one-ip-server` | `27547/readyz` | `https://ipwhere.net` | — | lint、build |
 | amz | `one-amz-server` | `27512/healthz` | `https://amz.aicbe.com` | — | lint、build |
 | mail | `one-mail-backend` | `27540/readyz` | `https://mail.aicbe.com` | — | format:check、lint、test、build |
 | template | `one-template-server` | `27543/readyz` | `https://tpl.aicbe.com` | — | format:check、lint、test、build |
@@ -234,7 +234,7 @@ make node-bundle-installers
 每个范围都会对相关 workflow 运行 actionlint（含 shellcheck）和 zizmor 离线安全审计；
 规则例外分别记录在 `.github/actionlint.yaml` 和 `.github/zizmor.yml`，单个步骤的例外使用
 `# zizmor: ignore[...]` 注释并写明原因。
-`make validate-<key>`（user、object、notify、pay、template、vps、amz、mail、node、browser 及其 `-web`）检查共享的 Server/Web 发布实现，
+`make validate-<key>`（user、object、notify、pay、template、vps、ip、amz、mail、node、browser 及其 `-web`）检查共享的 Server/Web 发布实现，
 对 `products.json` 中每个产品实跑发布与部署测试，不运行 One Node 生命周期 fixture。
 `make validate-node-runtime` 只检查 One Node Runtime 的安装生命周期、标签触发、构建和 Release 合同；
 `deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。

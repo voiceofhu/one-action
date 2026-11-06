@@ -14,7 +14,7 @@
 set -Euo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-ALL_PRODUCTS=(user object notify pay mail amz vps template node browser)
+ALL_PRODUCTS=(user object notify pay mail amz vps ip template node browser)
 KIND=${KIND:-server}
 DRY_RUN=${DRY_RUN:-false}
 RETRIES=2

@@ -56,6 +56,12 @@ validate-vps:
 validate-vps-web:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh vps-web
 
+.PHONY: validate-ip validate-ip-web
+validate-ip:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh ip
+validate-ip-web:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh ip-web
+
 .PHONY: validate-template validate-template-web
 validate-template:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh template

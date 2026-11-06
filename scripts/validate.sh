@@ -53,7 +53,7 @@ case "$scope" in
     done
     run_node_check=true
     ;;
-  amz|amz-web|browser|browser-web|mail|mail-web|node|node-web|notify|notify-web|object|object-web|pay|pay-web|template|template-web|user|user-web|vps|vps-web)
+  amz|amz-web|browser|browser-web|mail|mail-web|node|node-web|notify|notify-web|object|object-web|pay|pay-web|template|template-web|user|user-web|vps|vps-web|ip|ip-web)
     active_tests=(
       "$PROJECT_ROOT/tests/products_test.sh"
       "$PROJECT_ROOT/tests/release-server_test.sh"

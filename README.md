@@ -155,7 +155,7 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |
-| browser | `voiceofhu/one-browser-app` | `../one-browser/app`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
+| browser | `voiceofhu/one-browser-app` | `../one-browser/pc`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
 | mail | `voiceofhu/one-mail-app` | `../one-mail/pc` | `https://mail.aicbe.com` |
 | node | `voiceofhu/one-node-pc` | `../one-node/pc`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 
@@ -209,8 +209,8 @@ Chromium 无法在 Actions 上编译：私有仓库 `voiceofhu/one-browser-chrom
 make deploy-user-server VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
-make deploy-browser-app
-make deploy-node-app
+make deploy-browser-pc
+make deploy-node-pc
 make deploy-browser-server
 ```
 
@@ -221,8 +221,8 @@ One User 和 One Node 目标执行各自产品的本地检查；Browser App 在�
 make deploy-user-server DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
-make deploy-browser-app DRY_RUN=true
-make deploy-node-app DRY_RUN=true
+make deploy-browser-pc DRY_RUN=true
+make deploy-node-pc DRY_RUN=true
 make deploy-browser-server DRY_RUN=true
 ```
 

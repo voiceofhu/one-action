@@ -13,7 +13,7 @@ USER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENE
 NODE_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
 ONE_BROWSER_APP_REF ?= main
-ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/app
+ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/pc
 BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 # No generated default: the runtime version names an existing staging release.
 BROWSER_RUNTIME_VERSION = $(patsubst v%,%,$(strip $(VERSION)))

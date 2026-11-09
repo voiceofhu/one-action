@@ -73,10 +73,10 @@ help:
 		"  make validate-node          Validate One Node Server/Web release contracts" \
 		"  make validate-browser       Validate One Browser Server/Web release contracts" \
 		"  make validate-node-runtime  Validate only One Node Runtime release contracts" \
-		"  make validate-browser-app   Validate desktop App (Tauri) release contracts" \
+		"  make validate-browser-pc    Validate desktop App (Tauri) release contracts" \
 		"  make validate-browser-runtime Validate One Browser Chromium runtime release contracts" \
-		"  make validate-mail-app      Validate desktop App (Tauri) release contracts" \
-		"  make validate-node-app      Validate desktop App (Tauri) release contracts" \
+		"  make validate-mail-pc       Validate desktop App (Tauri) release contracts" \
+		"  make validate-node-pc       Validate desktop App (Tauri) release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
 		"  make node-bundle-installers Build local One Node installer snapshots" \
 		"" \
@@ -104,9 +104,9 @@ help:
 		"  make deploy-node-server     Publish and deploy One Node with Web" \
 		"  make deploy-node-web        Deploy Web without restarting Node Server" \
 		"  make deploy-node            Check One Node source and tag compile/upload" \
-		"  make deploy-node-app        Check One Node App (PC client) and tag installer publication" \
-		"  make deploy-browser-app     Check One Browser App and tag installer publication" \
+		"  make deploy-node-pc         Check One Node App (PC client) and tag installer publication" \
+		"  make deploy-browser-pc      Check One Browser App and tag installer publication" \
 		"  make deploy-browser-runtime Publish staged Chromium runtime (VERSION=, CHROMIUM_REF=)" \
-		"  make deploy-mail-app        Check One Mail App and tag installer publication" \
+		"  make deploy-mail-pc         Check One Mail App and tag installer publication" \
 		"  make deploy-browser-server  Publish and deploy One Browser with Web" \
 		"  make deploy-browser-web     Deploy Web without restarting Browser Server"

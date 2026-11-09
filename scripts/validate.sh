@@ -130,7 +130,7 @@ case "$scope" in
     active_workflows=(browser-runtime.yml)
     run_node_check=false
     ;;
-  browser-app|mail-app|node-app)
+  browser-pc|mail-pc|node-pc)
     active_tests=("$PROJECT_ROOT/tests/app-release_test.sh")
     shell_files=(
       "$PROJECT_ROOT/scripts/lib/app.sh"

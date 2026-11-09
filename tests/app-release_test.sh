@@ -23,7 +23,7 @@ trap 'rm -rf "$test_dir"' EXIT
 for input in '' v26.907.101; do
   expected=${input#v}
   expected=${expected:-26.906.1234}
-  make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-app" \
+  make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-pc" \
     ENV_FILE=/dev/null DRY_RUN=true VERSION="$input" GENERATED_VERSION=26.906.1234 \
     >"$test_dir/plan" 2>&1
   grep -Fq "$APP_RELEASE_PREFIX-v$expected from $APP_REPOSITORY branch main (tag deploy/$APP_KEY-app/$expected)" \

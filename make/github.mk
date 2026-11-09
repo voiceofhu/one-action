@@ -1,4 +1,4 @@
-.PHONY: validate validate-user validate-node-runtime validate-browser-app
+.PHONY: validate validate-user validate-node-runtime validate-browser-pc
 
 validate:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh
@@ -9,18 +9,18 @@ validate-user:
 validate-node-runtime:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh node-runtime
 
-validate-browser-app:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-app
+validate-browser-pc:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-pc
 
 .PHONY: validate-browser-runtime
 validate-browser-runtime:
 	@bash $(PROJECT_ROOT)/scripts/validate.sh browser-runtime
 
-.PHONY: validate-mail-app validate-node-app
-validate-mail-app:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh mail-app
-validate-node-app:
-	@bash $(PROJECT_ROOT)/scripts/validate.sh node-app
+.PHONY: validate-mail-pc validate-node-pc
+validate-mail-pc:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh mail-pc
+validate-node-pc:
+	@bash $(PROJECT_ROOT)/scripts/validate.sh node-pc
 
 .PHONY: validate-user-web
 validate-user-web:

@@ -155,7 +155,7 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |
-| browser | `voiceofhu/one-browser-app` | `../one-browser/app` | `https://browser.aicbe.com` |
+| browser | `voiceofhu/one-browser-app` | `../one-browser/app`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
 | mail | `voiceofhu/one-mail-app` | `../one-mail/pc` | `https://mail.aicbe.com` |
 | node | `voiceofhu/one-node-pc` | `../one-node/pc`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 

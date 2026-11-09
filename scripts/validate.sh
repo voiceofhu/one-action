@@ -19,6 +19,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"
+      "$PROJECT_ROOT/tests/browser-runtime_test.sh"
       "$PROJECT_ROOT/node/tests/tuning_test.sh"
     )
     shell_files=(
@@ -42,6 +43,8 @@ case "$scope" in
       "$PROJECT_ROOT/scripts/lib/app.sh"
       "$PROJECT_ROOT/scripts/release/release-app.sh"
       "$PROJECT_ROOT/scripts/release/write-checksums.sh"
+      "$PROJECT_ROOT/scripts/release/release-browser-runtime.sh"
+      "$PROJECT_ROOT/scripts/release/browser-runtime-assets.sh"
       "${active_tests[@]}"
       "$PROJECT_ROOT/scripts/validate.sh"
       "$PROJECT_ROOT/node/tests/firewall_test.sh"
@@ -108,6 +111,24 @@ case "$scope" in
       node-runtime.yml
     )
     run_node_check=true
+    ;;
+  browser-runtime)
+    active_tests=(
+      "$PROJECT_ROOT/tests/browser-runtime_test.sh"
+      "$PROJECT_ROOT/tests/checksum-helper_test.sh"
+    )
+    shell_files=(
+      "$PROJECT_ROOT/scripts/lib/git-remote.sh"
+      "$PROJECT_ROOT/scripts/github/read-trigger.sh"
+      "$PROJECT_ROOT/scripts/release/trigger.sh"
+      "$PROJECT_ROOT/scripts/release/release-browser-runtime.sh"
+      "$PROJECT_ROOT/scripts/release/browser-runtime-assets.sh"
+      "$PROJECT_ROOT/scripts/release/write-checksums.sh"
+      "${active_tests[@]}"
+      "$PROJECT_ROOT/scripts/validate.sh"
+    )
+    active_workflows=(browser-runtime.yml)
+    run_node_check=false
     ;;
   browser-app|mail-app|node-app)
     active_tests=("$PROJECT_ROOT/tests/app-release_test.sh")

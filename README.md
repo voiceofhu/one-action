@@ -20,6 +20,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
 | `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node（PC 客户端）：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
+| `make deploy-browser-runtime` | 标签 `deploy/browser-runtime/<version>` → `browser-runtime.yml` | 本地预编译的 One Browser Chromium 运行时包（macOS/Windows/Linux × arm64/x64）+ `SHA256SUMS`，公开 One Action Release `one-browser-runtime-v<version>`（见「Browser Chromium 运行时」） |
 
 `deploy-node` 只触发 Runtime 编译上传；Browser App 只发布产物。One Node 的 Backend 是 Go
 （`products.json` 中 `"backend_language": "go"`）：发布时运行 `go vet` 与 `make test`，不提交版本号，
@@ -168,6 +169,38 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 - 已存在的 Release 或标签不会被覆盖；源码仓库不打发布标签，标签只在 One Action 上绑定本次 Action SHA。
 - 客户端加载远端页面：正式版连接上表地址，开发版连接本机 Backend；对应的 Server/Web 先按「Server + Web 产品」部署（One Node 客户端的 `/pc` 页面随 `deploy-node-web` 上线，宜先于客户端发布；线上缺 `/pc` 时客户端 8 秒后改用内置副本）。
 
+## Browser Chromium 运行时
+
+Chromium 无法在 Actions 上编译：私有仓库 `voiceofhu/one-browser-chromium` 在本地打包，`browser-runtime.yml`
+只校验并转发产物，不检出、不编译源码。
+
+1. Chromium 仓库的 `make release` 把 `dist/` 下的
+   `one-browser-chromium-<platform>-<arch>-<asset_version>-<sha256>.tar.gz`（platform ∈ macos/windows/linux，
+   arch ∈ arm64/x64，`<sha256>` 为文件本身的 64 位小写十六进制）用本机 `gh` 上传到该仓库的预发布
+   Release `runtime-v<version>`（prerelease、非 latest）；
+2. 然后调用 One Action 入口（路径用变量传入，不依赖相对目录）：
+
+   ```bash
+   make -C "$ONE_ACTION_DIR" deploy-browser-runtime VERSION=<version> CHROMIUM_REF=<40 位 main SHA> [DRY_RUN=true]
+   ```
+
+   `VERSION` 必填（无自动生成，须等于暂存 Release 的版本），`CHROMIUM_REF` 必须是已推送到 `main` 的
+   精确 commit。入口 `scripts/release/release-browser-runtime.sh` 要求 one-action 在 `main`、干净且与
+   `origin/main` 一致，运行 `make validate-browser-runtime` 后推送注释标签
+   `deploy/browser-runtime/<version>`，标签说明只有一行 `chromium_ref=<sha>`（不支持 `src_ref` 等其他行，
+   `read-trigger.sh` 会拒绝）；
+3. Action 用 `GH_TOKEN` 确认 `chromium_ref` 在 `main` 上、暂存 Release 存在且 One Action 同名 Release 不存在，
+   下载全部资源后由 `scripts/release/browser-runtime-assets.sh` 校验：至少一个包，所有文件名都符合上述格式、
+   实际 SHA-256 与文件名一致、每个 platform/arch 至多一个包、每个包内 `.one-browser-chromium-version`
+   一致；任何其他文件都拒绝。随后写 `SHA256SUMS`（`write-checksums.sh`），在 One Action 上创建绑定本次
+   Action SHA 的 `one-browser-runtime-v<version>` 标签（已存在必须指向同一提交，不移动、不覆盖），以
+   `--verify-tag --latest=false` 发布 `One Browser Runtime <version>`，说明列出 Chromium 版本、
+   `chromium_ref` 和每个包的平台、架构、大小与 SHA-256。
+
+包的 `asset_version` 可以早于 `<version>`（不同平台分别打包）。Release 一经发布不可修改；工作流失败时修好
+暂存 Release 后在 Actions 页面 Re-run，或换一个 `VERSION`。`GH_TOKEN` 需要读取 `voiceofhu/one-browser-chromium`
+内容与 Release 的权限；One Action Release 使用仓库 `GITHUB_TOKEN`（`contents: write`）。
+
 ## 使用
 
 默认版本按上海时区生成三段数字，也可显式指定：
@@ -226,6 +259,7 @@ make fix-servers PRODUCTS="object user pay amz browser"
 make validate
 make validate-user
 make validate-node-runtime
+make validate-browser-runtime
 make node-check
 make node-bundle-installers
 ```
@@ -238,6 +272,7 @@ make node-bundle-installers
 对 `products.json` 中每个产品实跑发布与部署测试，不运行 One Node 生命周期 fixture。
 `make validate-node-runtime` 只检查 One Node Runtime 的安装生命周期、标签触发、构建和 Release 合同；
 `deploy-node` 使用这一范围，并在 Node 源码仓库独立运行 `verify-upgrade`。
+`make validate-browser-runtime` 只检查 Browser Chromium 运行时的入口、标签解析、包校验和 Release 合同。
 真实 `deploy-*` 还会执行产品门禁：
 
 - One User：Backend fmt/test；Web frozen install、format、lint、test、build；
@@ -258,6 +293,7 @@ Browser App 要求本地源码仓库干净、已推送且 Rust 门禁通过，�
   OCI index、checksum 和公开 One Action GitHub Release 上传最多 8 分钟。
 - One Browser App：2 分钟源码解析；Linux、Windows、macOS arm64/x64 并行打包；
 - One Browser App Server：复用 Web+Backend 双架构镜像发布器；
+- One Browser Runtime：2 分钟源码解析；下载、校验并发布预编译包最多 30 分钟，不编译；
 
 Action 中没有 fmt、lint、test、race、e2e 或 installer lifecycle；双架构 Docker 构建使用
 按产品和架构隔离的 GHA layer cache。One User 与 One Node Server 保留各自隔离的
@@ -280,6 +316,7 @@ SSH/Compose 部署步骤。
 - 向 `ghcr.io/voiceofhu/*` 推送架构镜像和 OCI index；
 - 在 `voiceofhu/one-action@one-node-v<version>` 创建并上传公开 One Node Release。
 - 在 One Action 创建 One Browser App 的产品前缀 Release。
+- 读取 `voiceofhu/one-browser-chromium` 的提交与暂存 Release `runtime-v<version>`（Browser Chromium 运行时）。
 
 One Node 的构建使用 `contents: read`；Release job 使用仓库 `GITHUB_TOKEN` 的 `contents: write`。
 

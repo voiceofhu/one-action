@@ -74,6 +74,7 @@ help:
 		"  make validate-browser       Validate One Browser Server/Web release contracts" \
 		"  make validate-node-runtime  Validate only One Node Runtime release contracts" \
 		"  make validate-browser-app   Validate desktop App (Tauri) release contracts" \
+		"  make validate-browser-runtime Validate One Browser Chromium runtime release contracts" \
 		"  make validate-mail-app      Validate desktop App (Tauri) release contracts" \
 		"  make validate-node-app      Validate desktop App (Tauri) release contracts" \
 		"  make node-check             Test the One Node lifecycle locally" \
@@ -105,6 +106,7 @@ help:
 		"  make deploy-node            Check One Node source and tag compile/upload" \
 		"  make deploy-node-app        Check One Node App (PC client) and tag installer publication" \
 		"  make deploy-browser-app     Check One Browser App and tag installer publication" \
+		"  make deploy-browser-runtime Publish staged Chromium runtime (VERSION=, CHROMIUM_REF=)" \
 		"  make deploy-mail-app        Check One Mail App and tag installer publication" \
 		"  make deploy-browser-server  Publish and deploy One Browser with Web" \
 		"  make deploy-browser-web     Deploy Web without restarting Browser Server"

@@ -15,6 +15,9 @@ NODE_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENE
 ONE_BROWSER_APP_REF ?= main
 ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/app
 BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
+# No generated default: the runtime version names an existing staging release.
+BROWSER_RUNTIME_VERSION = $(patsubst v%,%,$(strip $(VERSION)))
+CHROMIUM_REF ?=
 
 ONE_NODE_REPOSITORY ?= voiceofhu/one-node-node
 ONE_NODE_REF ?= main
@@ -37,6 +40,7 @@ export DRY_RUN
 export GENERATED_VERSION
 export ONE_BROWSER_APP_REF
 export ONE_BROWSER_APP_DIR
+export CHROMIUM_REF
 export ONE_NODE_REPOSITORY ONE_NODE_REF
 export ONE_NODE_DIR
 export VERSION ENVIRONMENT PUBLISH DEPLOY

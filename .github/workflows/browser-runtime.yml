@@ -73,9 +73,11 @@ jobs:
             echo 'Unable to verify Runtime release availability; refusing to publish.' >&2
             exit 1
           fi
-          printf 'version=%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
-          printf 'chromium_sha=%s\n' "$CHROMIUM_SHA" >>"$GITHUB_OUTPUT"
-          printf 'release_tag=%s\n' "$release_tag" >>"$GITHUB_OUTPUT"
+          {
+            printf 'version=%s\n' "$VERSION"
+            printf 'chromium_sha=%s\n' "$CHROMIUM_SHA"
+            printf 'release_tag=%s\n' "$release_tag"
+          } >>"$GITHUB_OUTPUT"
 
   publish:
     name: Publish immutable Runtime release

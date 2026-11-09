@@ -87,7 +87,11 @@ require_text "$RELEASE_SCRIPT" 'make --no-print-directory -C "$PROJECT_ROOT" val
 require_text "$RELEASE_SCRIPT" 'browser-runtime.yml "$action_sha" "$VERSION" "chromium_ref=$CHROMIUM_REF"'
 
 run_make() {
-  make --no-print-directory -s -C "$PROJECT_ROOT" deploy-browser-runtime ENV_FILE=/dev/null "$@"
+  # deploy-browser-runtime runs this test itself; make exports its command-line
+  # VERSION/CHROMIUM_REF/DRY_RUN (and MAKEFLAGS), which would leak into the
+  # negative cases.
+  env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL -u VERSION -u CHROMIUM_REF -u DRY_RUN \
+    make --no-print-directory -s -C "$PROJECT_ROOT" deploy-browser-runtime ENV_FILE=/dev/null "$@"
 }
 for input in 26.1109.1015 v26.1109.1015; do
   run_make DRY_RUN=true VERSION="$input" CHROMIUM_REF="$CHROMIUM_SHA" >"$test_dir/plan" 2>&1 ||

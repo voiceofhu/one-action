@@ -670,7 +670,7 @@ Type=oneshot
 TimeoutStartSec=60s
 Environment="ONE_NODE_FIREWALL_DIR=${ONE_NODE_STATE_DIR}/firewall"
 Environment="ONE_NODE_FIREWALL_HOST_RULES=${INSTALL_DIR}/.firewall-host-rules"
-ExecStart=/opt/one-node/firewall.sh
+ExecStart=${INSTALL_DIR}/firewall.sh
 UMask=0077
 EOF
 

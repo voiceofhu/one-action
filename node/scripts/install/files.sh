@@ -98,12 +98,12 @@ Type=simple
 User=${NATIVE_SERVICE_USER}
 Group=${NATIVE_SERVICE_USER}
 WorkingDirectory=${ONE_NODE_STATE_DIR}
-EnvironmentFile=/opt/one-node/.env
+EnvironmentFile=${INSTALL_DIR}/.env
 EnvironmentFile=-${ONE_NODE_STATE_DIR}/bootstrap.env
 # Root-side installers and host services also write into the state directory;
 # hand it to the service account before every start (+ runs as root).
 ExecStartPre=+/bin/chown -hR ${NATIVE_SERVICE_USER}:${NATIVE_SERVICE_USER} ${ONE_NODE_STATE_DIR}
-ExecStart=/opt/one-node/one-node start
+ExecStart=${INSTALL_DIR}/one-node start
 Restart=always
 # Restart at once after a crash; a crash loop backs off to 30s (systemd 254+
 # reads RestartSteps/RestartMaxDelaySec, older versions keep 1s).

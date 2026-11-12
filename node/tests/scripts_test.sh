@@ -33,7 +33,7 @@ if grep -R -F 'voiceofhu/one-node-action' \
 fi
 "$ROOT_DIR/scripts/bundle-dev-installers.sh" "$TEST_TEMP_DIR/dist"
 sh -n "$TEST_TEMP_DIR/dist/install.sh" "$TEST_TEMP_DIR/dist/uninstall.sh"
-grep -F 'INSTALL_DIR="/opt/one-node"' "$TEST_TEMP_DIR/dist/install.sh" >/dev/null
+grep -F 'INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"' "$TEST_TEMP_DIR/dist/install.sh" >/dev/null
 if grep -E '/opt/one-node-node|one-node-node\.service|manifest_load_legacy' \
 	"$TEST_TEMP_DIR/dist/install.sh" >/dev/null; then
 	printf '%s\n' "bundled installer contains removed legacy support" >&2
@@ -289,7 +289,7 @@ if grep -F 'version --name' "$ROOT_DIR/scripts/install/docker.sh" >/dev/null; th
 fi
 grep -F 'INSTALL_MANIFEST_KIND="missing"' \
 	"$ROOT_DIR/scripts/install/host.sh" >/dev/null
-grep -F 'INSTALL_DIR="/opt/one-node"' "$ROOT_DIR/scripts/install/config.sh" >/dev/null
+grep -F 'INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"' "$ROOT_DIR/scripts/install/config.sh" >/dev/null
 grep -F 'UNIT_FILE="/etc/systemd/system/one-node.service"' \
 	"$ROOT_DIR/scripts/install/config.sh" >/dev/null
 if grep -R -E '/opt/one-node-node|one-node-node\.service' \

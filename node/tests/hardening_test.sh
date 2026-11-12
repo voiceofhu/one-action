@@ -68,6 +68,7 @@ reset_accounts() {
 # --- #11 native unit runs unprivileged with only network capabilities.
 (
 	ONE_NODE_STATE_DIR=/var/lib/one-node
+	INSTALL_DIR=/opt/one-node
 	UNIT_SOURCE="$TEST_TEMP_DIR/one-node.service"
 	write_native_source
 	for directive in \

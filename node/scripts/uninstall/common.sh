@@ -4,7 +4,7 @@
 # directory recorded by the installation manifest.
 
 initialize_uninstall_config() {
-	INSTALL_DIR="/opt/one-node"
+	INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"
 	UNIT_FILE="/etc/systemd/system/one-node.service"
 	COMPOSE_FILE="${INSTALL_DIR}/docker-compose.yml"
 	INSTALL_RECORD="${INSTALL_DIR}/.installation"

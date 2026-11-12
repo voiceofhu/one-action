@@ -7,6 +7,8 @@ set -eu
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEST_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/one-node-signing-test.XXXXXX")
+# macOS TMPDIR ends in a slash; ONE_NODE_INSTALL_DIR must be canonical.
+TEST_TEMP_DIR=$(CDPATH='' cd -- "$TEST_TEMP_DIR" && pwd -P)
 trap '[ -n "${KEEP:-}" ] || rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
 
 fail() {

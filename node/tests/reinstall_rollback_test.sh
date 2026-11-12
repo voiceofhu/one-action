@@ -142,9 +142,9 @@ write_old_native_installation() {
 	chmod 0600 "$ONE_NODE_STATE_DIR/node-secret" "$ONE_NODE_STATE_DIR/runtime-active.json"
 	printf '%s\n' \
 		'[Service]' \
-		'WorkingDirectory=/opt/one-node' \
-		'EnvironmentFile=/opt/one-node/.env' \
-		'ExecStart=/opt/one-node/one-node start' >"$UNIT_FILE"
+		"WorkingDirectory=${INSTALL_DIR}" \
+		"EnvironmentFile=${INSTALL_DIR}/.env" \
+		"ExecStart=${INSTALL_DIR}/one-node start" >"$UNIT_FILE"
 	chmod 0644 "$UNIT_FILE"
 	printf '%s\n' '[Service]' 'ExecStart=/opt/one-node/firewall.sh' >"$FIREWALL_SERVICE_FILE"
 	printf '%s\n' '[Path]' >"$FIREWALL_PATH_FILE"
@@ -305,8 +305,8 @@ run_unit_recognition() (
 	if (validate_managed_native_unit) >/dev/null 2>&1; then
 		fail "unit with an unmanaged lifecycle command was accepted"
 	fi
-	printf '%s\n' '[Service]' 'WorkingDirectory=/opt/one-node' \
-		'EnvironmentFile=/opt/one-node/.env' 'ExecStart=/opt/one-node/one-node start' >"$UNIT_FILE"
+	printf '%s\n' '[Service]' "WorkingDirectory=${INSTALL_DIR}" \
+		"EnvironmentFile=${INSTALL_DIR}/.env" "ExecStart=${INSTALL_DIR}/one-node start" >"$UNIT_FILE"
 	(validate_managed_native_unit) || fail "legacy root unit was not recognized"
 	printf '%s\n' "ExecStartPre=+/bin/chown -hR one-node:one-node ${ONE_NODE_STATE_DIR}" >>"$UNIT_FILE"
 	if (validate_managed_native_unit) >/dev/null 2>&1; then

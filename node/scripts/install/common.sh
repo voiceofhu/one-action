@@ -75,7 +75,11 @@ show_help() {
 		"  --role  proxy (default) serves the managed protocols; monitor only reports" \
 		"          host metrics and probes, opens no ports, and needs --mode native." \
 		"  Existing managed installations are removed before the new command is applied." \
-		"  --reset Remove the existing One Node development installation first."
+		"  --reset Remove the existing One Node development installation first." \
+		"" \
+		"  ONE_NODE_INSTALL_DIR=/path installs somewhere other than /opt/one-node, for a" \
+		"  host whose /opt/one-node is taken (the One Node Server deploys there). Later" \
+		"  upgrades, reinstalls and uninstalls find that directory on their own."
 }
 
 # A monitor node runs no data plane: it opens no ports, so it needs neither

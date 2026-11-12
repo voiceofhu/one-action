@@ -5,7 +5,7 @@
 
 initialize_install_config() {
 	PROGRAM="one-node"
-	INSTALL_DIR="/opt/one-node"
+	INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"
 	ENV_FILE="${INSTALL_DIR}/.env"
 	UNIT_FILE="/etc/systemd/system/one-node.service"
 	UPDATER_FILE="${INSTALL_DIR}/updater.sh"

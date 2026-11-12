@@ -161,7 +161,8 @@ Type=oneshot
 # The node treats a record older than 30 minutes as abandoned; stop first.
 TimeoutStartSec=20min
 Environment="ONE_NODE_UPDATE_DIR=${ONE_NODE_STATE_DIR}/update"
-ExecStart=/opt/one-node/updater.sh
+Environment="ONE_NODE_INSTALLER=${INSTALL_DIR}/install.sh"
+ExecStart=${INSTALL_DIR}/updater.sh
 # A legacy updater may write its final root-owned status after migration.
 ExecStopPost=/bin/chown -hR --reference="${ONE_NODE_STATE_DIR}/update" "${ONE_NODE_STATE_DIR}/update"
 UMask=0077

@@ -84,9 +84,9 @@ configure_case() {
 write_managed_unit() {
 	printf '%s\n' \
 		'[Service]' \
-		'WorkingDirectory=/opt/one-node' \
-		'EnvironmentFile=/opt/one-node/.env' \
-		'ExecStart=/opt/one-node/one-node start' >"$UNIT_FILE"
+		"WorkingDirectory=${INSTALL_DIR}" \
+		"EnvironmentFile=${INSTALL_DIR}/.env" \
+		"ExecStart=${INSTALL_DIR}/one-node start" >"$UNIT_FILE"
 	chmod 0644 "$UNIT_FILE"
 }
 

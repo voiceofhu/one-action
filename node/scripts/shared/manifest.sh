@@ -1,7 +1,9 @@
 #!/bin/sh
 
 MANIFEST_FORMAT_NAME="one-node-manifest"
-MANIFEST_INSTALL_DIR="/opt/one-node"
+# /opt/one-node unless the entrypoint resolved another install directory
+# (ONE_NODE_INSTALL_DIR, or the directory an existing installation runs from).
+MANIFEST_INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"
 MANIFEST_INSTALLER_PATH="${MANIFEST_INSTALL_DIR}/install.sh"
 MANIFEST_BINARY_PATH="${MANIFEST_INSTALL_DIR}/one-node"
 MANIFEST_PREVIOUS_DIR="${MANIFEST_INSTALL_DIR}/previous"

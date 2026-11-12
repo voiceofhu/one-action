@@ -39,6 +39,24 @@ resolve_host_architecture() {
 	ONE_NODE_BINARY_NAME="one-node-linux-${ONE_NODE_ARCH}"
 }
 
+# Without a manifest the installer cannot tell its files from someone else's,
+# and a replacement or reset removes the whole directory. Refuse a directory
+# that holds anything One Node never writes there (the One Node Server deploys
+# into /opt/one-node, with its own .env) instead of overwriting it.
+refuse_foreign_install_directory() {
+	[ -d "$INSTALL_DIR" ] && [ ! -e "$INSTALL_RECORD" ] || return 0
+	for install_entry in "$INSTALL_DIR"/* "$INSTALL_DIR"/.[!.]* "$INSTALL_DIR"/..?*; do
+		[ -e "$install_entry" ] || [ -L "$install_entry" ] || continue
+		case "${install_entry##*/}" in
+		.env|.env.updater.*|.installation|.installation.*|.service-account|.firewall-host-rules|.one-node.next) ;;
+		install.sh|one-node|updater.sh|firewall.sh|docker-compose.yml|previous) ;;
+		*)
+			die "${INSTALL_DIR} holds files that are not One Node's (${install_entry##*/}); install into another directory with ONE_NODE_INSTALL_DIR, for example ONE_NODE_INSTALL_DIR=${INSTALL_DIR}/node"
+			;;
+		esac
+	done
+}
+
 validate_install_target() {
 	if [ -L "$INSTALL_DIR" ]; then
 		SHOW_UNINSTALL_ON_ERROR="true"
@@ -48,6 +66,7 @@ validate_install_target() {
 		SHOW_UNINSTALL_ON_ERROR="true"
 		die "One Node state directory must not be a symlink"
 	fi
+	refuse_foreign_install_directory
 	if [ "$RESET_EXISTING" = "true" ]; then
 		reset_existing_installation
 	fi
@@ -376,8 +395,8 @@ validate_managed_native_unit() {
 	[ "$(file_mode "$UNIT_FILE")" = "644" ] ||
 		die "one-node.service permissions must be 0644"
 	for unit_record in \
-		'EnvironmentFile=/opt/one-node/.env' \
-		'ExecStart=/opt/one-node/one-node start'
+		"EnvironmentFile=${INSTALL_DIR}/.env" \
+		"ExecStart=${INSTALL_DIR}/one-node start"
 	do
 		[ "$(grep -Fxc "$unit_record" "$UNIT_FILE")" -eq 1 ] ||
 			die "one-node.service is not a recognized One Node unit"
@@ -387,7 +406,7 @@ validate_managed_native_unit() {
 	[ "$(grep -c '^WorkingDirectory=' "$UNIT_FILE")" -eq 1 ] ||
 		die "one-node.service is not a recognized One Node unit"
 	managed_start_pre="ExecStartPre=+/bin/chown -hR one-node:one-node ${ONE_NODE_STATE_DIR}"
-	if grep -Fxq 'WorkingDirectory=/opt/one-node' "$UNIT_FILE"; then
+	if grep -Fxq "WorkingDirectory=${INSTALL_DIR}" "$UNIT_FILE"; then
 		unit_start_pre_count=0
 	elif grep -Fxq "WorkingDirectory=${ONE_NODE_STATE_DIR}" "$UNIT_FILE"; then
 		unit_start_pre_count=$(grep -Fxc "$managed_start_pre" "$UNIT_FILE" || true)

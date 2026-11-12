@@ -30,6 +30,33 @@ new artifact is downloaded and verified, any existing manifest-managed One Node
 installation and its complete runtime state are removed before a fresh install.
 Use `upgrade.sh` when the existing node identity and runtime state must be kept.
 
+### Install directory
+
+One Node installs into `/opt/one-node`. On a host where that directory belongs
+to something else — the One Node Server deploys into `/opt/one-node` and keeps
+its own `.env` there — set `ONE_NODE_INSTALL_DIR` on the installation command:
+
+```sh
+sudo env ONE_NODE_INSTALL_DIR=/opt/one-node/node ... /bin/sh "$one_node_installer" --mode native --role monitor
+```
+
+In a root shell, `export ONE_NODE_INSTALL_DIR=/opt/one-node/node` before pasting
+the panel command does the same. The path must be canonical, absolute, at least
+two levels deep and outside `/var/lib/one-node`; runtime state stays in
+`/var/lib/one-node` either way.
+
+The variable is only needed once. The systemd units run from the chosen
+directory, the retained installer manages the directory it lives in, and the
+remote `install.sh`, `upgrade.sh` and `uninstall.sh` read the directory back
+from the installed units, so panel upgrades, reinstalls and uninstalls need no
+variable. Naming a different directory while One Node is installed is refused;
+uninstall first to move it. Releases older than this feature only know
+`/opt/one-node`, so a rollback to one of them is refused on such a host.
+
+Without a manifest the installer cannot tell its files from someone else's, so
+it refuses a directory that holds anything One Node never writes there instead
+of overwriting it.
+
 Every successful Native or Docker installation retains the exact installer at
 `/opt/one-node/install.sh`. Running it without arguments in a terminal opens the
 interactive lifecycle menu. The same file also supports non-interactive status,

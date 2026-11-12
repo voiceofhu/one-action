@@ -53,6 +53,65 @@ bootstrap_insecure() {
 	[ "${ONE_NODE_ALLOW_INSECURE:-false}" = "true" ]
 }
 
+# Install directory. It defaults to /opt/one-node; ONE_NODE_INSTALL_DIR moves a
+# new installation elsewhere, for a host whose /opt/one-node belongs to
+# something else (the One Node Server deploys there). Later runs need no
+# variable: the retained installer uses the directory it lives in, and the
+# remote entrypoints read it back from the installed systemd units.
+bootstrap_install_dir_is_safe() {
+	case "$1" in
+	/*/*) ;;
+	*) return 1 ;;
+	esac
+	case "$1" in
+	*[!A-Za-z0-9._/-]*|*//*|*/|*/./*|*/../*|*/.|*/..) return 1 ;;
+	/var/lib/one-node|/var/lib/one-node/*) return 1 ;;
+	esac
+}
+
+# Prints the directory the systemd units under $1 run One Node from.
+bootstrap_installed_dir() {
+	bootstrap_unit="$1/one-node.service"
+	bootstrap_unit_pattern='s|^ExecStart=\(/.*\)/one-node start$|\1|p'
+	if [ ! -f "$bootstrap_unit" ] || [ -L "$bootstrap_unit" ]; then
+		# Docker installations have no runtime unit, only the host updater.
+		bootstrap_unit="$1/one-node-updater.service"
+		bootstrap_unit_pattern='s|^ExecStart=\(/.*\)/updater\.sh$|\1|p'
+		[ -f "$bootstrap_unit" ] && [ ! -L "$bootstrap_unit" ] || return 1
+	fi
+	bootstrap_unit_dir=$(sed -n "$bootstrap_unit_pattern" "$bootstrap_unit")
+	bootstrap_install_dir_is_safe "$bootstrap_unit_dir" || return 1
+	printf '%s\n' "$bootstrap_unit_dir"
+}
+
+# Prints the directory of a retained installer run as <dir>/install.sh.
+bootstrap_retained_installer_dir() {
+	case "$0" in
+	*/install.sh) ;;
+	*) return 1 ;;
+	esac
+	bootstrap_self_dir=$(CDPATH='' cd -- "$(dirname "$0")" 2>/dev/null && pwd) || return 1
+	[ -f "${bootstrap_self_dir}/.installation" ] && [ ! -L "${bootstrap_self_dir}/.installation" ] || return 1
+	bootstrap_install_dir_is_safe "$bootstrap_self_dir" || return 1
+	printf '%s\n' "$bootstrap_self_dir"
+}
+
+bootstrap_resolve_install_dir() {
+	bootstrap_installed_at=$(bootstrap_installed_dir "$1" || true)
+	if [ -n "${ONE_NODE_INSTALL_DIR:-}" ]; then
+		bootstrap_install_dir_is_safe "$ONE_NODE_INSTALL_DIR" ||
+			bootstrap_die "ONE_NODE_INSTALL_DIR must be a canonical absolute path at least two levels deep, outside /var/lib/one-node"
+		[ -z "$bootstrap_installed_at" ] || [ "$bootstrap_installed_at" = "$ONE_NODE_INSTALL_DIR" ] ||
+			bootstrap_die "One Node is already installed in ${bootstrap_installed_at}; uninstall it first or drop ONE_NODE_INSTALL_DIR=${ONE_NODE_INSTALL_DIR}"
+	elif bootstrap_self=$(bootstrap_retained_installer_dir); then
+		ONE_NODE_INSTALL_DIR=$bootstrap_self
+	else
+		ONE_NODE_INSTALL_DIR=${bootstrap_installed_at:-/opt/one-node}
+	fi
+	export ONE_NODE_INSTALL_DIR
+}
+bootstrap_resolve_install_dir /etc/systemd/system
+
 # A broken chain of trust is fatal unless the operator opted into development.
 bootstrap_trust_fail() {
 	if bootstrap_insecure; then

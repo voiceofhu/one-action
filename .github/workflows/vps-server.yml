@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/reusable-deploy-server.yml
+    uses: ./.github/workflows/reusable-deploy-server-next.yml
     with:
       product: vps
     secrets:

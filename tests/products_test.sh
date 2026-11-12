@@ -2,7 +2,8 @@
 # Every products.json product must load, and its <product>-server.yml and
 # <product>-web.yml entries must be thin shells that run only on their own
 # deploy/<product>-<component>/* tag and call the shared reusable workflows
-# (a Next.js Web, web_runtime next, deploys through its own image workflow).
+# (a Next.js Web, web_runtime next, deploys through its own image workflow, and
+# its Server through reusable-deploy-server-next.yml, which also publishes it).
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,10 +43,12 @@ ruby -ryaml -e '
     reusable: "reusable-deploy-web-image.yml",
     permissions: { "contents" => "read", "packages" => "write" },
   }
+  next_server = entries.fetch("server").merge(reusable: "reusable-deploy-server-next.yml")
   ARGV.each do |entry|
     product, runtime = entry.split(":", 2)
     entries.each do |component, contract|
       contract = image_web if component == "web" && runtime == "next"
+      contract = next_server if component == "server" && runtime == "next"
       file = "#{product}-#{component}.yml"
       fail = ->(message) { abort("#{file}: #{message}") }
       document = load.(file)
@@ -74,7 +77,42 @@ ruby -ryaml -e '
 
   server = load.("reusable-deploy-server.yml")
   jobs = server.fetch("jobs")
-  abort("reusable-deploy-server.yml: unexpected jobs") unless jobs.keys == %w[prepare publish publish_web deploy]
+  # A run must only show jobs it executes: the static workflow has no Web image
+  # job, the next workflow always runs it, and neither deploy tolerates a skip.
+  abort("reusable-deploy-server.yml: unexpected jobs") unless jobs.keys == %w[prepare publish deploy]
+  server_next = load.("reusable-deploy-server-next.yml")
+  next_jobs = server_next.fetch("jobs")
+  abort("reusable-deploy-server-next.yml: unexpected jobs") unless
+    next_jobs.keys == %w[prepare publish publish_web deploy]
+  [jobs, next_jobs].each do |workflow_jobs|
+    workflow_jobs.each do |name, job|
+      abort("reusable-deploy-server*.yml: #{name} must not be conditional") if job.key?("if")
+    end
+  end
+  abort("reusable-deploy-server-next.yml: publish_web must use the shared image publisher") unless
+    next_jobs.fetch("publish_web").fetch("uses") == "./.github/workflows/reusable-publish-server-image.yml"
+  abort("reusable-deploy-server-next.yml: deploy must wait for both images") unless
+    next_jobs.fetch("deploy").fetch("needs") == %w[prepare publish publish_web]
+  # Apart from the Web image the two workflows must stay identical.
+  strip = lambda do |source, runtime, other|
+    copy = Marshal.load(Marshal.dump(source))
+    copy.delete("name")
+    copy_jobs = copy.fetch("jobs")
+    copy_jobs.delete("publish_web")
+    copy_jobs.fetch("publish").fetch("with").delete("stage_web")
+    deploy = copy_jobs.fetch("deploy")
+    deploy["needs"] = deploy.fetch("needs") - ["publish_web"]
+    deploy.fetch("steps").each { |step| step["env"]&.delete("WEB_DOCKER_IMAGE") }
+    validate = copy_jobs.fetch("prepare").fetch("steps").find { |step| step["id"] == "release" }
+    abort("reusable-deploy-server*.yml: prepare must reject web_runtime other than #{runtime}") unless
+      validate.fetch("run").include?(%([[ "$WEB_RUNTIME" == #{runtime} ]])) &&
+      validate.fetch("run").include?("must call #{other}.")
+    validate["run"] = validate.fetch("run").gsub(runtime, "RUNTIME").gsub(other, "OTHER")
+    copy
+  end
+  abort("reusable-deploy-server.yml and reusable-deploy-server-next.yml drifted apart") unless
+    strip.(server, "static", "reusable-deploy-server-next.yml") ==
+    strip.(server_next, "next", "reusable-deploy-server.yml")
   abort("reusable-deploy-server.yml: prepare timeout changed") unless
     jobs.fetch("prepare").fetch("timeout-minutes") <= 2
   abort("reusable-deploy-server.yml: publish must use the shared image publisher") unless
@@ -85,7 +123,7 @@ ruby -ryaml -e '
     web_image.fetch("jobs").keys == %w[prepare publish deploy]
   abort("reusable-deploy-web-image.yml: publish must use the shared image publisher") unless
     web_image.fetch("jobs").fetch("publish").fetch("uses") == "./.github/workflows/reusable-publish-server-image.yml"
-  [server, web, web_image].map { |document| document.fetch("jobs").fetch("deploy") }.each do |deploy|
+  [server, server_next, web, web_image].map { |document| document.fetch("jobs").fetch("deploy") }.each do |deploy|
     abort("deploy environment changed") unless
       deploy.fetch("environment").fetch("name") == "one-${{ inputs.product }}-prod"
     abort("deploy concurrency changed") unless deploy.fetch("concurrency") == {
@@ -93,7 +131,7 @@ ruby -ryaml -e '
     }
   end
   abort("reusable-deploy-server.yml: deploy must wait for prepare and publish") unless
-    jobs.fetch("deploy").fetch("needs") == %w[prepare publish publish_web]
+    jobs.fetch("deploy").fetch("needs") == %w[prepare publish]
 ' "$PROJECT_ROOT" "${products[@]}"
 
 printf 'Product manifest and %s entry workflow pairs are consistent.\n' "${#products[@]}"

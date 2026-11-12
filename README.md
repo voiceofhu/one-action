@@ -117,7 +117,7 @@ flowchart TD
 | 层 | 文件 |
 | --- | --- |
 | 本地入口 | `scripts/release/release-server.sh <key>`、`scripts/release/release-web.sh <key>` |
-| Workflow | `<key>-server.yml` / `<key>-web.yml` 只监听自己的 deploy 标签并传入 `product`，逻辑在 `reusable-deploy-server.yml` / `reusable-deploy-web.yml` |
+| Workflow | `<key>-server.yml` / `<key>-web.yml` 只监听自己的 deploy 标签并传入 `product`，逻辑在 `reusable-deploy-server.yml`（`web_runtime` 为 `next` 的产品用 `reusable-deploy-server-next.yml`，多一个 Web 镜像发布 job）/ `reusable-deploy-web.yml` |
 | 服务器部署 | `scripts/deploy/deploy-server.sh`、`scripts/deploy/deploy-web.sh`（`PRODUCT=<key>`） |
 | 测试 | `tests/products_test.sh`（清单与入口一致），`release-*_test.sh`、`deploy-*_test.sh` 对每个产品实跑 |
 

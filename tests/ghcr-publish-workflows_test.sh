@@ -4,6 +4,7 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 publisher="$PROJECT_ROOT/.github/workflows/reusable-publish-server-image.yml"
 product_server="$PROJECT_ROOT/.github/workflows/reusable-deploy-server.yml"
+product_server_next="$PROJECT_ROOT/.github/workflows/reusable-deploy-server-next.yml"
 
 require_text() {
   local file=$1 text=$2
@@ -98,7 +99,10 @@ require_text "$publisher" 'pnpm --dir web install --frozen-lockfile'
 require_text "$publisher" 'pnpm --dir web build'
 require_text "$publisher" 'mkdir backend/web-dist'
 require_text "$publisher" 'if: ${{ inputs.stage_web }}'
-require_text "$product_server" "stage_web: \${{ needs.prepare.outputs.web_runtime == 'static' }}"
+require_text "$product_server" 'stage_web: true'
+reject_text "$product_server" 'publish_web'
+require_text "$product_server_next" 'stage_web: false'
+reject_text "$product_server_next" 'stage_web: true'
 require_text "$publisher" 'cp -R web/dist/. backend/web-dist/'
 reject_text "$publisher" 'web/out'
 require_text "$publisher" 'uses: docker/build-push-action@'

@@ -54,7 +54,7 @@ PUBLIC_URL=${PUBLIC_URL%/}
   exit 1
 }
 
-remote_checks="test -d '$REMOTE_DIR' && test -w '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'"
+remote_checks="test -d '$REMOTE_DIR' && test -w '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env' && test -r '$REMOTE_DIR/.env'"
 required_layout='.env'
 for directory in ${PRODUCT_REMOTE_REQUIRED_DIRS[@]+"${PRODUCT_REMOTE_REQUIRED_DIRS[@]}"}; do
   remote_checks+=" && test -d '$REMOTE_DIR/$directory'"
@@ -62,7 +62,7 @@ for directory in ${PRODUCT_REMOTE_REQUIRED_DIRS[@]+"${PRODUCT_REMOTE_REQUIRED_DI
 done
 # shellcheck disable=SC2029 # Every interpolated value was validated above.
 ssh "$SSH_HOST" "$remote_checks && command -v curl >/dev/null && docker info >/dev/null" || {
-  printf '%s\n' "$REMOTE_DIR must exist, contain $required_layout, and be writable; curl and Docker must be available to the deploy user" >&2
+  printf '%s\n' "$REMOTE_DIR must exist, contain $required_layout (.env readable by the deploy user), and be writable; curl and Docker must be available to the deploy user" >&2
   exit 1
 }
 

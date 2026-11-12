@@ -83,6 +83,7 @@ case "$scope" in
     )
     active_workflows=(
       reusable-deploy-server.yml
+      reusable-deploy-server-next.yml
       reusable-deploy-web.yml
       reusable-deploy-web-image.yml
       reusable-publish-server-image.yml

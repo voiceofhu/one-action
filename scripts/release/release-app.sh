@@ -7,6 +7,8 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
 # shellcheck source=scripts/lib/app.sh
 source "$PROJECT_ROOT/scripts/lib/app.sh"
+# shellcheck source=scripts/lib/stamp-source.sh
+source "$PROJECT_ROOT/scripts/lib/stamp-source.sh"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -64,6 +66,9 @@ require_tool git
 
 printf '%s release: %s-v%s from %s branch %s (tag deploy/%s-app/%s)\n' \
   "$APP_TITLE" "$APP_RELEASE_PREFIX" "$VERSION" "$APP_REPOSITORY" "$app_ref" "$APP_KEY" "$VERSION" >&2
+[[ "$APP_STAMP_SOURCE" != true ]] ||
+  printf 'Version %s is committed and pushed to %s branch %s before tagging\n' \
+    "$VERSION" "$APP_REPOSITORY" "$app_ref" >&2
 [[ -z "$APP_WEB_REPOSITORY" ]] ||
   printf 'Bundled web: %s branch %s from %s (pinned as web_ref)\n' \
     "$APP_WEB_REPOSITORY" "$web_ref" "$web_dir" >&2
@@ -150,6 +155,15 @@ if [[ -n "$APP_BACKEND_REPOSITORY" ]]; then
 fi
 [[ "$action_sha" == "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" ]] ||
   die 'Action HEAD changed during local validation'
+
+# Only now, with every check passed: a release that fails validation leaves no
+# version commit behind. The release is cut from the stamped commit.
+if [[ "$APP_STAMP_SOURCE" == true ]]; then
+  stamp_source_version "$app_dir" "$app_ref" "$VERSION" ||
+    die 'App version was not committed'
+  app_sha=$stamped_sha
+  pins[0]="app_ref=$app_sha"
+fi
 
 DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
   "$APP_WORKFLOW" "$action_sha" "$VERSION" "${pins[@]}"

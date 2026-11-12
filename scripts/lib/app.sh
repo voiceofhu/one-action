@@ -16,7 +16,8 @@
 # and `updater_config` (App-relative Tauri config that turns on updater
 # artifacts: the release then also carries each platform's minisign-signed
 # updater bundle and a latest.json, signed with the TAURI_SIGNING_PRIVATE_KEY
-# secret that the entry workflow passes).
+# secret that the entry workflow passes) and `stamp_source` (true: releasing
+# also commits the version to the App repository, scripts/lib/stamp-source.sh).
 
 APP_MANIFEST="${APP_MANIFEST:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/apps.json}"
 
@@ -64,6 +65,7 @@ load_app() {
   APP_BACKEND_REPOSITORY="$(jq -r --arg key "$APP_KEY" '.[$key].backend_repository // ""' "$APP_MANIFEST")"
   APP_GO_VERSION_FILE="$(jq -r --arg key "$APP_KEY" '.[$key].go_version_file // ""' "$APP_MANIFEST")"
   APP_UPDATER_CONFIG="$(jq -r --arg key "$APP_KEY" '.[$key].updater_config // ""' "$APP_MANIFEST")"
+  APP_STAMP_SOURCE="$(jq -r --arg key "$APP_KEY" '.[$key].stamp_source // false' "$APP_MANIFEST")"
 
   app_require "$APP_TITLE" '^One [A-Za-z0-9 ]+$' title
   app_require "$APP_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' repository
@@ -77,6 +79,7 @@ load_app() {
   app_require "$APP_BACKEND_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' backend_repository
   app_require "$APP_GO_VERSION_FILE" '^(([a-z0-9_-]+/)*go\.mod)?$' go_version_file
   app_require "$APP_UPDATER_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' updater_config
+  app_require "$APP_STAMP_SOURCE" '^(true|false)$' stamp_source
 
   APP_RELEASE_PREFIX="one-$APP_KEY-app"
   APP_WORKFLOW="$APP_KEY-app.yml"

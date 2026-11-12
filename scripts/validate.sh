@@ -16,6 +16,7 @@ case "$scope" in
       "$PROJECT_ROOT/tests/deploy-web-image_test.sh"
       "$PROJECT_ROOT/tests/workflow-naming_test.sh"
       "$PROJECT_ROOT/tests/app-release_test.sh"
+      "$PROJECT_ROOT/tests/app-stamp-source_test.sh"
       "$PROJECT_ROOT/tests/checksum-helper_test.sh"
       "$PROJECT_ROOT/tests/ghcr-publish-workflows_test.sh"
       "$PROJECT_ROOT/tests/node-migration-contract_test.sh"

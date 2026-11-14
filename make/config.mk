@@ -1,3 +1,7 @@
+# Deploy targets publish unless DRY_RUN was given, either on the command line
+# (`make deploy-x DRY_RUN=true`) or in the environment (`DRY_RUN=true make deploy-x`).
+# Captured before the default below, so the origin still says who set it.
+DEPLOY_DRY_RUN := $(if $(filter environment command,$(origin DRY_RUN)),$(DRY_RUN),false)
 DRY_RUN ?= true
 
 SOURCE_ROOT ?= $(abspath $(PROJECT_ROOT)/..)

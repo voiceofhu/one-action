@@ -41,10 +41,10 @@ fix-servers:
 .PHONY: deploy-servers deploy-webs
 
 deploy-servers:
-	@KIND=server DRY_RUN="$(if $(filter command line,$(origin DRY_RUN)),$(DRY_RUN),false)" \
+	@KIND=server DRY_RUN="$(DEPLOY_DRY_RUN)" \
 		VERSION="$(VERSION)" bash $(PROJECT_ROOT)/scripts/release/deploy-many.sh $(PRODUCTS)
 deploy-webs:
-	@KIND=web DRY_RUN="$(if $(filter command line,$(origin DRY_RUN)),$(DRY_RUN),false)" \
+	@KIND=web DRY_RUN="$(DEPLOY_DRY_RUN)" \
 		VERSION="$(VERSION)" bash $(PROJECT_ROOT)/scripts/release/deploy-many.sh $(PRODUCTS)
 
 .PHONY: help

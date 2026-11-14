@@ -23,23 +23,23 @@ NODE_INSTALLER_DIST ?= $(PROJECT_ROOT)/node/dist
 node-bundle-installers:
 	@sh $(PROJECT_ROOT)/node/scripts/bundle-dev-installers.sh "$(NODE_INSTALLER_DIST)"
 
-deploy-node-server: DRY_RUN = false
+deploy-node-server: DRY_RUN = $(DEPLOY_DRY_RUN)
 deploy-node-server:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/release-server.sh node
 
-deploy-node: DRY_RUN = false
+deploy-node: DRY_RUN = $(DEPLOY_DRY_RUN)
 deploy-node:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/deploy-node-release.sh
 
-deploy-node-pc: DRY_RUN = false
+deploy-node-pc: DRY_RUN = $(DEPLOY_DRY_RUN)
 deploy-node-pc:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/release-app.sh node
 
 .PHONY: deploy-node-web
-deploy-node-web: DRY_RUN = false
+deploy-node-web: DRY_RUN = $(DEPLOY_DRY_RUN)
 deploy-node-web:
 	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
 		bash $(PROJECT_ROOT)/scripts/release/release-web.sh node

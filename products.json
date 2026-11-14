@@ -86,6 +86,8 @@
     "public_url": "https://oa.aicbe.com",
     "service_port": 27510,
     "ready_path": "/readyz",
+    "web_runtime": "next",
+    "web_port": 27511,
     "pnpm_version": "10.32.1",
     "remote_required_dirs": ["cert"],
     "web_gates": ["format:check", "lint", "test", "build"]

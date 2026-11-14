@@ -310,7 +310,7 @@ Invoke-TestCase 'environment file keeps Windows paths literal in single quotes' 
     $expected = @(
         "NODE_NODE_ID='42'",
         "NODE_ROLE='monitor'",
-        "NODE_HEARTBEAT_INTERVAL='60s'",
+        "NODE_HEARTBEAT_INTERVAL='30s'",
         "NODE_STATE_DIR='C:\ProgramData\OneNode\state'",
         "NODE_UPGRADE_REQUEST_FILE='C:\ProgramData\OneNode\state\update\request'",
         "NODE_UPGRADE_INSTALLER='C:\Program Files\OneNode\install.ps1'",

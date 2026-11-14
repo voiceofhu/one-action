@@ -239,7 +239,7 @@ darwin_replace_file() {
 darwin_write_env() {
 	{
 		printf 'NODE_NODE_ID="%s"\n' "$ONE_NODE_ID"
-		printf '%s\n' 'NODE_ROLE="monitor"' 'NODE_HEARTBEAT_INTERVAL="60s"'
+		printf '%s\n' 'NODE_ROLE="monitor"' 'NODE_HEARTBEAT_INTERVAL="30s"'
 		printf 'NODE_STATE_DIR="%s"\n' "$DARWIN_STATE_DIR"
 		printf 'NODE_UPGRADE_REQUEST_FILE="%s"\n' "${DARWIN_UPDATE_DIR}/request"
 		printf 'CONTROL_ADDR="%s"\n' "$(darwin_escape_dotenv "$ONE_NODE_SERVER")"

@@ -249,7 +249,7 @@ write_environment_source() {
 	if node_role_is_monitor; then
 		write_env "NODE_ROLE" "monitor"
 	fi
-	write_env "NODE_HEARTBEAT_INTERVAL" "60s"
+	write_env "NODE_HEARTBEAT_INTERVAL" "30s"
 	write_env "NODE_STATE_DIR" "$ONE_NODE_STATE_DIR"
 	if [ "${HOST_UPDATER_ENABLED:-false}" = "true" ]; then
 		write_env "NODE_UPGRADE_REQUEST_FILE" "${ONE_NODE_STATE_DIR}/update/request"

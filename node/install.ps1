@@ -323,7 +323,7 @@ function New-OneNodeEnvironmentValues {
     $values = [ordered]@{}
     $values['NODE_NODE_ID'] = $NodeId
     $values['NODE_ROLE'] = 'monitor'
-    $values['NODE_HEARTBEAT_INTERVAL'] = '60s'
+    $values['NODE_HEARTBEAT_INTERVAL'] = '30s'
     $values['NODE_STATE_DIR'] = $Paths.StateDir
     $values['NODE_UPGRADE_REQUEST_FILE'] = $Paths.UpgradeRequest
     $values['NODE_UPGRADE_INSTALLER'] = $Paths.Installer

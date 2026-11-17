@@ -23,7 +23,7 @@ trap 'rm -rf "$test_dir"' EXIT
 for input in '' v26.907.101; do
   expected=${input#v}
   expected=${expected:-26.906.1234}
-  make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-pc" \
+  make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-app" \
     ENV_FILE=/dev/null DRY_RUN=true VERSION="$input" GENERATED_VERSION=26.906.1234 \
     >"$test_dir/plan" 2>&1
   grep -Fq "$APP_RELEASE_PREFIX-v$expected from $APP_REPOSITORY branch main (tag deploy/$APP_KEY-app/$expected)" \
@@ -33,6 +33,18 @@ for input in '' v26.907.101; do
     grep -Fq "Shared backend: $APP_BACKEND_REPOSITORY branch main" "$test_dir/plan"
   fi
 done
+
+# Apps with android_apk also get the local APK release; others have no target.
+if [[ -n "$APP_ANDROID_APK" ]]; then
+  make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-apk" \
+    ENV_FILE=/dev/null DRY_RUN=true VERSION=v26.907.101 >"$test_dir/apk-plan" 2>&1 || fail
+  grep -Fq "$APP_TITLE Android release: one-$APP_KEY-android-v26.907.101 from $APP_REPOSITORY branch main" \
+    "$test_dir/apk-plan" || fail
+  grep -Fq "Assets: one-$APP_KEY-android-26.907.101.apk + SHA256SUMS" "$test_dir/apk-plan" || fail
+  grep -Fq 'DRY_RUN=true: nothing was built and no release was published.' "$test_dir/apk-plan" || fail
+elif make --no-print-directory -s -n -C "$PROJECT_ROOT" "deploy-$APP_KEY-apk" ENV_FILE=/dev/null >/dev/null 2>&1; then
+  fail
+fi
 
 ruby -ryaml -e '
   workflow = YAML.load_file(ARGV.fetch(0))

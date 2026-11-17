@@ -18,7 +18,8 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 |---|---|---|
 | `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、ip、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
-| `make deploy-<key>-pc` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node（PC 客户端）：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
+| `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
+| `make deploy-<key>-apk` | 本机构建，直接创建 Release `one-<key>-android-v<version>` | node：签名的 Android APK（arm64）+ `SHA256SUMS`（见「Android APK」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-runtime` | 标签 `deploy/browser-runtime/<version>` → `browser-runtime.yml` | 本地预编译的 One Browser Chromium 运行时包（macOS/Windows/Linux × arm64/x64）+ `SHA256SUMS`，公开 One Action Release `one-browser-runtime-v<version>`（见「Browser Chromium 运行时」） |
 
@@ -155,11 +156,11 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 
 | 客户端 | 源码仓库 | 本地目录 | 正式版连接地址 |
 | --- | --- | --- | --- |
-| browser | `voiceofhu/one-browser-app` | `../one-browser/pc`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
-| mail | `voiceofhu/one-mail-app` | `../one-mail/pc` | `https://mail.aicbe.com` |
-| node | `voiceofhu/one-node-pc` | `../one-node/pc`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
+| browser | `voiceofhu/one-browser-app` | `../one-browser/app`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
+| mail | `voiceofhu/one-mail-app` | `../one-mail/app` | `https://mail.aicbe.com` |
+| node | `voiceofhu/one-node-app` | `../one-node/app`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 
-- `make deploy-<key>-pc` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
+- `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
   `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后推送 `deploy/<key>-app/<version>` 标签固定精确源码 SHA。
 - 客户端仓库须提供 `scripts/update-version.mjs`；CI 在各平台打包前写入 package.json、`tauri.conf.json`、Cargo.toml 与 Cargo.lock 的版本。
 - 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：Go `onecore` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
@@ -168,6 +169,24 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
   带 `go_version_file` 的客户端另跑 `go vet` 与 `go test`。
 - 已存在的 Release 或标签不会被覆盖；源码仓库不打发布标签，标签只在 One Action 上绑定本次 Action SHA。
 - 客户端加载远端页面：正式版连接上表地址，开发版连接本机 Backend；对应的 Server/Web 先按「Server + Web 产品」部署（One Node 客户端的 `/pc` 页面随 `deploy-node-web` 上线，宜先于客户端发布；线上缺 `/pc` 时客户端 8 秒后改用内置副本）。
+
+## Android APK
+
+Tauri 客户端同一份源码还能打 Android 包。APK 在本机构建，不进 CI：发布密钥只在客户端目录的
+`android-signing/`（gitignored；丢失后已装的 App 无法原地升级，务必备份）。`apps.json` 中带
+`android_apk`（构建产物的相对路径）的客户端才有此入口，目前只有 node：
+
+```bash
+make deploy-node-apk                  # 版本默认上海时间，或 VERSION=...
+make deploy-node-apk DRY_RUN=true     # 只看计划
+```
+
+`scripts/release/release-android.sh` 要求 one-action 与 `origin/main` 一致、客户端仓库干净且已推送（与
+`deploy-<key>-app` 相同），Release `one-<key>-android-v<version>` 不存在，再在工作区写入版本、运行客户端的
+`make android-release`（需 JDK 17、Android SDK/NDK、Rust Android target），用 `apksigner verify` 校验签名、
+`aapt2` 校验 `versionName`。通过后（`stamp_source` 时）提交并推送版本，再用本机 `gh` 在 one-action 上创建绑定当前
+Action SHA 的 Release，资源为 `one-<key>-android-<version>.apk` 与 `SHA256SUMS`。构建失败时工作区恢复原状，不留提交。
+与桌面安装包分开发布：桌面 Release 不可修改，客户端更新源也只读 `one-<key>-app-v*`。
 
 ## Browser Chromium 运行时
 
@@ -209,8 +228,8 @@ Chromium 无法在 Actions 上编译：私有仓库 `voiceofhu/one-browser-chrom
 make deploy-user-server VERSION=26.821.1200
 make deploy-node-server VERSION=26.821.1200
 make deploy-node VERSION=26.821.1200
-make deploy-browser-pc
-make deploy-node-pc
+make deploy-browser-app
+make deploy-node-app
 make deploy-browser-server
 ```
 
@@ -221,8 +240,8 @@ One User 和 One Node 目标执行各自产品的本地检查；Browser App 在�
 make deploy-user-server DRY_RUN=true
 make deploy-node-server DRY_RUN=true
 make deploy-node DRY_RUN=true
-make deploy-browser-pc DRY_RUN=true
-make deploy-node-pc DRY_RUN=true
+make deploy-browser-app DRY_RUN=true
+make deploy-node-app DRY_RUN=true
 make deploy-browser-server DRY_RUN=true
 ```
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154 # checkout_sha and stamped_sha are set by functions in scripts/lib
 set -Eeuo pipefail
 umask 077
 
@@ -9,6 +10,8 @@ source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
 source "$PROJECT_ROOT/scripts/lib/app.sh"
 # shellcheck source=scripts/lib/stamp-source.sh
 source "$PROJECT_ROOT/scripts/lib/stamp-source.sh"
+# shellcheck source=scripts/lib/checkout.sh
+source "$PROJECT_ROOT/scripts/lib/checkout.sh"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -17,26 +20,6 @@ die() {
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
-}
-
-# Sets checkout_sha to the HEAD of DIR once it is the clean root checkout of
-# REPOSITORY, on BRANCH and already pushed to origin.
-verify_checkout() {
-  local label=$1 dir=$2 repository=$3 branch=$4 branch_variable=$5 missing_hint=$6 root
-  root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" ||
-    die "$label Git repository is unavailable or incomplete: $dir; $missing_hint"
-  [[ "$(cd "$dir" && pwd -P)" == "$(cd "$root" && pwd -P)" ]] ||
-    die "$label directory must be the $label repository root: $dir"
-  checkout_sha="$(git -C "$dir" rev-parse --verify HEAD)"
-  [[ "$checkout_sha" == "$(git -C "$dir" rev-parse --verify "${branch}^{commit}")" ]] ||
-    die "$label HEAD must match $branch_variable ($branch) before validation"
-  is_github_remote "$(origin_remote_url "$dir")" "$repository" ||
-    die "$label origin differs from the configured source repository"
-  [[ -z "$(git -C "$dir" status --porcelain --untracked-files=all)" ]] ||
-    die "$label worktree must be clean before release validation"
-  git -C "$dir" fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
-  git -C "$dir" merge-base --is-ancestor "$checkout_sha" "refs/remotes/origin/$branch" ||
-    die "$label HEAD is not pushed to origin/$branch"
 }
 
 [[ "$#" -eq 1 ]] || die 'usage: release-app.sh APP'

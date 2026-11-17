@@ -133,11 +133,13 @@ case "$scope" in
     active_workflows=(browser-runtime.yml)
     run_node_check=false
     ;;
-  browser-pc|mail-pc|node-pc)
+  browser-app|mail-app|node-app)
     active_tests=("$PROJECT_ROOT/tests/app-release_test.sh")
     shell_files=(
       "$PROJECT_ROOT/scripts/lib/app.sh"
       "$PROJECT_ROOT/scripts/release/release-app.sh"
+      "$PROJECT_ROOT/scripts/release/release-android.sh"
+      "$PROJECT_ROOT/scripts/lib/checkout.sh"
       "${active_tests[@]}"
     )
     active_workflows=(reusable-publish-tauri-app.yml)

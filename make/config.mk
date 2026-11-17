@@ -17,7 +17,7 @@ GENERATED_VERSION ?= $(shell node -e "\
 RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
 ONE_BROWSER_APP_REF ?= main
-ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/pc
+ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/app
 # No generated default: the runtime version names an existing staging release.
 BROWSER_RUNTIME_VERSION = $(patsubst v%,%,$(strip $(VERSION)))
 CHROMIUM_REF ?=

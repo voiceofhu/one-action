@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154 # checkout_sha and stamped_sha are set by functions in scripts/lib
 set -Eeuo pipefail
 
 # Runs the release-time version commit (scripts/lib/stamp-source.sh) against a

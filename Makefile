@@ -34,7 +34,7 @@ help:
 		"One Action" \
 		"" \
 		"Products: $(SERVER_PRODUCTS)" \
-		"Desktop Apps (pc): $(APP_PRODUCTS)" \
+		"Apps (Tauri): $(APP_PRODUCTS)" \
 		"" \
 		"Local fixes:" \
 		"  make fix                       Format all Rust server products (PRODUCTS=\"user mail\" to pick)" \
@@ -44,7 +44,7 @@ help:
 		"  make validate                  Validate every shell and workflow contract" \
 		"  make validate-<product>        Validate one product's Server/Web release contracts" \
 		"  make validate-<product>-web    Validate one product's Web deployment contracts" \
-		"  make validate-<app>-pc         Validate desktop App (Tauri) release contracts" \
+		"  make validate-<app>-app        Validate App (Tauri) release contracts" \
 		"  make validate-node-runtime     Validate One Node Runtime release contracts" \
 		"  make validate-browser-runtime  Validate One Browser Chromium runtime release contracts" \
 		"  make node-check                Test the One Node lifecycle locally" \
@@ -55,6 +55,7 @@ help:
 		"  make deploy-<product>-web      Deploy a Web without restarting its Server" \
 		"  make deploy-servers            Deploy every Server (PRODUCTS=\"user mail\" to pick)" \
 		"  make deploy-webs               Deploy every Web (PRODUCTS=...)" \
-		"  make deploy-<app>-pc           Check a desktop App and tag installer publication" \
+		"  make deploy-<app>-app          Check a desktop App and tag installer publication" \
+		"  make deploy-<app>-apk          Build the signed Android APK locally and publish it ($(ANDROID_PRODUCTS))" \
 		"  make deploy-node               Check One Node source and tag compile/upload" \
 		"  make deploy-browser-runtime    Publish staged Chromium runtime (VERSION=, CHROMIUM_REF=)"

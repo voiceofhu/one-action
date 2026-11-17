@@ -3,7 +3,7 @@
     "title": "One Browser App",
     "repository": "voiceofhu/one-browser-app",
     "web_repository": "voiceofhu/one-browser-web",
-    "source_dir": "one-browser/pc",
+    "source_dir": "one-browser/app",
     "cargo_package": "one-browser",
     "pnpm_version": "10.32.1",
     "macos_config": "src-tauri/tauri.macos.conf.json",
@@ -12,7 +12,7 @@
   "mail": {
     "title": "One Mail App",
     "repository": "voiceofhu/one-mail-app",
-    "source_dir": "one-mail/pc",
+    "source_dir": "one-mail/app",
     "cargo_package": "onemail",
     "pnpm_version": "10.34.1",
     "macos_config": "",
@@ -20,8 +20,8 @@
   },
   "node": {
     "title": "One Node App",
-    "repository": "voiceofhu/one-node-pc",
-    "source_dir": "one-node/pc",
+    "repository": "voiceofhu/one-node-app",
+    "source_dir": "one-node/app",
     "cargo_package": "one-node",
     "pnpm_version": "11.7.0",
     "macos_config": "",
@@ -30,6 +30,7 @@
     "backend_repository": "voiceofhu/one-node-server",
     "go_version_file": "core/go.mod",
     "updater_config": "src-tauri/tauri.updater.conf.json",
-    "stamp_source": true
+    "stamp_source": true,
+    "android_apk": "src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
   }
 }

@@ -17,7 +17,10 @@
 # artifacts: the release then also carries each platform's minisign-signed
 # updater bundle and a latest.json, signed with the TAURI_SIGNING_PRIVATE_KEY
 # secret that the entry workflow passes) and `stamp_source` (true: releasing
-# also commits the version to the App repository, scripts/lib/stamp-source.sh).
+# also commits the version to the App repository, scripts/lib/stamp-source.sh)
+# and `android_apk` (App-relative path of the APK that the App's
+# `make android-release` signs: `make deploy-<key>-apk` builds it locally and
+# publishes it as the one-<key>-android-v<version> release).
 
 APP_MANIFEST="${APP_MANIFEST:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/apps.json}"
 
@@ -66,6 +69,7 @@ load_app() {
   APP_GO_VERSION_FILE="$(jq -r --arg key "$APP_KEY" '.[$key].go_version_file // ""' "$APP_MANIFEST")"
   APP_UPDATER_CONFIG="$(jq -r --arg key "$APP_KEY" '.[$key].updater_config // ""' "$APP_MANIFEST")"
   APP_STAMP_SOURCE="$(jq -r --arg key "$APP_KEY" '.[$key].stamp_source // false' "$APP_MANIFEST")"
+  APP_ANDROID_APK="$(jq -r --arg key "$APP_KEY" '.[$key].android_apk // ""' "$APP_MANIFEST")"
 
   app_require "$APP_TITLE" '^One [A-Za-z0-9 ]+$' title
   app_require "$APP_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' repository
@@ -80,9 +84,11 @@ load_app() {
   app_require "$APP_GO_VERSION_FILE" '^(([a-z0-9_-]+/)*go\.mod)?$' go_version_file
   app_require "$APP_UPDATER_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' updater_config
   app_require "$APP_STAMP_SOURCE" '^(true|false)$' stamp_source
+  app_require "$APP_ANDROID_APK" '^(src-tauri/gen/android/([A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.apk)?$' android_apk
 
   APP_RELEASE_PREFIX="one-$APP_KEY-app"
   APP_WORKFLOW="$APP_KEY-app.yml"
+  APP_ANDROID_RELEASE_PREFIX="one-$APP_KEY-android"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

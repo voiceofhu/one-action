@@ -48,7 +48,7 @@ refuse_foreign_install_directory() {
 	for install_entry in "$INSTALL_DIR"/* "$INSTALL_DIR"/.[!.]* "$INSTALL_DIR"/..?*; do
 		[ -e "$install_entry" ] || [ -L "$install_entry" ] || continue
 		case "${install_entry##*/}" in
-		.env|.env.updater.*|.installation|.installation.*|.service-account|.firewall-host-rules|.one-node.next) ;;
+		.env|.installation|.installation.*|.service-account|.firewall-host-rules|.one-node.next) ;;
 		install.sh|one-node|updater.sh|firewall.sh|docker-compose.yml|previous) ;;
 		*)
 			die "${INSTALL_DIR} holds files that are not One Node's (${install_entry##*/}); install into another directory with ONE_NODE_INSTALL_DIR, for example ONE_NODE_INSTALL_DIR=${INSTALL_DIR}/node"
@@ -401,21 +401,18 @@ validate_managed_native_unit() {
 		[ "$(grep -Fxc "$unit_record" "$UNIT_FILE")" -eq 1 ] ||
 			die "one-node.service is not a recognized One Node unit"
 	done
-	# Root-run units work in the install directory; service-account units work
-	# in the state directory and hand it over with exactly one managed chown.
+	# The unit works in the state directory and hands it to the service account
+	# with exactly one managed chown; no other lifecycle command is ours.
+	for unit_record in \
+		"WorkingDirectory=${ONE_NODE_STATE_DIR}" \
+		"ExecStartPre=+/bin/chown -hR one-node:one-node ${ONE_NODE_STATE_DIR}"
+	do
+		[ "$(grep -Fxc "$unit_record" "$UNIT_FILE")" -eq 1 ] ||
+			die "one-node.service is not a recognized One Node unit"
+	done
 	[ "$(grep -c '^WorkingDirectory=' "$UNIT_FILE")" -eq 1 ] ||
 		die "one-node.service is not a recognized One Node unit"
-	managed_start_pre="ExecStartPre=+/bin/chown -hR one-node:one-node ${ONE_NODE_STATE_DIR}"
-	if grep -Fxq "WorkingDirectory=${INSTALL_DIR}" "$UNIT_FILE"; then
-		unit_start_pre_count=0
-	elif grep -Fxq "WorkingDirectory=${ONE_NODE_STATE_DIR}" "$UNIT_FILE"; then
-		unit_start_pre_count=$(grep -Fxc "$managed_start_pre" "$UNIT_FILE" || true)
-		[ "$unit_start_pre_count" -le 1 ] ||
-			die "one-node.service contains unmanaged lifecycle commands"
-	else
-		die "one-node.service is not a recognized One Node unit"
-	fi
-	if [ "$(grep -Ec '^(ExecStartPre|ExecStartPost|ExecStop|ExecStopPost|ExecReload)=' "$UNIT_FILE" || true)" -ne "$unit_start_pre_count" ]; then
+	if [ "$(grep -Ec '^(ExecStartPre|ExecStartPost|ExecStop|ExecStopPost|ExecReload)=' "$UNIT_FILE" || true)" -ne 1 ]; then
 		die "one-node.service contains unmanaged lifecycle commands"
 	fi
 }

@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEST_TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEST_TEMP_DIR"' EXIT HUP INT TERM
 
-INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
+INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/native.sh install/docker.sh install/readiness.sh install/main.sh"
 UNINSTALL_MODULES="install/common.sh install/firewall.sh uninstall/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh uninstall/main.sh"
 UPGRADE_MODULES="install/common.sh shared/manifest.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/docker.sh install/readiness.sh upgrade/common.sh upgrade/manifest.sh upgrade/native.sh upgrade/docker.sh upgrade/rollback.sh upgrade/main.sh"
 
@@ -25,20 +25,9 @@ if grep -R -F 'voiceofhu/one-node-node/releases' "$ROOT_DIR/scripts" >/dev/null;
 fi
 grep -F 'https://raw.githubusercontent.com/voiceofhu/one-action/${action_commit}/node/uninstall.sh' \
 	"$ROOT_DIR/scripts/install/host.sh" >/dev/null
-if grep -R -F 'voiceofhu/one-node-action' \
-	"$ROOT_DIR/install.sh" "$ROOT_DIR/upgrade.sh" "$ROOT_DIR/uninstall.sh" \
-	"$ROOT_DIR/scripts" >/dev/null; then
-	printf '%s\n' "Node lifecycle still uses the legacy Action repository" >&2
-	exit 1
-fi
 "$ROOT_DIR/scripts/bundle-dev-installers.sh" "$TEST_TEMP_DIR/dist"
 sh -n "$TEST_TEMP_DIR/dist/install.sh" "$TEST_TEMP_DIR/dist/uninstall.sh"
 grep -F 'INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"' "$TEST_TEMP_DIR/dist/install.sh" >/dev/null
-if grep -E '/opt/one-node-node|one-node-node\.service|manifest_load_legacy' \
-	"$TEST_TEMP_DIR/dist/install.sh" >/dev/null; then
-	printf '%s\n' "bundled installer contains removed legacy support" >&2
-	exit 1
-fi
 for module in $(printf '%s\n' "$INSTALL_MODULES $UNINSTALL_MODULES $UPGRADE_MODULES" | tr ' ' '\n' | sort -u); do
 	sh -n "$ROOT_DIR/scripts/$module"
 done
@@ -52,35 +41,6 @@ mode_fixture="$TEST_TEMP_DIR/mode-fixture"
 : >"$mode_fixture"
 chmod 0600 "$mode_fixture"
 [ "$(file_mode "$mode_fixture")" = "600" ]
-
-historical_manifest="$TEST_TEMP_DIR/historical-installation"
-printf '%s\n' \
-	'format=one-node-manifest' \
-	'mode=native' \
-	'state_dir=/var/lib/one-node' \
-	'desired_config_revision=3' \
-	'desired_bindings_revision=8' \
-	'current_version=26.824.1500' \
-	'current_binary_path=/opt/one-node/one-node' \
-	'current_binary_sha256=0000000000000000000000000000000000000000000000000000000000000000' \
-	'current_image=' \
-	'previous_version=' \
-	'previous_binary_path=' \
-	'previous_binary_sha256=' \
-	'previous_image=' \
-	'owned_path=/opt/one-node' \
-	'owned_path=/opt/one-node/.env' \
-	'owned_path=/opt/one-node/.installation' \
-	'owned_path=/opt/one-node/one-node' \
-	'owned_path=/etc/systemd/system/one-node.service' >"$historical_manifest"
-chmod 0600 "$historical_manifest"
-manifest_load "$historical_manifest"
-[ "$MANIFEST_HISTORICAL_BINDINGS_REVISION" = 8 ]
-manifest_write "$historical_manifest"
-if grep -q '^desired_bindings_revision=' "$historical_manifest"; then
-	printf '%s\n' 'historical bindings revision was not removed during manifest migration' >&2
-	exit 1
-fi
 
 upgrade_installer="$TEST_TEMP_DIR/upgrade-install.sh"
 : >"$upgrade_installer"
@@ -280,22 +240,12 @@ grep -F 'MANIFEST_RECORD_PATH="${MANIFEST_INSTALL_DIR}/.installation"' \
 	"$ROOT_DIR/scripts/shared/manifest.sh" >/dev/null
 grep -F 'persist_management_installer' "$ROOT_DIR/upgrade.sh" >/dev/null
 grep -F 'version --product-name' "$ROOT_DIR/scripts/install/files.sh" >/dev/null
-if grep -F 'version --name' "$ROOT_DIR/scripts/install/files.sh" >/dev/null; then
-	fail "native installer still reads the sing-box core version as its product release"
-fi
 grep -F 'version --product-name' "$ROOT_DIR/scripts/install/docker.sh" >/dev/null
-if grep -F 'version --name' "$ROOT_DIR/scripts/install/docker.sh" >/dev/null; then
-	fail "Docker installer still reads the sing-box core version as its product release"
-fi
 grep -F 'INSTALL_MANIFEST_KIND="missing"' \
 	"$ROOT_DIR/scripts/install/host.sh" >/dev/null
 grep -F 'INSTALL_DIR="${ONE_NODE_INSTALL_DIR:-/opt/one-node}"' "$ROOT_DIR/scripts/install/config.sh" >/dev/null
 grep -F 'UNIT_FILE="/etc/systemd/system/one-node.service"' \
 	"$ROOT_DIR/scripts/install/config.sh" >/dev/null
-if grep -R -E '/opt/one-node-node|one-node-node\.service' \
-	"$ROOT_DIR/scripts/install" >/dev/null; then
-	fail "installer still references the pre-rename runtime layout"
-fi
 (
 	# shellcheck disable=SC1090
 	. "$ROOT_DIR/scripts/shared/manifest.sh"
@@ -359,11 +309,6 @@ fi
 )
 grep -F 'rm -rf -- "$MANIFEST_STATE_DIR"' \
 	"$ROOT_DIR/scripts/uninstall/paths.sh" >/dev/null
-if grep -R -F 'pre-existing state retained' \
-	"$ROOT_DIR/uninstall.sh" "$ROOT_DIR/scripts/uninstall" >/dev/null; then
-	printf '%s\n' "uninstaller still retains pre-existing One Node state" >&2
-	exit 1
-fi
 (
 	# A state directory that predates the installation is absent from the
 	# owned-path list, but uninstall must still validate and remove it.
@@ -465,23 +410,6 @@ fi
 	ensure_docker_bootstrap_env
 	[ -f "$BOOTSTRAP_ENV_FILE" ] && [ ! -s "$BOOTSTRAP_ENV_FILE" ]
 	[ "$(file_mode "$BOOTSTRAP_ENV_FILE")" = 600 ]
-)
-(
-	# Native keeps the token in the systemd EnvironmentFile it removes it from.
-	# shellcheck disable=SC1090
-	. "$ROOT_DIR/scripts/install/files.sh"
-	native_root="$TEST_TEMP_DIR/native-layout"
-	install -d -m 0700 "$native_root"
-	ENV_FILE="$native_root/.env"
-	ENV_SOURCE="$native_root/one-node.env"
-	BOOTSTRAP_ENV_FILE=""
-	ONE_NODE_ID=7
-	ONE_NODE_STATE_DIR=/var/lib/one-node
-	ONE_NODE_SERVER="grpcs://control.example:443"
-	ONE_NODE_BOOTSTRAP_TOKEN=token
-	write_environment_source
-	grep -Fx "CONTROL_BOOTSTRAP_ENV_FILE=\"${ENV_FILE}\"" "$ENV_SOURCE" >/dev/null
-	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="token"' "$ENV_SOURCE" >/dev/null
 )
 (
 	# Full uninstall removes only One Node's own tuning files.

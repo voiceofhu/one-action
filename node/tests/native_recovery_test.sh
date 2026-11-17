@@ -23,7 +23,6 @@ fail() {
 . "$ROOT_DIR/scripts/install/updater.sh"
 . "$ROOT_DIR/scripts/install/firewall.sh"
 . "$ROOT_DIR/scripts/install/native.sh"
-. "$ROOT_DIR/scripts/install/native_reconfigure.sh"
 
 ensure_native_service_user() { :; }
 
@@ -84,8 +83,9 @@ configure_case() {
 write_managed_unit() {
 	printf '%s\n' \
 		'[Service]' \
-		"WorkingDirectory=${INSTALL_DIR}" \
+		"WorkingDirectory=${ONE_NODE_STATE_DIR}" \
 		"EnvironmentFile=${INSTALL_DIR}/.env" \
+		"ExecStartPre=+/bin/chown -hR one-node:one-node ${ONE_NODE_STATE_DIR}" \
 		"ExecStart=${INSTALL_DIR}/one-node start" >"$UNIT_FILE"
 	chmod 0644 "$UNIT_FILE"
 }
@@ -102,30 +102,21 @@ systemctl() {
 	esac
 }
 
-restart_reconfigured_runtime() {
-	grep -Fx 'NODE_NODE_ID="41"' "$ENV_FILE" >/dev/null || return 1
-	grep -Fx 'CONTROL_ADDR="grpcs://new.example:443"' "$ENV_FILE" >/dev/null || return 1
-	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="new-token"' "$ENV_FILE" >/dev/null || return 1
-	systemctl daemon-reload &&
-		systemctl enable one-node.service &&
-		systemctl restart one-node.service
-}
-
 wait_for_ready_heartbeat() {
 	[ ! -e "$IDENTITY_FILE" ] || return 1
 	[ ! -e "$RUNTIME_STATE_FILE" ] || return 1
 	printf '%s\n' '{"node_id":"41","state":"active"}' >"$IDENTITY_FILE"
 	printf '%s\n' '{"config":"fresh"}' >"$RUNTIME_STATE_FILE"
 	chmod 0600 "$IDENTITY_FILE" "$RUNTIME_STATE_FILE"
-	awk '!/^CONTROL_BOOTSTRAP_TOKEN=/' "$ENV_FILE" >"$ENV_FILE.ready"
-	chmod 0600 "$ENV_FILE.ready"
-	mv "$ENV_FILE.ready" "$ENV_FILE"
+	: >"$BOOTSTRAP_ENV_FILE"
 }
 
 prepare_desired_native() {
 	TEMP_DIR=$(mktemp -d "${CASE_DIR}/desired.XXXXXX")
 	BINARY_SOURCE="${TEMP_DIR}/one-node"
 	UNIT_SOURCE="${TEMP_DIR}/one-node.service"
+	BOOTSTRAP_ENV_SOURCE="${TEMP_DIR}/bootstrap.env"
+	BOOTSTRAP_ENV_FILE="${ONE_NODE_STATE_DIR}/bootstrap.env"
 	printf '%s\n' \
 		'#!/bin/sh' \
 		'case "$1:$2" in' \
@@ -176,68 +167,4 @@ run_stale_unit_recovery() (
 		fail "replacement service was not enabled"
 )
 
-run_upgrade_rollback() (
-	configure_case rollback
-	install -d -m 0755 "$INSTALL_DIR"
-	install -d -m 0700 "$ONE_NODE_STATE_DIR"
-	printf '%s\n' \
-		'#!/bin/sh' \
-		'case "$1:$2" in' \
-		'  version:--product-name) printf "%s\\n" "26.808.2100" ;;' \
-		'  version:--name) printf "%s\\n" "1.13.17" ;;' \
-		'  *) exit 1 ;;' \
-		'esac' >"$MANIFEST_BINARY_PATH"
-	chmod 0755 "$MANIFEST_BINARY_PATH"
-	printf '%s\n' 'NODE_NODE_ID="40"' 'CONTROL_ADDR="grpc://old.example:27521"' >"$ENV_FILE"
-	chmod 0600 "$ENV_FILE"
-	printf '%s\n' '{"node_id":"40","state":"active"}' >"$ONE_NODE_STATE_DIR/node-secret"
-	chmod 0600 "$ONE_NODE_STATE_DIR/node-secret"
-	write_managed_unit
-	old_sha256=$(sha256sum "$MANIFEST_BINARY_PATH" | awk '{ print $1 }')
-	manifest_reset
-	MANIFEST_FORMAT=$MANIFEST_FORMAT_NAME
-	MANIFEST_MODE=native
-	MANIFEST_STATE_DIR=$ONE_NODE_STATE_DIR
-	MANIFEST_DESIRED_CONFIG_REVISION=3
-	MANIFEST_CURRENT_VERSION=26.808.2100
-	MANIFEST_CURRENT_BINARY_PATH=$MANIFEST_BINARY_PATH
-	MANIFEST_CURRENT_BINARY_SHA256=$old_sha256
-	for owned_path in \
-		"$MANIFEST_INSTALL_DIR" "$MANIFEST_ENV_PATH" "$MANIFEST_RECORD_PATH" \
-		"$MANIFEST_STATE_DIR" "$MANIFEST_BINARY_PATH" "$MANIFEST_UNIT_PATH" \
-		"$MANIFEST_FIREWALL_PATH" "$MANIFEST_FIREWALL_SERVICE_PATH" \
-		"$MANIFEST_FIREWALL_PATH_UNIT_PATH"
-	do
-		manifest_append_owned_path "$owned_path"
-	done
-	MANIFEST_OWNED_COUNT=9
-	manifest_write "$INSTALL_RECORD"
-	cp "$MANIFEST_BINARY_PATH" "${CASE_DIR}/binary.before"
-	cp "$ENV_FILE" "${CASE_DIR}/env.before"
-	cp "$INSTALL_RECORD" "${CASE_DIR}/manifest.before"
-	cp "$UNIT_FILE" "${CASE_DIR}/unit.before"
-	cp "$ONE_NODE_STATE_DIR/node-secret" "${CASE_DIR}/identity.before"
-
-	validate_install_target
-	prepare_desired_native
-	wait_for_ready_heartbeat() {
-		printf '%s\n' changed >"$ONE_NODE_STATE_DIR/node-secret"
-		chmod 0600 "$ONE_NODE_STATE_DIR/node-secret"
-		return 1
-	}
-	set +e
-	(reconfigure_native_installation) >"${CASE_DIR}/rollback.log" 2>&1
-	reconfigure_status=$?
-	set -e
-	[ "$reconfigure_status" -ne 0 ] || fail "failed upgrade returned success"
-	grep -F 'the previous installation was restored' "${CASE_DIR}/rollback.log" >/dev/null
-	cmp -s "$MANIFEST_BINARY_PATH" "${CASE_DIR}/binary.before" || fail "binary rollback failed"
-	cmp -s "$ENV_FILE" "${CASE_DIR}/env.before" || fail "environment rollback failed"
-	cmp -s "$INSTALL_RECORD" "${CASE_DIR}/manifest.before" || fail "manifest rollback failed"
-	cmp -s "$UNIT_FILE" "${CASE_DIR}/unit.before" || fail "unit rollback failed"
-	cmp -s "$ONE_NODE_STATE_DIR/node-secret" "${CASE_DIR}/identity.before" ||
-		fail "identity rollback failed"
-)
-
 run_stale_unit_recovery
-run_upgrade_rollback

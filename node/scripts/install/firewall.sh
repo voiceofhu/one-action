@@ -22,32 +22,16 @@ record_host_firewall_manifest_paths() {
 	done
 }
 
-write_host_firewall_environment() {
-	firewall_env_source=$(mktemp "${ENV_FILE}.firewall.XXXXXX")
-	chmod 0600 "$firewall_env_source"
-	sed '/^NODE_FIREWALL_REQUEST_FILE=/d' "$ENV_FILE" >"$firewall_env_source"
-	printf '%s\n' "NODE_FIREWALL_REQUEST_FILE=\"${FIREWALL_REQUEST_FILE}\"" >>"$firewall_env_source"
-	replace_managed_file "$firewall_env_source" "$ENV_FILE" 0600 || {
-		rm -f -- "$firewall_env_source"
-		die "unable to enable the host firewall in the One Node environment"
-	}
-	rm -f -- "$firewall_env_source"
-}
-
 enable_host_firewall_for_upgrade() {
 	node_role_is_monitor && return 0
 	configure_host_firewall
-	# A new table starts with every managed port closed. When an upgrade adds
-	# the firewall to an install that never had it, the running runtime still
-	# serves its ports, so keep the range open until the new runtime replaces
-	# it with its own port list.
+	# A new table starts with every managed port closed. When the table is gone
+	# (a flushed ruleset), the running runtime still serves its ports, so keep
+	# the range open until the new runtime replaces it with its own port list.
 	host_firewall_table_existed=false
 	if command -v nft >/dev/null 2>&1 && nft -nn list table inet one_node >/dev/null 2>&1; then
 		host_firewall_table_existed=true
 	fi
-	write_host_firewall_environment
-	record_host_firewall_manifest_paths
-	manifest_write "$INSTALL_RECORD" || die "unable to record the host firewall"
 	install_host_firewall
 	if [ "$host_firewall_table_existed" = false ]; then
 		stage_host_firewall_transition || die "unable to keep current runtime ports open while enabling the host firewall"
@@ -310,10 +294,9 @@ write_table_source() {
 	write_restricted_chain >>"$target"
 }
 
-# Chain input is re-rendered in every transaction, which also migrates tables
-# from older installs (they dropped all of 20000-60000, loopback included). A
-# drop in any base chain is final, so it only covers unused ports of the
-# managed range that no co-hosted service may own.
+# Chain input is re-rendered in every transaction. A drop in any base chain is
+# final, so it only covers unused ports of the managed range that no co-hosted
+# service may own.
 write_input_chain() {
 	printf '%s\n' \
 		"add chain inet one_node input { type filter hook input priority -10; policy accept; }" \
@@ -329,8 +312,7 @@ write_input_chain() {
 }
 
 # The restricted base chain runs before chain input (priority -10), so its
-# drops win over the @tcp_ports/@udp_ports accepts. Re-adding it is a no-op,
-# which also upgrades tables created before it existed.
+# drops win over the @tcp_ports/@udp_ports accepts. Re-adding it is a no-op.
 write_restricted_chain() {
 	printf '%s\n' \
 		"add chain inet one_node restricted { type filter hook input priority -15; policy accept; }"
@@ -355,22 +337,12 @@ validate_table() {
 initialize_table() {
 	if table=$(nft -nn list table "$table_family" "$table_name" 2>/dev/null); then
 		validate_table "$table" || die "existing nftables table inet one_node is not managed by One Node"
-		table_existed=true
 		return
 	fi
 	temporary=$(mktemp "${firewall_dir}/.table.XXXXXX")
 	trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
 	write_table_source "$temporary"
 	nft -f "$temporary" || die "unable to initialize nftables table inet one_node"
-	rm -f -- "$temporary"
-	trap - EXIT HUP INT TERM
-}
-
-migrate_input_chain() {
-	temporary=$(mktemp "${firewall_dir}/.input.XXXXXX")
-	trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
-	write_input_chain >"$temporary"
-	nft -f "$temporary" || die "unable to update chain input of nftables table inet one_node"
 	rm -f -- "$temporary"
 	trap - EXIT HUP INT TERM
 }
@@ -607,14 +579,8 @@ if [ "${1:-}" = "--remove-host-rules" ]; then
 fi
 
 install -d -m 0700 "$firewall_dir"
-table_existed=false
 initialize_table
-if [ "${1:-}" = "--initialize" ]; then
-	# Installs and upgrades bring an existing table's input chain up to date
-	# right away instead of at the runtime's next request.
-	[ "$table_existed" = false ] || migrate_input_chain
-	exit 0
-fi
+[ "${1:-}" != "--initialize" ] || exit 0
 
 processing_request=true
 [ -f "$request_file" ] && [ ! -L "$request_file" ] || die "request is missing or unsafe"
@@ -625,7 +591,7 @@ request_id=$(sed -n 's/^request_id=//p' "$request_file")
 request_lines=$(wc -l <"$request_file" | tr -d ' ')
 restricted_lines=$(grep -c '^restricted=' "$request_file" || true)
 hop_lines=$(grep -c '^udp_hops=' "$request_file" || true)
-# Older nodes send three lines; restricted= and udp_hops= are optional.
+# Three lines are required; restricted= and udp_hops= are optional.
 [ "$request_lines" = $((3 + restricted_lines + hop_lines)) ] && [ "$restricted_lines" -le 1 ] && [ "$hop_lines" -le 1 ] ||
 	die "request has an invalid field count"
 tcp_ports=$(sed -n 's/^tcp_ports=//p' "$request_file")
@@ -699,11 +665,10 @@ EOF
 }
 
 # Removes only the ufw/firewalld rules the installed firewall script recorded
-# as its own. Scripts from older installs never added any and lack the flag.
+# as its own.
 remove_host_firewall_rules() {
 	configure_host_firewall
 	[ -f "$FIREWALL_FILE" ] && [ -x "$FIREWALL_FILE" ] && [ ! -L "$FIREWALL_FILE" ] || return 0
-	grep -Fq -- '--remove-host-rules' "$FIREWALL_FILE" || return 0
 	ONE_NODE_FIREWALL_HOST_RULES="${INSTALL_DIR}/.firewall-host-rules" "$FIREWALL_FILE" --remove-host-rules ||
 		log "firewall: warning: unable to remove ufw/firewalld rules added by One Node"
 }

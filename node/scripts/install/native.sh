@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# The unit text and the service account live in files.sh because the upgrade
-# entrypoint loads files.sh but not this module, and upgrades rewrite both.
+# The unit text lives in files.sh because the upgrade entrypoint loads files.sh
+# but not this module, and upgrades rewrite the unit.
 
 install_native_runtime() {
 	ensure_native_service_user || die "unable to create the ${NATIVE_SERVICE_USER} service account"

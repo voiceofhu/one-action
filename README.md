@@ -18,7 +18,7 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 |---|---|---|
 | `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、ip、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
-| `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node（PC 客户端）：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
+| `make deploy-<key>-pc` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node（PC 客户端）：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-runtime` | 标签 `deploy/browser-runtime/<version>` → `browser-runtime.yml` | 本地预编译的 One Browser Chromium 运行时包（macOS/Windows/Linux × arm64/x64）+ `SHA256SUMS`，公开 One Action Release `one-browser-runtime-v<version>`（见「Browser Chromium 运行时」） |
 
@@ -131,7 +131,7 @@ flowchart TD
   可选 Variables `DEPLOY_URL`（默认取清单公网地址）、`DEPLOY_REMOTE_DIR`（默认 `/opt/one-<key>`）。
 - 服务器预置可写部署目录、`.env`、Docker Compose、curl、flock 和外部数据库网络（默认 `db-networks`）；
   数据库须事先初始化，部署不会运行 SQL。服务环境配置以各 Backend README 和 `.env.example` 为准。
-- 新增同类产品：在 `products.json` 加一条，复制一对入口 workflow 并改 `product:`，在 `make/` 加两个目标，
+- 新增同类产品：在 `products.json` 加一条，复制一对入口 workflow 并改 `product:`，把 key 加进 `make/deploy.mk` 的 `SERVER_PRODUCTS`，
   并把 `<key>|<key>-web` 加到 `scripts/validate.sh` 的产品范围。
 
 ## 桌面客户端（apps.json）
@@ -159,7 +159,7 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 | mail | `voiceofhu/one-mail-app` | `../one-mail/pc` | `https://mail.aicbe.com` |
 | node | `voiceofhu/one-node-pc` | `../one-node/pc`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 
-- `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
+- `make deploy-<key>-pc` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
   `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后推送 `deploy/<key>-app/<version>` 标签固定精确源码 SHA。
 - 客户端仓库须提供 `scripts/update-version.mjs`；CI 在各平台打包前写入 package.json、`tauri.conf.json`、Cargo.toml 与 Cargo.lock 的版本。
 - 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：Go `onecore` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
@@ -360,7 +360,7 @@ scripts/release/     本地发布入口与上传辅助脚本
 scripts/deploy/      各产品 SSH、Registry、Compose 和 Web 部署脚本
 scripts/github/      CI 内读取并校验 deploy 标签（read-trigger.sh）
 tests/               各发布链的本地契约测试
-make/                Makefile 子模块
+make/                Makefile 子模块：config（变量）、deploy（发布目标）、validate（校验目标）、node（生命周期测试）
 ```
 
 本地 YAML、shell 和测试通过只能证明提交内容满足当前发布契约；GHCR Package 权限、Runner
@@ -371,7 +371,7 @@ make/                Makefile 子模块
 `make deploy-browser-server` 按 One Node Server 的流程校验源码、发布双架构镜像并部署。
 每次 Server 部署都会将镜像内配套 Web 切换到 `/opt/one-browser/web/current`；失败时同时回滚 Server 和 Web。
 `make deploy-browser-web` 只校验 Web、构建生产静态文件并通过 SSH 发布，失败回滚到上一目录，不构建或重启 Server。
-Web 目录通过只读挂载提供给 Server，两个工作流共用部署锁。旧入口 `deploy-app-server` 保留为 Server 入口别名。
+Web 目录通过只读挂载提供给 Server，两个工作流共用部署锁。
 
 先执行一次新版 Server 部署以建立持久化 Web 挂载，再使用独立 Web 发布。
 两条链使用 `one-browser-prod` environment，与 One Node Server 一样配置 `DEPLOY_HOST`、`DEPLOY_PORT`、

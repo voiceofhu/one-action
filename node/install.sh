@@ -5,7 +5,7 @@
 set -eu
 umask 077
 
-ONE_NODE_INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/native.sh install/native_reconfigure.sh install/docker.sh install/readiness.sh install/main.sh"
+ONE_NODE_INSTALL_MODULES="install/common.sh shared/manifest.sh uninstall/paths.sh uninstall/native.sh uninstall/docker.sh install/config.sh install/host.sh install/files.sh install/updater.sh install/firewall.sh install/tuning.sh install/native.sh install/docker.sh install/readiness.sh install/main.sh"
 ONE_NODE_ENTRYPOINT_KIND="install"
 ONE_NODE_ENTRYPOINT_MODULES=$ONE_NODE_INSTALL_MODULES
 ONE_NODE_INSTALLER_SOURCE=""

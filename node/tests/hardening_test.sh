@@ -203,49 +203,25 @@ reset_accounts() {
 	fi
 	grep -Fx "CONTROL_BOOTSTRAP_ENV_FILE=\"$BOOTSTRAP_ENV_FILE\"" "$ENV_SOURCE" >/dev/null
 	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="token"' "$BOOTSTRAP_ENV_SOURCE" >/dev/null
-	install_bootstrap_environment
-	cmp -s "$BOOTSTRAP_ENV_SOURCE" "$BOOTSTRAP_ENV_FILE" || fail "reconfiguration did not install the token"
-	[ "$(file_mode "$BOOTSTRAP_ENV_FILE")" = 600 ]
 )
 
-# --- Upgrade migrates a root-era native install.
+# --- Upgrade rewrites the native unit from the target release.
 (
 	reset_accounts
 	upgrade_root="$TEST_TEMP_DIR/native-upgrade"
 	install -d -m 0700 "$upgrade_root/opt" "$upgrade_root/state" "$upgrade_root/tmp"
 	INSTALL_DIR="$upgrade_root/opt"
-	ENV_FILE="$INSTALL_DIR/.env"
 	UNIT_FILE="$upgrade_root/one-node.service"
 	UPGRADE_TEMP_DIR="$upgrade_root/tmp"
 	ONE_NODE_STATE_DIR="$upgrade_root/state"
-	HOST_UPDATER_ENABLED=true
-	printf '%s\n' \
-		'NODE_NODE_ID="7"' \
-		"CONTROL_BOOTSTRAP_ENV_FILE=\"$ENV_FILE\"" \
-		'CONTROL_BOOTSTRAP_TOKEN="pending"' \
-		'LOG_LEVEL="info"' >"$ENV_FILE"
-	chmod 0600 "$ENV_FILE"
-	printf '%s\n' '[Service]' 'User=root' >"$UNIT_FILE"
+	printf '%s\n' '[Service]' 'User=one-node' >"$UNIT_FILE"
 	SYSTEMCTL_LOG="$upgrade_root/systemctl.log"
 	systemctl() { printf '%s\n' "$*" >>"$SYSTEMCTL_LOG"; }
-	migrate_native_service_hardening || fail "native hardening migration failed"
-	grep -Fx 'User=one-node' "$UNIT_FILE" >/dev/null || fail "upgrade kept the root unit"
+	refresh_native_unit || fail "native unit refresh failed"
+	cmp -s "$UPGRADE_TEMP_DIR/one-node.service" "$UNIT_FILE" || fail "upgrade kept the previous unit"
+	grep -Fx "ExecStart=$INSTALL_DIR/one-node start" "$UNIT_FILE" >/dev/null || fail "upgrade wrote an incomplete unit"
+	[ "$(file_mode "$UNIT_FILE")" = 644 ]
 	grep -Fx 'daemon-reload' "$SYSTEMCTL_LOG" >/dev/null || fail "upgrade did not reload systemd"
-	grep -Fx 'CONTROL_BOOTSTRAP_TOKEN="pending"' "$ONE_NODE_STATE_DIR/bootstrap.env" >/dev/null ||
-		fail "pending token was not moved to the state directory"
-	if grep -F 'CONTROL_BOOTSTRAP_TOKEN' "$ENV_FILE" >/dev/null; then
-		fail "upgrade left the token in the install directory"
-	fi
-	grep -Fx "CONTROL_BOOTSTRAP_ENV_FILE=\"$ONE_NODE_STATE_DIR/bootstrap.env\"" "$ENV_FILE" >/dev/null ||
-		fail "upgrade did not repoint the bootstrap file"
-	[ "$(grep -c '^CONTROL_BOOTSTRAP_ENV_FILE=' "$ENV_FILE")" = 1 ]
-	grep -Fx 'NODE_NODE_ID="7"' "$ENV_FILE" >/dev/null || fail "upgrade dropped unrelated settings"
-	[ "$(file_mode "$ENV_FILE")" = 600 ]
-	[ -d "$ONE_NODE_STATE_DIR/firewall" ] && [ -d "$ONE_NODE_STATE_DIR/update" ]
-	cp "$ENV_FILE" "$upgrade_root/env.migrated"
-	migrate_native_service_hardening || fail "second migration failed"
-	cmp -s "$ENV_FILE" "$upgrade_root/env.migrated" || fail "migration is not idempotent"
-	[ -f "$ONE_NODE_STATE_DIR/bootstrap.env" ] || fail "second migration dropped the bootstrap file"
 )
 
 # --- #10 Docker keeps only network capabilities.

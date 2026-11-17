@@ -88,8 +88,8 @@ node_role_is_monitor() {
 	[ "${ONE_NODE_ROLE:-proxy}" = "monitor" ]
 }
 
-# The installed role lives in the root-owned environment file; installs that
-# predate roles are proxies.
+# The installed role lives in the root-owned environment file, which names
+# only the monitor role; everything else is a proxy.
 load_installed_node_role() {
 	ONE_NODE_ROLE="proxy"
 	if [ -f "$1" ] && [ ! -L "$1" ] && grep -Fx 'NODE_ROLE="monitor"' "$1" >/dev/null 2>&1; then

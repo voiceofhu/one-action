@@ -13,12 +13,11 @@ GENERATED_VERSION ?= $(shell node -e "\
   const hourMinute=String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');\
   process.stdout.write([year,monthDay,hourMinute].map(strip).join('.'));\
 ")
-USER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-NODE_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
+# Every release uses VERSION when given, else the generated timestamp version.
+RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 
 ONE_BROWSER_APP_REF ?= main
 ONE_BROWSER_APP_DIR ?= $(SOURCE_ROOT)/one-browser/pc
-BROWSER_APP_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
 # No generated default: the runtime version names an existing staging release.
 BROWSER_RUNTIME_VERSION = $(patsubst v%,%,$(strip $(VERSION)))
 CHROMIUM_REF ?=
@@ -48,17 +47,3 @@ export CHROMIUM_REF
 export ONE_NODE_REPOSITORY ONE_NODE_REF
 export ONE_NODE_DIR
 export VERSION ENVIRONMENT PUBLISH DEPLOY
-
-BROWSER_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-
-OBJECT_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-
-NOTIFY_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-
-PAY_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-AMZ_RELEASE_VERSION = $(PAY_RELEASE_VERSION)
-MAIL_RELEASE_VERSION = $(PAY_RELEASE_VERSION)
-
-VPS_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))
-IP_RELEASE_VERSION = $(VPS_RELEASE_VERSION)
-TEMPLATE_RELEASE_VERSION = $(patsubst v%,%,$(strip $(if $(VERSION),$(VERSION),$(GENERATED_VERSION))))

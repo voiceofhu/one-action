@@ -18,24 +18,6 @@ main() {
 	validate_install_target
 	# Host sysctl changes wait until the install target is known to be safe.
 	apply_network_tuning
-	if [ "$INSTALL_OPERATION" = "reconfigure" ]; then
-		install_host_firewall
-		if [ "$INSTALL_MODE" = "native" ]; then
-			initialize_install_workspace
-			prepare_native_binary
-			write_native_source
-			reconfigure_native_installation
-		else
-			reconfigure_existing_installation
-		fi
-		install_persistent_installer
-		install_host_updater
-		if command -v entrypoint_cleanup >/dev/null 2>&1; then
-			entrypoint_cleanup
-			ONE_NODE_ENTRYPOINT_TEMP_DIR=""
-		fi
-		return
-	fi
 	initialize_install_workspace
 
 	if [ "$INSTALL_MODE" = "native" ]; then

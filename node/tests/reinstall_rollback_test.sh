@@ -293,8 +293,8 @@ run_interrupted_backup_restores() (
 	assert_backup_removed
 )
 
-# Recovery without a manifest recognizes both the legacy root unit and the
-# service-account unit, and still rejects foreign lifecycle commands.
+# Recovery without a manifest recognizes the service-account unit and rejects
+# foreign lifecycle commands and units that work outside the state directory.
 run_unit_recognition() (
 	configure_case units
 	UNIT_SOURCE="${CASE_DIR}/generated.service"
@@ -307,10 +307,8 @@ run_unit_recognition() (
 	fi
 	printf '%s\n' '[Service]' "WorkingDirectory=${INSTALL_DIR}" \
 		"EnvironmentFile=${INSTALL_DIR}/.env" "ExecStart=${INSTALL_DIR}/one-node start" >"$UNIT_FILE"
-	(validate_managed_native_unit) || fail "legacy root unit was not recognized"
-	printf '%s\n' "ExecStartPre=+/bin/chown -hR one-node:one-node ${ONE_NODE_STATE_DIR}" >>"$UNIT_FILE"
 	if (validate_managed_native_unit) >/dev/null 2>&1; then
-		fail "legacy unit with a start hook was accepted"
+		fail "unit working in the install directory was accepted"
 	fi
 )
 

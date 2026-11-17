@@ -11,26 +11,9 @@ configure_host_updater() {
 	fi
 }
 
-migrate_host_updater_environment() {
-	[ "$HOST_UPDATER_ENABLED" = "true" ] || return 0
-	updater_env_source=$(mktemp "${ENV_FILE}.updater.XXXXXX")
-	chmod 0600 "$updater_env_source"
-	sed '/^NODE_UPGRADE_REQUEST_FILE=/d' "$ENV_FILE" >"$updater_env_source"
-	write_env_line="NODE_UPGRADE_REQUEST_FILE=\"${ONE_NODE_STATE_DIR}/update/request\""
-	printf '%s\n' "$write_env_line" >>"$updater_env_source"
-	replace_managed_file "$updater_env_source" "$ENV_FILE" 0600 || {
-		rm -f -- "$updater_env_source"
-		die "unable to enable the host updater in the One Node environment"
-	}
-	rm -f -- "$updater_env_source"
-}
-
+# Upgrades refresh the updater script and units of the target release.
 enable_host_updater_for_upgrade() {
 	configure_host_updater
-	[ "$HOST_UPDATER_ENABLED" = "true" ] || return 0
-	migrate_host_updater_environment
-	record_host_updater_manifest_paths
-	manifest_write "$INSTALL_RECORD" || die "unable to record the host updater"
 	install_host_updater
 }
 
@@ -163,8 +146,6 @@ TimeoutStartSec=20min
 Environment="ONE_NODE_UPDATE_DIR=${ONE_NODE_STATE_DIR}/update"
 Environment="ONE_NODE_INSTALLER=${INSTALL_DIR}/install.sh"
 ExecStart=${INSTALL_DIR}/updater.sh
-# A legacy updater may write its final root-owned status after migration.
-ExecStopPost=/bin/chown -hR --reference="${ONE_NODE_STATE_DIR}/update" "${ONE_NODE_STATE_DIR}/update"
 UMask=0077
 EOF
 

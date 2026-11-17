@@ -97,14 +97,11 @@ grep -F '60000' "$TEST_LOG" >/dev/null && exit 1
 grep -F 'add set inet one_node tcp_ports { type inet_service; flags interval; }' "$TEST_LOG" >/dev/null
 grep -F 'add element inet one_node' "$TEST_LOG" >/dev/null && exit 1
 
-# Installs and upgrades re-render an existing table's chain input in one
-# transaction, which migrates tables that dropped all of 20000-60000.
+# Initializing an existing table changes nothing; the runtime's next request
+# re-renders chain input.
 : >"$TEST_LOG"
 ONE_NODE_FIREWALL_DIR="${ONE_NODE_STATE_DIR}/firewall" "$FIREWALL_FILE" --initialize
-[ "$(grep -c '^-f ' "$TEST_LOG")" = 1 ]
-grep -Fx 'flush chain inet one_node input' "$TEST_LOG" >/dev/null
-grep -Fx 'add rule inet one_node input tcp dport 20000-29999 drop comment "one-node-unused-tcp"' "$TEST_LOG" >/dev/null
-grep -F 'add set inet one_node' "$TEST_LOG" >/dev/null && exit 1
+grep -q '^-f ' "$TEST_LOG" && exit 1
 grep -F "PathExists=${FIREWALL_REQUEST_FILE}" "$FIREWALL_PATH_FILE" >/dev/null
 
 cat >"$FIREWALL_REQUEST_FILE" <<'EOF'
@@ -218,7 +215,7 @@ grep -Fx 'flush chain inet one_node hop' "$TEST_LOG" >/dev/null
 grep -Fx 'add rule inet one_node hop fib daddr type local udp dport 24000-24099 redirect to :443 comment "one-node-port-hop"' "$TEST_LOG" >/dev/null
 grep -Fx 'add rule inet one_node restricted tcp dport 28443 ip saddr { 173.245.48.0/20 } accept comment "one-node-restricted-allow"' "$TEST_LOG" >/dev/null
 
-# Requests from older nodes (no udp_hops) clear the redirects.
+# Requests without the optional udp_hops line clear the redirects.
 : >"$TEST_LOG"
 printf '%s\n' 'request_id=66666666-6666-4666-8666-666666666666' 'tcp_ports=443' 'udp_ports=443' >"$FIREWALL_REQUEST_FILE"
 chmod 0600 "$FIREWALL_REQUEST_FILE"

@@ -40,8 +40,8 @@ docker_bootstrap_env_file() {
 	printf '%s\n' "${ONE_NODE_STATE_DIR}/bootstrap.env"
 }
 
-# Compose requires every env_file to exist; installs that predate the separate
-# bootstrap file get an empty one before the new compose file is used.
+# Compose requires every env_file to exist; a missing bootstrap file is
+# replaced by an empty one before the compose file is used.
 ensure_docker_bootstrap_env() {
 	bootstrap_env=$(docker_bootstrap_env_file)
 	[ ! -L "$bootstrap_env" ] || die "bootstrap environment file must not be a symlink"

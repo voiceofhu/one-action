@@ -242,7 +242,6 @@ set_product_version() {
 }
 
 write_environment_source() {
-	BOOTSTRAP_ENV_FILE=${BOOTSTRAP_ENV_FILE:-$ENV_FILE}
 	: >"$ENV_SOURCE"
 	chmod 0600 "$ENV_SOURCE"
 	write_env "NODE_NODE_ID" "$ONE_NODE_ID"
@@ -260,16 +259,11 @@ write_environment_source() {
 	write_env "CONTROL_ADDR" "$ONE_NODE_SERVER"
 	write_env "CONTROL_BOOTSTRAP_ENV_FILE" "$BOOTSTRAP_ENV_FILE"
 	write_env "LOG_LEVEL" "info"
-	if [ "$BOOTSTRAP_ENV_FILE" = "$ENV_FILE" ]; then
-		write_env "CONTROL_BOOTSTRAP_TOKEN" "$ONE_NODE_BOOTSTRAP_TOKEN"
-	else
-		# The token lives in the state directory, the only host path the node
-		# can write, so it can remove the token after enrollment.
-		BOOTSTRAP_ENV_SOURCE=${BOOTSTRAP_ENV_SOURCE:-${ENV_SOURCE}.bootstrap}
-		: >"$BOOTSTRAP_ENV_SOURCE"
-		chmod 0600 "$BOOTSTRAP_ENV_SOURCE"
-		printf 'CONTROL_BOOTSTRAP_TOKEN="%s"\n' "$(escape_dotenv "$ONE_NODE_BOOTSTRAP_TOKEN")" >>"$BOOTSTRAP_ENV_SOURCE"
-	fi
+	# The token lives in the state directory, the only host path the node can
+	# write, so it can remove the token after enrollment.
+	: >"$BOOTSTRAP_ENV_SOURCE"
+	chmod 0600 "$BOOTSTRAP_ENV_SOURCE"
+	printf 'CONTROL_BOOTSTRAP_TOKEN="%s"\n' "$(escape_dotenv "$ONE_NODE_BOOTSTRAP_TOKEN")" >>"$BOOTSTRAP_ENV_SOURCE"
 }
 
 write_common_sources() {
@@ -325,9 +319,7 @@ install_common_files() {
 		install -m 0755 "$BINARY_SOURCE" "$BINARY_FILE"
 	fi
 	install -m 0600 "$ENV_SOURCE" "$ENV_FILE"
-	if [ "$BOOTSTRAP_ENV_FILE" != "$ENV_FILE" ]; then
-		install -m 0600 "$BOOTSTRAP_ENV_SOURCE" "$BOOTSTRAP_ENV_FILE"
-	fi
+	install -m 0600 "$BOOTSTRAP_ENV_SOURCE" "$BOOTSTRAP_ENV_FILE"
 	install -m 0600 "$RECORD_SOURCE" "$INSTALL_RECORD"
 }
 
@@ -356,147 +348,4 @@ replace_managed_file() {
 		return 1
 	fi
 	sync -f "$(dirname "$replacement_target")"
-}
-
-restart_reconfigured_runtime() {
-	case "$INSTALL_MODE" in
-	native)
-		ensure_native_service_user &&
-			systemctl daemon-reload &&
-			systemctl enable one-node.service &&
-			systemctl restart one-node.service &&
-			systemctl is-active --quiet one-node.service
-		;;
-	docker)
-		docker compose -f "$COMPOSE_FILE" up -d --force-recreate &&
-			docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" | grep -qx true
-		;;
-	*) return 1 ;;
-	esac
-}
-
-reset_registration_state_for_reenrollment() {
-	previous_node_id=""
-	if [ -f "$RECONFIGURE_ENV_BACKUP" ] && [ ! -L "$RECONFIGURE_ENV_BACKUP" ]; then
-		previous_node_id=$(sed -n 's/^NODE_NODE_ID="\([1-9][0-9]*\)"$/\1/p' \
-			"$RECONFIGURE_ENV_BACKUP")
-	fi
-	discarded_spools=""
-	for spool_name in traffic-spool access-event-spool; do
-		spool_dir="${ONE_NODE_STATE_DIR}/${spool_name}"
-		[ -e "$spool_dir" ] || continue
-		[ -d "$spool_dir" ] && [ ! -L "$spool_dir" ] ||
-			die "existing ${spool_name} directory is unsafe"
-		spool_node_id=""
-		pending_file="${spool_dir}/pending.jsonl"
-		if [ -e "$pending_file" ]; then
-			[ -f "$pending_file" ] && [ ! -L "$pending_file" ] ||
-				die "existing ${spool_name} pending file is unsafe"
-			spool_node_id=$(sed -n \
-				's/^.*"report_key":"\([1-9][0-9]*\):[^\"]*".*$/\1/p' \
-				"$pending_file" | sed -n '1p')
-		fi
-		if { [ -n "$previous_node_id" ] && [ "$previous_node_id" != "$ONE_NODE_ID" ]; } ||
-			{ [ -n "$spool_node_id" ] && [ "$spool_node_id" != "$ONE_NODE_ID" ]; }; then
-			rm -rf -- "$spool_dir"
-			discarded_spools="${discarded_spools} ${spool_name}"
-		fi
-	done
-	if [ -n "$discarded_spools" ]; then
-		log "discarded telemetry spool(s)${discarded_spools} before reconnecting as node $ONE_NODE_ID"
-	fi
-	rm -f -- "$IDENTITY_FILE" "$RUNTIME_STATE_FILE" ||
-		die "unable to reset the previous node registration state"
-	install_bootstrap_environment ||
-		die "unable to install the new bootstrap credential"
-	log "reset previous registration state; reconnecting as node $ONE_NODE_ID"
-}
-
-# Reconfiguration writes the new token into the state directory only after the
-# previous registration is gone.
-install_bootstrap_environment() {
-	[ -n "${BOOTSTRAP_ENV_FILE:-}" ] && [ "$BOOTSTRAP_ENV_FILE" != "$ENV_FILE" ] || return 0
-	[ -f "${BOOTSTRAP_ENV_SOURCE:-}" ] || return 1
-	[ ! -L "$BOOTSTRAP_ENV_FILE" ] || return 1
-	replace_managed_file "$BOOTSTRAP_ENV_SOURCE" "$BOOTSTRAP_ENV_FILE" 0600
-}
-
-restore_reconfiguration() {
-	restore_status=0
-	replace_managed_file "$RECONFIGURE_ENV_BACKUP" "$ENV_FILE" 0600 || restore_status=1
-	replace_managed_file "$RECONFIGURE_RECORD_BACKUP" "$INSTALL_RECORD" 0600 || restore_status=1
-	if [ "$RECONFIGURE_IDENTITY_EXISTED" = "true" ]; then
-		replace_managed_file "$RECONFIGURE_IDENTITY_BACKUP" "$IDENTITY_FILE" 0600 || restore_status=1
-	else
-		rm -f -- "$IDENTITY_FILE" || restore_status=1
-	fi
-	if [ "$RECONFIGURE_RUNTIME_STATE_EXISTED" = "true" ]; then
-		replace_managed_file "$RECONFIGURE_RUNTIME_STATE_BACKUP" "$RUNTIME_STATE_FILE" 0600 || restore_status=1
-	else
-		rm -f -- "$RUNTIME_STATE_FILE" || restore_status=1
-	fi
-	restart_reconfigured_runtime || restore_status=1
-	return "$restore_status"
-}
-
-on_reconfigure_exit() {
-	reconfigure_status=$?
-	trap - EXIT HUP INT TERM
-	if [ "$RECONFIGURE_COMMITTED" != "true" ]; then
-		[ "$reconfigure_status" -ne 0 ] || reconfigure_status=1
-		set +e
-		restore_reconfiguration
-		restore_status=$?
-		set -e
-		if [ "$restore_status" -ne 0 ]; then
-			log "registration update failed and the previous installation could not be fully restored"
-		elif [ "$reconfigure_status" -ne 0 ]; then
-			log "registration update failed; the previous installation was restored"
-		fi
-	fi
-	rm -rf -- "$RECONFIGURE_TEMP_DIR"
-	exit "$reconfigure_status"
-}
-
-reconfigure_existing_installation() {
-	RECONFIGURE_TEMP_DIR=$(mktemp -d "/tmp/one-node-reconfigure.XXXXXX")
-	chmod 0700 "$RECONFIGURE_TEMP_DIR"
-	RECONFIGURE_ENV_BACKUP="${RECONFIGURE_TEMP_DIR}/.env.previous"
-	RECONFIGURE_RECORD_BACKUP="${RECONFIGURE_TEMP_DIR}/installation.previous"
-	RECONFIGURE_IDENTITY_BACKUP="${RECONFIGURE_TEMP_DIR}/node-secret.previous"
-	RECONFIGURE_RUNTIME_STATE_BACKUP="${RECONFIGURE_TEMP_DIR}/runtime-active.previous"
-	RECONFIGURE_IDENTITY_EXISTED="false"
-	RECONFIGURE_RUNTIME_STATE_EXISTED="false"
-	RECONFIGURE_COMMITTED="false"
-
-	install -m 0600 "$ENV_FILE" "$RECONFIGURE_ENV_BACKUP"
-	install -m 0600 "$INSTALL_RECORD" "$RECONFIGURE_RECORD_BACKUP"
-	if [ -e "$IDENTITY_FILE" ]; then
-		install -m 0600 "$IDENTITY_FILE" "$RECONFIGURE_IDENTITY_BACKUP"
-		RECONFIGURE_IDENTITY_EXISTED="true"
-	fi
-	if [ -e "$RUNTIME_STATE_FILE" ]; then
-		install -m 0600 "$RUNTIME_STATE_FILE" "$RECONFIGURE_RUNTIME_STATE_BACKUP"
-		RECONFIGURE_RUNTIME_STATE_EXISTED="true"
-	fi
-	trap on_reconfigure_exit EXIT
-	trap 'exit 1' HUP INT TERM
-
-	ENV_SOURCE="${RECONFIGURE_TEMP_DIR}/.env.next"
-	BOOTSTRAP_ENV_FILE="${ONE_NODE_STATE_DIR}/bootstrap.env"
-	BOOTSTRAP_ENV_SOURCE="${RECONFIGURE_TEMP_DIR}/bootstrap.env.next"
-	write_environment_source
-	replace_managed_file "$ENV_SOURCE" "$ENV_FILE" 0600 ||
-		die "unable to replace the One Node environment"
-	MANIFEST_DESIRED_CONFIG_REVISION=$ONE_NODE_EXPECTED_CONFIG_REVISION
-	record_host_updater_manifest_paths
-	record_host_firewall_manifest_paths
-	manifest_write "$INSTALL_RECORD" || die "unable to update the installation manifest"
-	reset_registration_state_for_reenrollment
-	restart_reconfigured_runtime || die "unable to restart the existing $INSTALL_MODE runtime"
-	wait_for_ready_heartbeat || die "existing installation did not accept the updated registration"
-	log "firewall: active runtime ports applied"
-
-	RECONFIGURE_COMMITTED="true"
-	log "existing $INSTALL_MODE installation is registered as node $ONE_NODE_ID"
 }

@@ -1,4 +1,4 @@
-.PHONY: node-check node-bundle-installers deploy-node-server deploy-node deploy-node-pc
+.PHONY: node-check node-bundle-installers
 
 node-check:
 	@sh $(PROJECT_ROOT)/node/tests/scripts_test.sh
@@ -6,7 +6,6 @@ node-check:
 	@sh $(PROJECT_ROOT)/node/tests/latest_release_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/readiness_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/manager_test.sh
-	@sh $(PROJECT_ROOT)/node/tests/reconfigure_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/reset_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/native_recovery_test.sh
 	@sh $(PROJECT_ROOT)/node/tests/updater_test.sh
@@ -22,24 +21,3 @@ NODE_INSTALLER_DIST ?= $(PROJECT_ROOT)/node/dist
 
 node-bundle-installers:
 	@sh $(PROJECT_ROOT)/node/scripts/bundle-dev-installers.sh "$(NODE_INSTALLER_DIST)"
-
-deploy-node-server: DRY_RUN = $(DEPLOY_DRY_RUN)
-deploy-node-server:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/release-server.sh node
-
-deploy-node: DRY_RUN = $(DEPLOY_DRY_RUN)
-deploy-node:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/deploy-node-release.sh
-
-deploy-node-pc: DRY_RUN = $(DEPLOY_DRY_RUN)
-deploy-node-pc:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/release-app.sh node
-
-.PHONY: deploy-node-web
-deploy-node-web: DRY_RUN = $(DEPLOY_DRY_RUN)
-deploy-node-web:
-	@DRY_RUN="$(DRY_RUN)" VERSION="$(NODE_RELEASE_VERSION)" \
-		bash $(PROJECT_ROOT)/scripts/release/release-web.sh node

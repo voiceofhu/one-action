@@ -177,6 +177,7 @@ preflight_release_repository Web "$web_dir" "$web_branch"
 if [[ -n "$PRODUCT_CORE_REPOSITORY" ]]; then
   verify_checkout Core "$core_dir" "$PRODUCT_CORE_REPOSITORY" "$core_ref" "$core_ref_variable" \
     "the backend builds the shared module checked out next to it as ../core"
+  # shellcheck disable=SC2154 # set by verify_checkout (scripts/lib/checkout.sh)
   core_sha=$checkout_sha
 fi
 

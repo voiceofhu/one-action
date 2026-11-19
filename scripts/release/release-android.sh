@@ -83,6 +83,7 @@ git -C "$PROJECT_ROOT" fetch --no-tags origin '+refs/heads/main:refs/remotes/ori
 
 verify_checkout App "$app_dir" "$APP_REPOSITORY" "$app_ref" "$app_ref_variable" \
   "restore its Git metadata or set $app_dir_variable to a valid App checkout"
+# shellcheck disable=SC2154 # set by verify_checkout (scripts/lib/checkout.sh)
 app_sha=$checkout_sha
 [[ -f "$app_dir/android-signing/keystore.properties" ]] ||
   die "missing $app_dir/android-signing/keystore.properties (release keystore)"

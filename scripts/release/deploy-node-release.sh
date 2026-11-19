@@ -94,6 +94,7 @@ node_ref="$(git -C "$ONE_NODE_DIR" rev-parse HEAD)"
 
 verify_checkout Core "$ONE_NODE_CORE_DIR" "$ONE_NODE_CORE_REPOSITORY" "$ONE_NODE_CORE_REF" ONE_NODE_CORE_REF \
   'the node agent builds the shared module checked out next to it as ../core'
+# shellcheck disable=SC2154 # set by verify_checkout (scripts/lib/checkout.sh)
 core_ref=$checkout_sha
 
 make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \

@@ -83,17 +83,20 @@ require_tool cargo
 [[ -z "$APP_GO_VERSION_FILE" ]] || require_tool go
 verify_checkout App "$app_dir" "$APP_REPOSITORY" "$app_ref" "$app_ref_variable" \
   "restore its Git metadata or set $app_dir_variable to a valid App checkout"
+# shellcheck disable=SC2154 # set by verify_checkout (scripts/lib/checkout.sh)
 app_sha=$checkout_sha
 pins=("app_ref=$app_sha")
 if [[ -n "$APP_WEB_REPOSITORY" ]]; then
   verify_checkout Web "$web_dir" "$APP_WEB_REPOSITORY" "$web_ref" "$web_ref_variable" \
     'the App bundles the web checked out next to it as ../web'
+  # shellcheck disable=SC2154 # set by verify_checkout (scripts/lib/checkout.sh)
   web_sha=$checkout_sha
   pins+=("web_ref=$web_sha")
 fi
 if [[ -n "$APP_CORE_REPOSITORY" ]]; then
   verify_checkout Core "$core_dir" "$APP_CORE_REPOSITORY" "$core_ref" "$core_ref_variable" \
     'the App builds the shared core module checked out next to it as ../core'
+  # shellcheck disable=SC2154 # set by verify_checkout (scripts/lib/checkout.sh)
   core_sha=$checkout_sha
   pins+=("core_ref=$core_sha")
 fi

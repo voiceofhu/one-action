@@ -317,11 +317,12 @@ jobs:
           fi
 
   upload-release:
-    name: Upload draft GitHub Release
+    name: Publish GitHub Release
     needs:
       - prepare
       - build
       - build-portable
+      - publish-image
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     permissions:
@@ -407,82 +408,32 @@ jobs:
             done
           }
 
-          if release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
+          # Published in one call: gh uploads every asset before the release
+          # becomes visible, so nodes never see a partial one. A rerun only
+          # verifies; a draft left by an older run gets its assets and is published.
+          if ! release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
             --json body,assets,isDraft,isPrerelease 2>/dev/null)"; then
-            jq -e --arg body "$notes" '.body == $body and .isPrerelease == false' \
-              <<<"$release_json" >/dev/null
-            actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
-            if [[ "$(jq -r .isDraft <<<"$release_json")" == false ]]; then
-              [[ "$actual_assets" == "$expected_assets" ]]
-              existing_dir="$(mktemp -d)"
-              trap 'rm -rf "$existing_dir"' EXIT
-              gh release download "$RELEASE_TAG" --repo voiceofhu/one-action --dir "$existing_dir"
-              verify_assets "$existing_dir"
-              exit 0
-            fi
-            while IFS= read -r asset; do
-              [[ -z "$asset" ]] && continue
-              grep -Fxq -- "$asset" <<<"$expected_assets" || {
-                printf 'Unexpected draft Release asset: %s\n' "$asset" >&2
-                exit 1
-              }
-            done <<<"$actual_assets"
-          else
             gh release create "$RELEASE_TAG" \
+              "${assets[@]/#/dist/}" \
               --repo voiceofhu/one-action \
               --verify-tag \
-              --draft \
               --title one-node \
               --notes "$notes" \
               --latest=false
+          else
+            jq -e --arg body "$notes" '.body == $body and .isPrerelease == false' \
+              <<<"$release_json" >/dev/null
+            if [[ "$(jq -r .isDraft <<<"$release_json")" == true ]]; then
+              gh release upload "$RELEASE_TAG" "${assets[@]/#/dist/}" \
+                --repo voiceofhu/one-action --clobber
+              gh release edit "$RELEASE_TAG" --repo voiceofhu/one-action --draft=false --latest=false
+            fi
           fi
 
-          gh release upload "$RELEASE_TAG" \
-            "${assets[@]/#/dist/}" \
-            --repo voiceofhu/one-action \
-            --clobber
           readback_dir="$(mktemp -d)"
           trap 'rm -rf "$readback_dir"' EXIT
           gh release download "$RELEASE_TAG" --repo voiceofhu/one-action --dir "$readback_dir"
           verify_assets "$readback_dir"
-          release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
-            --json body,assets,isDraft,isPrerelease)"
-          actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
-          jq -e --arg body "$notes" \
-            '.body == $body and .isDraft == true and .isPrerelease == false' \
-            <<<"$release_json" >/dev/null
-          [[ "$actual_assets" == "$expected_assets" ]]
-
-  publish-release:
-    name: Publish verified GitHub Release
-    needs:
-      - prepare
-      - publish-image
-      - upload-release
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    permissions:
-      contents: write
-    steps:
-      - name: Publish verified draft
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NODE_SHA: ${{ needs.prepare.outputs.node_sha }}
-          RELEASE_TAG: one-node-v${{ needs.prepare.outputs.version }}
-          XRAY_VERSION: ${{ needs.prepare.outputs.xray_version }}
-          HYSTERIA_VERSION: ${{ needs.prepare.outputs.hysteria_version }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -Eeuo pipefail
-          read -r -a assets <<<"$RELEASE_ASSETS"
-          expected_assets="$(printf '%s\n' "${assets[@]}")"
-          notes="$(printf 'Node source: voiceofhu/one-node-node@%s\nData plane: Xray-core %s + Hysteria2 core %s\nDocker image: ghcr.io/voiceofhu/one-node:%s' \
-            "$NODE_SHA" "$XRAY_VERSION" "$HYSTERIA_VERSION" "$VERSION")"
-          gh release edit "$RELEASE_TAG" \
-            --repo voiceofhu/one-action \
-            --draft=false \
-            --latest=false
           release_json="$(gh release view "$RELEASE_TAG" --repo voiceofhu/one-action \
             --json body,assets,isDraft,isPrerelease)"
           actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"

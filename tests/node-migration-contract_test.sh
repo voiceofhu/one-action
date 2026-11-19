@@ -59,9 +59,11 @@ done
 [[ "$(job_timeout publish-image)" == 5 ]] || fail 'One Node image publication must time out at 5 minutes'
 upload_timeout="$(job_timeout upload-release)"
 [[ "$upload_timeout" =~ ^[0-9]+$ ]] && ((upload_timeout <= 8)) ||
-  fail 'One Node draft upload must time out within 8 minutes'
-release_timeout="$(job_timeout publish-release)"
-[[ "$release_timeout" == 2 ]] || fail 'One Node Release finalizer must time out at 2 minutes'
+  fail 'One Node Release publication must time out within 8 minutes'
+grep -Eq '^  publish-release:' "$WORKFLOW" &&
+  fail 'One Node Releases are published directly, without a draft finalizer job'
+grep -Fq -- '--draft \' "$WORKFLOW" &&
+  fail 'One Node Releases must not be created as drafts'
 
 [[ "$(grep -Ec '^[[:space:]]+- arch: (amd64|arm64)$' "$WORKFLOW")" == 2 ]] ||
   fail 'One Node build matrix must contain exactly amd64 and arm64'
@@ -103,7 +105,6 @@ require_text "$WORKFLOW" 'gh release create "$RELEASE_TAG"'
 require_text "$WORKFLOW" 'gh release upload "$RELEASE_TAG"'
 require_text "$WORKFLOW" 'gh release edit "$RELEASE_TAG"'
 require_text "$WORKFLOW" '- publish-image'
-require_text "$WORKFLOW" '- upload-release'
 require_text "$WORKFLOW" '"${assets[@]/#/dist/}"'
 require_text "$WORKFLOW" '--repo voiceofhu/one-action'
 require_text "$WORKFLOW" 'login=$(gh api user --jq .login)'

@@ -198,15 +198,24 @@ if [[ "$web_runtime" == static ]]; then
 fi
 compose docker-compose.yml.next up -d --no-deps --wait --wait-timeout 120 "${services[@]}"
 
+# A container without a health check counts as up once it runs, while the
+# Server may still be applying migrations before it listens: wait for the
+# readiness path for up to 120 s instead of trying once.
 local_ready() {
-  local container=$1 port=$2 path=$3 published_port
-  published_port="$(docker port "$container" "$port/tcp" 2>/dev/null | sed -n '1s/.*://p' || true)"
-  [[ -n "$published_port" ]] \
-    && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-      "http://127.0.0.1:$published_port$path" >/dev/null || {
-    docker logs --tail 120 "$container" >&2 || true
-    false
-  }
+  local container=$1 port=$2 path=$3 published_port attempt
+  for attempt in $(seq 1 60); do
+    published_port="$(docker port "$container" "$port/tcp" 2>/dev/null | sed -n '1s/.*://p' || true)"
+    if [[ -n "$published_port" ]] \
+      && curl --fail --silent --connect-timeout 2 --max-time 5 \
+        "http://127.0.0.1:$published_port$path" >/dev/null; then
+      return 0
+    fi
+    [[ "$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null)" == true ]] || break
+    sleep 2
+  done
+  printf '%s did not become ready on %s (attempt %s)\n' "$container" "$path" "$attempt" >&2
+  docker logs --tail 120 "$container" >&2 || true
+  false
 }
 local_ready "$container_name" "$service_port" "$ready_path"
 if [[ "$web_runtime" == next ]]; then

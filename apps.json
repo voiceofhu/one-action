@@ -21,6 +21,7 @@
   "node": {
     "title": "One Node App",
     "repository": "voiceofhu/one-node-app",
+    "web_repository": "voiceofhu/one-node-web",
     "source_dir": "one-node/app",
     "cargo_package": "one-node",
     "pnpm_version": "11.7.0",

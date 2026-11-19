@@ -161,7 +161,7 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 | --- | --- | --- | --- |
 | browser | `voiceofhu/one-browser-app` | `../one-browser/app`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
 | mail | `voiceofhu/one-mail-app` | `../one-mail/app` | `https://mail.aicbe.com` |
-| node | `voiceofhu/one-node-app` | `../one-node/app`（Web：`../one-node/web`，共享模块：`../one-node/core`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
+| node | `voiceofhu/one-node-app` | `../one-node/app`（Web：`../one-node/web`，随包内置；共享模块：`../one-node/core`） | 默认内置页面（离线版本）；设置里可切到远程版本 `https://marseo.eu.org/pc`，不可达时回落内置页面 |
 
 - `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
   `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后推送 `deploy/<key>-app/<version>` 标签固定精确源码 SHA。

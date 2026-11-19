@@ -109,6 +109,25 @@ git -C "$web_dir" config \
   "https://github.com/$PRODUCT_WEB_REPOSITORY.git"
 git -C "$web_dir" push -q -u origin main
 
+# A shared module (core_repository) is released as-is from a clean, pushed main.
+if [[ -n "$PRODUCT_CORE_REPOSITORY" ]]; then
+  core_dir="$test_dir/core"
+  core_bare="$test_dir/core-origin.git"
+  export "${product_env_prefix}_CORE_DIR=$core_dir"
+  git init -q --bare "$core_bare"
+  git init -q "$core_dir"
+  git -C "$core_dir" config user.name test
+  git -C "$core_dir" config user.email test@example.invalid
+  git -C "$core_dir" checkout -qb main
+  printf '%s\n' 'module example.invalid/core' '' 'go 1.25' >"$core_dir/go.mod"
+  git -C "$core_dir" add go.mod
+  git -C "$core_dir" commit -qm initial
+  git -C "$core_dir" remote add origin "https://github.com/$PRODUCT_CORE_REPOSITORY.git"
+  git -C "$core_dir" config url."file://$core_bare".insteadOf \
+    "https://github.com/$PRODUCT_CORE_REPOSITORY.git"
+  git -C "$core_dir" push -q -u origin main
+fi
+
 # Run from a temporary canonical One Action repository so the deploy tag
 # cannot touch the developer's real checkout.
 mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github" "$action_dir/scripts/lib" \
@@ -116,6 +135,7 @@ mkdir -p "$action_dir/scripts/release" "$action_dir/scripts/github" "$action_dir
 cp "$PROJECT_ROOT/products.json" "$action_dir/products.json"
 cp "$PROJECT_ROOT/scripts/lib/product.sh" "$action_dir/scripts/lib/product.sh"
 cp "$PROJECT_ROOT/scripts/lib/git-remote.sh" "$action_dir/scripts/lib/git-remote.sh"
+cp "$PROJECT_ROOT/scripts/lib/checkout.sh" "$action_dir/scripts/lib/checkout.sh"
 cp "$PROJECT_ROOT/scripts/release/release-server.sh" "$PROJECT_ROOT/scripts/release/trigger.sh" \
   "$action_dir/scripts/release/"
 cp "$PROJECT_ROOT/scripts/github/read-trigger.sh" "$action_dir/scripts/github/"
@@ -162,11 +182,17 @@ action_sha="$(git --git-dir="$action_bare" rev-parse refs/heads/main)"
 # The workflow side reads the pushed tag back exactly as Actions would.
 runner_dir="$test_dir/runner"
 git clone -q "$action_bare" "$runner_dir"
+pins=(backend_ref web_ref)
+expected=(version=26.815.1234 "backend_ref=$backend_sha" "web_ref=$web_sha")
+if [[ -n "$PRODUCT_CORE_REPOSITORY" ]]; then
+  pins+=(core_ref)
+  expected+=("core_ref=$(git --git-dir="$core_bare" rev-parse refs/heads/main)")
+fi
 GITHUB_REPOSITORY=voiceofhu/one-action GITHUB_REF_TYPE=tag GITHUB_REF="refs/tags/$tag" \
   GITHUB_SHA="$action_sha" \
-  bash -c 'cd "$1" && bash scripts/github/read-trigger.sh "$2-server" backend_ref web_ref' \
-  _ "$runner_dir" "$PRODUCT_KEY" >"$test_dir/trigger"
-printf '%s\n' version=26.815.1234 "backend_ref=$backend_sha" "web_ref=$web_sha" |
+  bash -c 'cd "$1" && shift && bash scripts/github/read-trigger.sh "$@"' \
+  _ "$runner_dir" "$PRODUCT_KEY-server" "${pins[@]}" >"$test_dir/trigger"
+printf '%s\n' "${expected[@]}" |
   cmp -s - "$test_dir/trigger" || {
   printf 'Deploy tag did not round-trip:\n' >&2
   cat "$test_dir/trigger" >&2

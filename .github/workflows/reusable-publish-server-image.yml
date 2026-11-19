@@ -36,6 +36,17 @@ name: Reusable Publish Server Image
       created_at:
         required: true
         type: string
+      # A shared Go module the backend replaces with ../core (products.json
+      # core_repository): checked out at core/ and passed to the build as the
+      # named context "core".
+      core_repository:
+        required: false
+        type: string
+        default: ""
+      core_sha:
+        required: false
+        type: string
+        default: ""
       # false: the image is built from its own Dockerfile alone (a backend that
       # does not serve the Web, or a Web image whose repository is passed as
       # backend_repository).
@@ -79,6 +90,17 @@ jobs:
           repository: ${{ inputs.backend_repository }}
           ref: ${{ inputs.backend_sha }}
           path: backend
+          token: ${{ secrets.source_read_token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact core source
+        if: ${{ inputs.core_repository != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.core_repository }}
+          ref: ${{ inputs.core_sha }}
+          path: core
           token: ${{ secrets.source_read_token }}
           fetch-depth: 1
           persist-credentials: false
@@ -143,6 +165,7 @@ jobs:
         with:
           context: backend
           file: backend/${{ inputs.dockerfile }}
+          build-contexts: ${{ inputs.core_repository != '' && 'core=core' || '' }}
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ inputs.image }}:build-${{ inputs.backend_sha }}-${{ inputs.web_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
@@ -154,6 +177,7 @@ jobs:
             one.action.revision=${{ inputs.action_sha }}
             one.action.repository=${{ github.repository }}
             one.web.revision=${{ inputs.web_sha }}
+            one.core.revision=${{ inputs.core_sha }}
             one.environment=prod
           provenance: false
           sbom: false

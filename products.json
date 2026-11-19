@@ -127,6 +127,7 @@
     "backend_language": "go",
     "backend_repository": "voiceofhu/one-node-server",
     "backend_package": "one-node-server",
+    "core_repository": "voiceofhu/one-node-core",
     "web_repository": "voiceofhu/one-node-web",
     "web_package": "one-node-web",
     "public_url": "https://marseo.eu.org",

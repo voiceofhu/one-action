@@ -7,6 +7,9 @@ source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
 ACTION_REPOSITORY='voiceofhu/one-action'
 # shellcheck source=scripts/lib/product.sh
 source "$PROJECT_ROOT/scripts/lib/product.sh"
+# shellcheck source=scripts/lib/checkout.sh
+source "$PROJECT_ROOT/scripts/lib/checkout.sh"
+die() { product_die "$@"; }
 
 [[ "$#" -eq 1 ]] || product_die 'usage: release-server.sh PRODUCT'
 load_product "$1"
@@ -19,6 +22,12 @@ backend_dir=${!backend_dir_variable:-$SOURCE_ROOT/$PRODUCT_NAME/backend}
 web_dir=${!web_dir_variable:-$SOURCE_ROOT/$PRODUCT_NAME/web}
 backend_repository=$PRODUCT_BACKEND_REPOSITORY
 web_repository=$PRODUCT_WEB_REPOSITORY
+# A shared module (products.json core_repository) is released as-is: it must
+# be clean and pushed; its HEAD is pinned as core_ref.
+core_dir_variable="${product_env_prefix}_CORE_DIR"
+core_dir=${!core_dir_variable:-$SOURCE_ROOT/$PRODUCT_NAME/core}
+core_ref_variable="${product_env_prefix}_CORE_REF"
+core_ref=${!core_ref_variable:-main}
 
 [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
   printf '%s\n' 'VERSION must contain three numeric components without leading zeroes' >&2
@@ -114,6 +123,7 @@ printf '%s\n' \
   "  web:              $web_repository@$web_head" \
   "  backend branch:   $backend_branch" \
   "  web branch:       $web_branch" \
+  "  core:             ${PRODUCT_CORE_REPOSITORY:-none}${PRODUCT_CORE_REPOSITORY:+ branch $core_ref from $core_dir}" \
   "  action:           $ACTION_REPOSITORY@$action_head" \
   "  trigger:          tag deploy/$PRODUCT_KEY-server/$VERSION"
 
@@ -164,6 +174,11 @@ preflight_release_repository() {
 
 preflight_release_repository Backend "$backend_dir" "$backend_branch"
 preflight_release_repository Web "$web_dir" "$web_branch"
+if [[ -n "$PRODUCT_CORE_REPOSITORY" ]]; then
+  verify_checkout Core "$core_dir" "$PRODUCT_CORE_REPOSITORY" "$core_ref" "$core_ref_variable" \
+    "the backend builds the shared module checked out next to it as ../core"
+  core_sha=$checkout_sha
+fi
 
 [[ "$(validate_source_repository Backend "$backend_dir" "$backend_repository" "$backend_manifest")" == "$backend_state" ]] || {
   printf '%s\n' 'Backend source changed before automatic formatting.' >&2
@@ -320,7 +335,14 @@ printf '%s\n' \
   "Published Backend source: $backend_repository@$backend_release_sha" \
   "Published Web source: $web_repository@$web_release_sha"
 
+pins=("backend_ref=$backend_release_sha" "web_ref=$web_release_sha")
+if [[ -n "$PRODUCT_CORE_REPOSITORY" ]]; then
+  [[ "$core_sha" == "$(git -C "$core_dir" rev-parse HEAD)" \
+    && -z "$(git -C "$core_dir" status --porcelain --untracked-files=all)" ]] ||
+    die 'Core source changed during release; the deploy tag was not pushed.'
+  pins+=("core_ref=$core_sha")
+  printf 'Pinned Core source: %s@%s\n' "$PRODUCT_CORE_REPOSITORY" "$core_sha"
+fi
+
 DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
-  "$PRODUCT_SERVER_WORKFLOW" "$action_head" "$VERSION" \
-  "backend_ref=$backend_release_sha" \
-  "web_ref=$web_release_sha"
+  "$PRODUCT_SERVER_WORKFLOW" "$action_head" "$VERSION" "${pins[@]}"

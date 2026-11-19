@@ -4,10 +4,16 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/git-remote.sh
 source "$PROJECT_ROOT/scripts/lib/git-remote.sh"
+# shellcheck source=scripts/lib/checkout.sh
+source "$PROJECT_ROOT/scripts/lib/checkout.sh"
+die() { printf '%s\n' "$*" >&2; exit 1; }
 ACTION_REPOSITORY=voiceofhu/one-action
 : "${VERSION:?VERSION is required}"
 : "${ONE_NODE_DIR:?ONE_NODE_DIR is required}"
 : "${ONE_NODE_REPOSITORY:?ONE_NODE_REPOSITORY is required}"
+: "${ONE_NODE_CORE_DIR:?ONE_NODE_CORE_DIR is required}"
+: "${ONE_NODE_CORE_REPOSITORY:?ONE_NODE_CORE_REPOSITORY is required}"
+ONE_NODE_CORE_REF=${ONE_NODE_CORE_REF:-main}
 
 [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
   printf '%s\n' 'VERSION must contain three numeric components without leading zeroes' >&2
@@ -24,6 +30,7 @@ printf '%s\n' \
   "  version:    $VERSION" \
   "  source:     $ONE_NODE_REPOSITORY" \
   '  source ref: exact main commit' \
+  "  core:       $ONE_NODE_CORE_REPOSITORY branch $ONE_NODE_CORE_REF from $ONE_NODE_CORE_DIR" \
   "  release:    $release_tag" \
   "  image:      ghcr.io/voiceofhu/one-node:$VERSION"
 
@@ -85,6 +92,10 @@ node_ref="$(git -C "$ONE_NODE_DIR" rev-parse HEAD)"
   exit 1
 }
 
+verify_checkout Core "$ONE_NODE_CORE_DIR" "$ONE_NODE_CORE_REPOSITORY" "$ONE_NODE_CORE_REF" ONE_NODE_CORE_REF \
+  'the node agent builds the shared module checked out next to it as ../core'
+core_ref=$checkout_sha
+
 make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
   ONE_NODE_VERSION="$VERSION" \
   ONE_NODE_COMMIT="$node_ref"
@@ -94,6 +105,9 @@ make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
   printf '%s\n' 'One Node source changed during local validation.' >&2
   exit 1
 }
+[[ "$(git -C "$ONE_NODE_CORE_DIR" rev-parse HEAD)" == "$core_ref" \
+  && -z "$(git -C "$ONE_NODE_CORE_DIR" status --porcelain --untracked-files=all)" ]] ||
+  die 'One Node core source changed during local validation.'
 
 [[ "$node_ref" =~ ^[0-9a-f]{40}$ ]] || {
   printf '%s\n' 'Resolved Node release source is not an exact commit SHA.' >&2
@@ -101,6 +115,6 @@ make --no-print-directory -C "$ONE_NODE_DIR" verify-upgrade \
 }
 
 DRY_RUN=false bash "$PROJECT_ROOT/scripts/release/trigger.sh" \
-  node-runtime.yml "$action_head" "$VERSION" "node_ref=$node_ref"
+  node-runtime.yml "$action_head" "$VERSION" "node_ref=$node_ref" "core_ref=$core_ref"
 printf 'Triggered One Node image and Release workflow for %s at Action %s\n' \
   "$release_tag" "$action_head"

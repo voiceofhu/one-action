@@ -26,6 +26,9 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 `deploy-node` 只触发 Runtime 编译上传；Browser App 只发布产物。One Node 的 Backend 是 Go
 （`products.json` 中 `"backend_language": "go"`）：发布时运行 `go vet` 与 `make test`，不提交版本号，
 版本通过镜像构建参数 `VERSION` 写入。
+One Node 的 Server、节点 Runtime 与客户端都用 Go `replace` 引用共享模块 `voiceofhu/one-node-core`（`../one-node/core`，
+`products.json` / `apps.json` 的 `core_repository`）：发布前它须干净、与 `main` 一致且已推送，deploy 标签以 `core_ref`
+固定其 SHA，CI 检出到源码旁的 `core/`，Server 镜像以 buildx 命名上下文 `core` 传入。
 
 ## Workflow 命名规则
 
@@ -143,7 +146,7 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 
 - `platforms`：构建矩阵名（`linux-amd64`、`windows-amd64`、`macos-arm64`、`macos-amd64`），默认全部；
 - `web_repository`：随包内置的 Web，CI 检出到客户端旁的 `../web`，deploy 标签另以 `web_ref` 固定其 SHA；
-- `backend_repository`：sidecar 用 Go `replace` 引用的 Server 共享包（One Node：`pkg/rulespec` 规则语言与规则引擎），CI 检出到客户端旁的 `../backend`，deploy 标签另以 `backend_ref` 固定其 SHA；
+- `core_repository`：sidecar 用 Go `replace` 引用的共享模块（One Node：`voiceofhu/one-node-core`，规则语言 `rulespec` 等），CI 检出到客户端旁的 `../core`，deploy 标签另以 `core_ref` 固定其 SHA；
 - `go_version_file`：客户端内 go.mod 路径，CI 据此安装 Go，用于构建 sidecar。
 - `runners`：按平台替换默认 runner（One Node：`macos-amd64` 在 Apple Silicon 的 `macos-15` 上交叉编译 x64 包）；
   Intel Mac runner 上 pnpm 11 由 npm 安装（pnpm/pnpm#11423）。
@@ -158,14 +161,14 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 | --- | --- | --- | --- |
 | browser | `voiceofhu/one-browser-app` | `../one-browser/app`（Web：`../one-browser/web`，随包内置） | 内置页面，接口 `https://browser.aicbe.com` |
 | mail | `voiceofhu/one-mail-app` | `../one-mail/app` | `https://mail.aicbe.com` |
-| node | `voiceofhu/one-node-app` | `../one-node/app`（Web：`../one-node/web`，Server：`../one-node/backend`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
+| node | `voiceofhu/one-node-app` | `../one-node/app`（Web：`../one-node/web`，共享模块：`../one-node/core`） | `https://marseo.eu.org/pc`，不可达时用内置离线副本 |
 
 - `make deploy-<key>-app` 要求 one-action 与 `origin/main` 一致、客户端仓库干净、HEAD 与 `main` 一致且已推送，本地运行依赖安装、`scripts/*.mjs` 语法检查、
   `scripts/tests` 存在时的 Node 测试，以及 `cargo fmt`、Clippy（warnings 视为错误）和 `cargo test`，通过后推送 `deploy/<key>-app/<version>` 标签固定精确源码 SHA。
 - 客户端仓库须提供 `scripts/update-version.mjs`；CI 在各平台打包前写入 package.json、`tauri.conf.json`、Cargo.toml 与 Cargo.lock 的版本。
-- 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：Go `onecore` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
+- 客户端提供 `scripts/prepare-bundle.mjs` 时（One Node：Go `one-node-client` sidecar、Windows 的 `wintun.dll`），本地校验在 Rust 检查前先运行它；
   CI 由 Tauri 的 `beforeBuildCommand` 按目标平台运行。带 `web_repository` 的客户端，其 `../web` 同样须干净、与 `main`（`ONE_<KEY>_APP_WEB_REF`）一致且已推送；
-  带 `backend_repository` 的客户端，其 `../backend` 也一样（`ONE_<KEY>_APP_BACKEND_REF`），本地 `go test` 与 CI 构建都用这份源码；
+  带 `core_repository` 的客户端，其 `../core` 也一样（`ONE_<KEY>_APP_CORE_REF`），本地 `go test` 与 CI 构建都用这份源码；
   带 `go_version_file` 的客户端另跑 `go vet` 与 `go test`。
 - 已存在的 Release 或标签不会被覆盖；源码仓库不打发布标签，标签只在 One Action 上绑定本次 Action SHA。
 - 客户端加载远端页面：正式版连接上表地址，开发版连接本机 Backend；对应的 Server/Web 先按「Server + Web 产品」部署（One Node 客户端的 `/pc` 页面随 `deploy-node-web` 上线，宜先于客户端发布；线上缺 `/pc` 时客户端 8 秒后改用内置副本）。

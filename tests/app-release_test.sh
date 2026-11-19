@@ -29,8 +29,8 @@ for input in '' v26.907.101; do
   grep -Fq "$APP_RELEASE_PREFIX-v$expected from $APP_REPOSITORY branch main (tag deploy/$APP_KEY-app/$expected)" \
     "$test_dir/plan"
   grep -Fq 'DRY_RUN=true: no checks ran and no deploy tag was pushed.' "$test_dir/plan"
-  if [[ -n "$APP_BACKEND_REPOSITORY" ]]; then
-    grep -Fq "Shared backend: $APP_BACKEND_REPOSITORY branch main" "$test_dir/plan"
+  if [[ -n "$APP_CORE_REPOSITORY" ]]; then
+    grep -Fq "Shared core: $APP_CORE_REPOSITORY branch main" "$test_dir/plan"
   fi
 done
 
@@ -65,11 +65,11 @@ ruby -ryaml -e '
   abort "build matrix must come from the platform plan" unless
     build.dig("strategy", "matrix") == "${{ fromJSON(needs.prepare.outputs.matrix) }}"
   steps = build.fetch("steps")
-  backend = steps.find { |s| s["name"] == "Checkout exact Backend source" }
-  abort "backend checkout must pin backend_sha at ../backend of the App" unless backend &&
-    backend.dig("with", "path") == "backend" &&
-    backend.dig("with", "ref") == "${{ needs.prepare.outputs.backend_sha }}" &&
-    backend["if"] == "needs.prepare.outputs.backend_repository != \u0027\u0027"
+  core = steps.find { |s| s["name"] == "Checkout exact Core source" }
+  abort "core checkout must pin core_sha at ../core of the App" unless core &&
+    core.dig("with", "path") == "core" &&
+    core.dig("with", "ref") == "${{ needs.prepare.outputs.core_sha }}" &&
+    core["if"] == "needs.prepare.outputs.core_repository != \u0027\u0027"
   # pnpm 11 cannot run natively on Intel macOS (pnpm/pnpm#11423).
   native = steps.find { |s| s["name"] == "Set up native pnpm" }
   npm_pnpm = steps.find { |s| s["name"] == "Set up pnpm from npm" }
@@ -134,8 +134,8 @@ export APP_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb VERSION=26.906.1234
 export GH_TOKEN=fixture-token
 export WEB_REPOSITORY="$APP_WEB_REPOSITORY" WEB_SHA=
 [[ -z "$WEB_REPOSITORY" ]] || WEB_SHA=cccccccccccccccccccccccccccccccccccccccc
-export BACKEND_REPOSITORY="$APP_BACKEND_REPOSITORY" BACKEND_SHA=
-[[ -z "$BACKEND_REPOSITORY" ]] || BACKEND_SHA=dddddddddddddddddddddddddddddddddddddddd
+export CORE_REPOSITORY="$APP_CORE_REPOSITORY" CORE_SHA=
+[[ -z "$CORE_REPOSITORY" ]] || CORE_SHA=dddddddddddddddddddddddddddddddddddddddd
 export UPDATER_CONFIG="$APP_UPDATER_CONFIG" UPDATER_KEY_SET=true
 
 # pnpm installer: native pnpm/setup from pnpm 11, pnpm/action-setup before.
@@ -177,7 +177,7 @@ plan_rejects null '{"solaris-sparc":"macos-15"}'
 bad_inputs=(CALLER_WORKFLOW APP_SHA VERSION)
 [[ -z "$UPDATER_CONFIG" ]] || bad_inputs+=(UPDATER_KEY_SET)
 [[ -z "$WEB_REPOSITORY" ]] || bad_inputs+=(WEB_SHA)
-[[ -z "$BACKEND_REPOSITORY" ]] || bad_inputs+=(BACKEND_SHA)
+[[ -z "$CORE_REPOSITORY" ]] || bad_inputs+=(CORE_SHA)
 for bad in "${bad_inputs[@]}"; do
   export RELEASE_STATE=missing
   : >"$GITHUB_OUTPUT"
@@ -199,11 +199,11 @@ for state in missing exists denied transport; do
     else
       ! grep -q web_sha "$GITHUB_OUTPUT" || fail
     fi
-    if [[ -n "$BACKEND_REPOSITORY" ]]; then
-      grep -q "backend_sha=$BACKEND_SHA" "$GITHUB_OUTPUT"
-      grep -q "repos/$BACKEND_REPOSITORY/commits/$BACKEND_SHA" "$API_LOG"
+    if [[ -n "$CORE_REPOSITORY" ]]; then
+      grep -q "core_sha=$CORE_SHA" "$GITHUB_OUTPUT"
+      grep -q "repos/$CORE_REPOSITORY/commits/$CORE_SHA" "$API_LOG"
     else
-      ! grep -q backend_sha "$GITHUB_OUTPUT" || fail
+      ! grep -q core_sha "$GITHUB_OUTPUT" || fail
     fi
   else
     [[ "$state" != missing ]] || fail

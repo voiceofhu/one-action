@@ -25,6 +25,10 @@ CHROMIUM_REF ?=
 ONE_NODE_REPOSITORY ?= voiceofhu/one-node-node
 ONE_NODE_REF ?= main
 ONE_NODE_DIR ?= $(SOURCE_ROOT)/one-node/node
+# The node agent replaces github.com/voh/one-node/core with ../core.
+ONE_NODE_CORE_REPOSITORY ?= voiceofhu/one-node-core
+ONE_NODE_CORE_REF ?= main
+ONE_NODE_CORE_DIR ?= $(SOURCE_ROOT)/one-node/core
 
 VERSION ?=
 ENVIRONMENT ?= dev
@@ -46,4 +50,5 @@ export ONE_BROWSER_APP_DIR
 export CHROMIUM_REF
 export ONE_NODE_REPOSITORY ONE_NODE_REF
 export ONE_NODE_DIR
+export ONE_NODE_CORE_REPOSITORY ONE_NODE_CORE_REF ONE_NODE_CORE_DIR
 export VERSION ENVIRONMENT PUBLISH DEPLOY

@@ -27,8 +27,8 @@
     "macos_config": "",
     "platforms": ["windows-amd64", "macos-arm64", "macos-amd64"],
     "runners": {"macos-amd64": "macos-15"},
-    "backend_repository": "voiceofhu/one-node-server",
-    "go_version_file": "core/go.mod",
+    "core_repository": "voiceofhu/one-node-core",
+    "go_version_file": "client/go.mod",
     "updater_config": "src-tauri/tauri.updater.conf.json",
     "stamp_source": true,
     "android_apk": "src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"

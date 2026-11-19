@@ -62,10 +62,15 @@ load_product() {
   # service `web` listening on web_port.
   PRODUCT_WEB_RUNTIME="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].web_runtime // "static"' "$PRODUCT_MANIFEST")"
   PRODUCT_WEB_PORT="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].web_port // ""' "$PRODUCT_MANIFEST")"
+  # Optional: a shared Go module the backend replaces with ../core (One Node:
+  # one-node-core). Releases check it out next to the backend, pinned as
+  # core_ref, and the image build gets it as the named build context "core".
+  PRODUCT_CORE_REPOSITORY="$(jq -r --arg key "$PRODUCT_KEY" '.[$key].core_repository // ""' "$PRODUCT_MANIFEST")"
 
   product_require "$PRODUCT_TITLE" '^One [A-Za-z0-9 ]+$' title
   product_require "$PRODUCT_BACKEND_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' backend_repository
   product_require "$PRODUCT_WEB_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' web_repository
+  product_require "$PRODUCT_CORE_REPOSITORY" '^(voiceofhu/[a-z0-9-]+)?$' core_repository
   product_require "$PRODUCT_BACKEND_PACKAGE" '^[a-z0-9-]+$' backend_package
   product_require "$PRODUCT_WEB_PACKAGE" '^[a-z0-9-]+$' web_package
   product_require "$PRODUCT_PUBLIC_URL" '^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' public_url
@@ -137,6 +142,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     name "$PRODUCT_NAME" \
     backend_repository "$PRODUCT_BACKEND_REPOSITORY" \
     web_repository "$PRODUCT_WEB_REPOSITORY" \
+    core_repository "$PRODUCT_CORE_REPOSITORY" \
     public_url "$PRODUCT_PUBLIC_URL" \
     image "$PRODUCT_IMAGE" \
     dockerfile "$PRODUCT_DOCKERFILE" \

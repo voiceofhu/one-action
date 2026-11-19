@@ -31,6 +31,7 @@ jobs:
     outputs:
       version: ${{ steps.source.outputs.version }}
       node_sha: ${{ steps.source.outputs.node_sha }}
+      core_sha: ${{ steps.source.outputs.core_sha }}
       action_sha: ${{ steps.source.outputs.action_sha }}
       xray_version: ${{ steps.source.outputs.xray_version }}
       hysteria_version: ${{ steps.source.outputs.hysteria_version }}
@@ -49,7 +50,7 @@ jobs:
         id: trigger
         shell: bash
         working-directory: action
-        run: bash scripts/github/read-trigger.sh node-runtime node_ref >>"$GITHUB_OUTPUT"
+        run: bash scripts/github/read-trigger.sh node-runtime node_ref core_ref >>"$GITHUB_OUTPUT"
 
       - name: Resolve exact One Node source
         id: source
@@ -58,6 +59,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           NODE_REPOSITORY: voiceofhu/one-node-node
           NODE_SHA: ${{ steps.trigger.outputs.node_ref }}
+          CORE_REPOSITORY: voiceofhu/one-node-core
+          CORE_SHA: ${{ steps.trigger.outputs.core_ref }}
           VERSION: ${{ steps.trigger.outputs.version }}
         run: |
           set -Eeuo pipefail
@@ -76,6 +79,8 @@ jobs:
 
           printf 'version=%s\n' "$VERSION" >>"$GITHUB_OUTPUT"
           printf 'node_sha=%s\n' "$NODE_SHA" >>"$GITHUB_OUTPUT"
+          [[ "$(gh api "repos/$CORE_REPOSITORY/commits/$CORE_SHA" --jq .sha)" == "$CORE_SHA" ]]
+          printf 'core_sha=%s\n' "$CORE_SHA" >>"$GITHUB_OUTPUT"
           printf 'action_sha=%s\n' "$GITHUB_SHA" >>"$GITHUB_OUTPUT"
           printf 'xray_version=%s\n' "$xray_version" >>"$GITHUB_OUTPUT"
           printf 'hysteria_version=%s\n' "$hysteria_version" >>"$GITHUB_OUTPUT"
@@ -102,6 +107,17 @@ jobs:
           repository: voiceofhu/one-node-node
           ref: ${{ needs.prepare.outputs.node_sha }}
           path: node
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # node/go.mod replaces github.com/voh/one-node/core with ../core.
+      - name: Checkout exact One Node core source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: voiceofhu/one-node-core
+          ref: ${{ needs.prepare.outputs.core_sha }}
+          path: core
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 1
           persist-credentials: false
@@ -154,7 +170,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: node
-          file: node/one/docker/Dockerfile
+          file: node/deploy/docker/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
           tags: ghcr.io/voiceofhu/one-node:build-${{ needs.prepare.outputs.node_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
@@ -164,6 +180,7 @@ jobs:
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
             io.one-node.xray.version=${{ needs.prepare.outputs.xray_version }}
             io.one-node.hysteria.version=${{ needs.prepare.outputs.hysteria_version }}
+            io.one-node.core.revision=${{ needs.prepare.outputs.core_sha }}
           provenance: false
           sbom: false
 
@@ -181,6 +198,17 @@ jobs:
           repository: voiceofhu/one-node-node
           ref: ${{ needs.prepare.outputs.node_sha }}
           path: node
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # node/go.mod replaces github.com/voh/one-node/core with ../core.
+      - name: Checkout exact One Node core source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: voiceofhu/one-node-core
+          ref: ${{ needs.prepare.outputs.core_sha }}
+          path: core
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 1
           persist-credentials: false

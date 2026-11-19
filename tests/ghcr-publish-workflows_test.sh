@@ -69,7 +69,8 @@ assert_timeout_at_most "$publisher" manifest 3
 assert_native_matrix "$publisher"
 
 require_text "$product_server" 'timeout-minutes: 2'
-require_text "$product_server" 'read-trigger.sh "$PRODUCT-server" backend_ref web_ref'
+require_text "$product_server" 'pins=(backend_ref web_ref)'
+require_text "$product_server" '[[ -z "$CORE_REPOSITORY" ]] || pins+=(core_ref)'
 require_text "$product_server" 'backend_pid=$!'
 require_text "$product_server" 'web_pid=$!'
 require_text "$product_server" 'wait "$backend_pid"'

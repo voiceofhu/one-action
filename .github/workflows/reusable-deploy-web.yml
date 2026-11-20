@@ -7,8 +7,13 @@ name: Reusable Deploy Web
   workflow_call:
     inputs:
       product: { required: true, type: string }
+      # The Web also ships the app's /pc pages as a signed download
+      # (web scripts/pc-bundle.mjs; the One Node app's src-tauri/src/ui/pages.rs).
+      pc_bundle: { required: false, type: boolean, default: false }
     secrets:
       GH_TOKEN: { required: true }
+      APP_UPDATER_KEY: { required: false }
+      APP_UPDATER_KEY_PASSWORD: { required: false }
       DEPLOY_HOST: { required: false }
       DEPLOY_PORT: { required: false }
       DEPLOY_USER: { required: false }
@@ -86,7 +91,19 @@ jobs:
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web build
           printf '%s\n' "$WEB_SHA" > web/dist/one-web-revision.txt
-          tar -czf web.tar.gz -C web/dist .
+      - name: Pack signed app pages
+        if: inputs.pc_bundle
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.APP_UPDATER_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.APP_UPDATER_KEY_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]] || { echo 'APP_UPDATER_KEY is required for pc_bundle' >&2; exit 1; }
+          node web/scripts/pc-bundle.mjs package
+      - name: Archive Web
+        shell: bash
+        run: tar -czf web.tar.gz -C web/dist .
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.product }}-web

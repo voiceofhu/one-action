@@ -38,6 +38,15 @@ ruby -ryaml -e '
     },
   }
   secrets = %w[DEPLOY_HOST DEPLOY_KNOWN_HOSTS DEPLOY_PORT DEPLOY_SSH_KEY DEPLOY_USER GH_TOKEN]
+  pc_bundle = {
+    "node" => {
+      with: { "pc_bundle" => true },
+      secrets: {
+        "APP_UPDATER_KEY" => "${{ secrets.ONE_NODE_APP_UPDATER_KEY }}",
+        "APP_UPDATER_KEY_PASSWORD" => "${{ secrets.ONE_NODE_APP_UPDATER_KEY_PASSWORD }}",
+      },
+    },
+  }
 
   image_web = {
     reusable: "reusable-deploy-web-image.yml",
@@ -63,10 +72,13 @@ ruby -ryaml -e '
       fail.("must call #{contract[:reusable]}") unless
         job.fetch("uses") == "./.github/workflows/#{contract[:reusable]}"
       fail.("unexpected job permissions") unless job["permissions"] == contract[:permissions]
+      # The One Node Web also ships the app /pc pages, signed with the app updater key.
+      extra = component == "web" ? (pc_bundle[product] || {}) : {}
       fail.("must pass only product: #{product}") unless
-        job.fetch("with") == { "product" => product }
+        job.fetch("with") == { "product" => product }.merge(extra.fetch(:with, {}))
       fail.("must pass exactly the deployment secrets") unless
-        job.fetch("secrets") == secrets.to_h { |name| [name, "${{ secrets.#{name} }}"] }
+        job.fetch("secrets") ==
+          secrets.to_h { |name| [name, "${{ secrets.#{name} }}"] }.merge(extra.fetch(:secrets, {}))
       if component == "server"
         fail.("publish concurrency changed") unless document.fetch("concurrency") == {
           "group" => "one-#{product}-publish-${{ github.ref_name }}", "cancel-in-progress" => false

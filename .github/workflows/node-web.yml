@@ -14,8 +14,12 @@ jobs:
     uses: ./.github/workflows/reusable-deploy-web.yml
     with:
       product: node
+      pc_bundle: true
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      # The app's downloaded /pc pages are signed with the in-app updater key.
+      APP_UPDATER_KEY: ${{ secrets.ONE_NODE_APP_UPDATER_KEY }}
+      APP_UPDATER_KEY_PASSWORD: ${{ secrets.ONE_NODE_APP_UPDATER_KEY_PASSWORD }}
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}

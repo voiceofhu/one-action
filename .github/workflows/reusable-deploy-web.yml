@@ -95,6 +95,8 @@ jobs:
         if: inputs.pc_bundle
         shell: bash
         env:
+          # The release version, which the app compares with its own copy.
+          VITE_APP_VERSION: ${{ steps.trigger.outputs.version }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.APP_UPDATER_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.APP_UPDATER_KEY_PASSWORD }}
         run: |

@@ -18,8 +18,8 @@ lint、测试和必要的本地编译门禁在 `make deploy-*` 触发远端工�
 |---|---|---|
 | `make deploy-<key>-server` | 标签 `deploy/<key>-server/<version>` → `<key>-server.yml` | user、object、notify、pay、template、vps、ip、amz、mail、node、browser：发布 Server 镜像并按 digest 部署，包含 Web（见「Server + Web 产品」） |
 | `make deploy-<key>-web` | 标签 `deploy/<key>-web/<version>` → `<key>-web.yml` | 同上十个产品：仅部署 Web 静态文件，不重启 Server |
-| `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml` | browser、mail：Linux、Windows、macOS arm64/x64 安装包；node：Windows、macOS arm64/x64；均附 `SHA256SUMS` 和公开 One Action Release（见「桌面客户端」） |
-| `make deploy-<key>-apk` | 本机构建，直接创建 Release `one-<key>-android-v<version>` | node：签名的 Android APK（arm64）+ `SHA256SUMS`（见「Android APK」） |
+| `make deploy-<key>-app` | 标签 `deploy/<key>-app/<version>` → `<key>-app.yml`；node 还会在本机发布 APK | browser、mail 发布 Linux、Windows、macOS arm64/x64 安装包；node 发布 Windows、macOS arm64/x64 安装包和同版本 Android APK（arm64） |
+| `make deploy-<key>-apk` | 本机构建，直接创建 Release `one-<key>-android-v<version>` | node 单独发布签名的 Android APK（arm64）和应用内更新清单（见「Android APK」） |
 | `make deploy-node` | 标签 `deploy/node-runtime/<version>` → `node-runtime.yml` | `ghcr.io/voiceofhu/one-node:<version>`、Linux 双架构二进制、macOS/Windows（监控节点）二进制、Ed25519 + RSA 双签名 `SHA256SUMS` 和公开 One Action Release |
 | `make deploy-browser-runtime` | 标签 `deploy/browser-runtime/<version>` → `browser-runtime.yml` | 本地预编译的 One Browser Chromium 运行时包（macOS/Windows/Linux × arm64/x64）+ `SHA256SUMS`，公开 One Action Release `one-browser-runtime-v<version>`（见「Browser Chromium 运行时」） |
 
@@ -175,9 +175,10 @@ One Browser、One Mail 与 One Node PC 客户端（Tauri）共用 `reusable-publ
 
 ## Android APK
 
-Tauri 客户端同一份源码还能打 Android 包。APK 在本机构建，不进 CI：发布密钥只在客户端目录的
-`android-signing/`（gitignored；丢失后已装的 App 无法原地升级，务必备份）。`apps.json` 中带
-`android_apk`（构建产物的相对路径）的客户端才有此入口，目前只有 node：
+日常用 `make deploy-node-app` 同版本发布桌面端与 Android。通过本地检查后，先在本机签名、构建并上传
+Android APK，再推送桌面端发布标签。两端使用同一份 App、Web 和 Core 源码，版本只提交一次。
+Android 签名密钥保存在客户端目录的 `android-signing/`，应用内更新还需要 `updater-signing/` 内的 minisign 密钥和密码。
+只发 Android 时可以使用独立入口：
 
 ```bash
 make deploy-node-apk                  # 版本默认上海时间，或 VERSION=...
@@ -188,8 +189,11 @@ make deploy-node-apk DRY_RUN=true     # 只看计划
 `deploy-<key>-app` 相同），Release `one-<key>-android-v<version>` 不存在，再在工作区写入版本、运行客户端的
 `make android-release`（需 JDK 17、Android SDK/NDK、Rust Android target），用 `apksigner verify` 校验签名、
 `aapt2` 校验 `versionName`。通过后（`stamp_source` 时）提交并推送版本，再用本机 `gh` 在 one-action 上创建绑定当前
-Action SHA 的 Release，资源为 `one-<key>-android-<version>.apk` 与 `SHA256SUMS`。构建失败时工作区恢复原状，不留提交。
-与桌面安装包分开发布：桌面 Release 不可修改，客户端更新源也只读 `one-<key>-app-v*`。
+Action SHA 的 Release。One Node 发布 `one-node-android-<version>.apk`、`SHA256SUMS`、APK 的 minisign
+签名和 `android.json` 更新清单。宣传页的 Android 下载入口和应用内更新都从 One Node 后端读取新版本。
+如果后端设置了 `ONE_NODE_ANDROID_DOWNLOAD_URL`，发布时需设置对应的 `ANDROID_R2_BUCKET`，
+并让 `ANDROID_R2_PREFIX`（默认 `one-node/android/`）匹配下载路径。
+APK 构建失败会恢复工作区。APK 已上传而桌面标签推送失败时，可以用相同源码和 `VERSION` 重试 `make deploy-node-app`。
 
 ## Browser Chromium 运行时
 

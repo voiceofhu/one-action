@@ -60,6 +60,9 @@ printf '%s release: %s-v%s from %s branch %s (tag deploy/%s-app/%s)\n' \
     "$APP_CORE_REPOSITORY" "$core_ref" "$core_dir" >&2
 case "${DRY_RUN:-true}" in
   true|1|yes)
+    if [[ -n "$APP_ANDROID_APK" ]]; then
+      DRY_RUN=true VERSION="$VERSION" bash "$PROJECT_ROOT/scripts/release/release-android.sh" "$APP_KEY"
+    fi
     printf '%s\n' 'DRY_RUN=true: no checks ran and no deploy tag was pushed.'
     exit 0
     ;;
@@ -142,9 +145,14 @@ fi
 [[ "$action_sha" == "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" ]] ||
   die 'Action HEAD changed during local validation'
 
-# Only now, with every check passed: a release that fails validation leaves no
-# version commit behind. The release is cut from the stamped commit.
-if [[ "$APP_STAMP_SOURCE" == true ]]; then
+# Android is built and published locally before triggering the desktop build.
+# The Android script stamps the App source once for both releases.
+if [[ -n "$APP_ANDROID_APK" ]]; then
+  DRY_RUN=false VERSION="$VERSION" bash "$PROJECT_ROOT/scripts/release/release-android.sh" \
+    "$APP_KEY" "$action_sha" "$app_sha" "${web_sha:-}" "${core_sha:-}"
+  app_sha="$(git -C "$app_dir" rev-parse --verify HEAD)"
+  pins[0]="app_ref=$app_sha"
+elif [[ "$APP_STAMP_SOURCE" == true ]]; then
   stamp_source_version "$app_dir" "$app_ref" "$VERSION" ||
     die 'App version was not committed'
   app_sha=$stamped_sha

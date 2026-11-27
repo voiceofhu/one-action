@@ -56,6 +56,7 @@ help:
 		"  make deploy-servers            Deploy every Server (PRODUCTS=\"user mail\" to pick)" \
 		"  make deploy-webs               Deploy every Web (PRODUCTS=...)" \
 		"  make deploy-<app>-app          Check a desktop App and tag installer publication" \
+		"  make deploy-node-app           Also build and publish the signed Android APK at the same version" \
 		"  make deploy-<app>-apk          Build the signed Android APK locally and publish it ($(ANDROID_PRODUCTS))" \
 		"  make deploy-node               Check One Node source and tag compile/upload" \
 		"  make deploy-browser-runtime    Publish staged Chromium runtime (VERSION=, CHROMIUM_REF=)"

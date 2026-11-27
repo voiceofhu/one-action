@@ -40,7 +40,17 @@ if [[ -n "$APP_ANDROID_APK" ]]; then
     ENV_FILE=/dev/null DRY_RUN=true VERSION=v26.907.101 >"$test_dir/apk-plan" 2>&1 || fail
   grep -Fq "$APP_TITLE Android release: one-$APP_KEY-android-v26.907.101 from $APP_REPOSITORY branch main" \
     "$test_dir/apk-plan" || fail
-  grep -Fq "Assets: one-$APP_KEY-android-26.907.101.apk + SHA256SUMS" "$test_dir/apk-plan" || fail
+  if [[ -n "$APP_ANDROID_UPDATER_KEY" ]]; then
+    grep -Fq "Assets: one-$APP_KEY-android-26.907.101.apk (+ .sig, android.json) + SHA256SUMS" "$test_dir/apk-plan" || fail
+  else
+    grep -Fq "Assets: one-$APP_KEY-android-26.907.101.apk + SHA256SUMS" "$test_dir/apk-plan" || fail
+  fi
+  ANDROID_R2_BUCKET=one-downloads make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-apk" \
+    ENV_FILE=/dev/null DRY_RUN=true VERSION=v26.907.101 >"$test_dir/apk-r2-plan" 2>&1 || fail
+  grep -Fq "Also uploaded to R2: one-downloads/one-$APP_KEY/android/one-$APP_KEY-android-26.907.101.apk" \
+    "$test_dir/apk-r2-plan" || fail
+  ANDROID_R2_BUCKET='Bad_Bucket' make --no-print-directory -s -C "$PROJECT_ROOT" "deploy-$APP_KEY-apk" \
+    ENV_FILE=/dev/null DRY_RUN=true VERSION=v26.907.101 >/dev/null 2>&1 && fail
   grep -Fq 'DRY_RUN=true: nothing was built and no release was published.' "$test_dir/apk-plan" || fail
 elif make --no-print-directory -s -n -C "$PROJECT_ROOT" "deploy-$APP_KEY-apk" ENV_FILE=/dev/null >/dev/null 2>&1; then
   fail

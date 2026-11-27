@@ -20,7 +20,10 @@
 # also commits the version to the App repository, scripts/lib/stamp-source.sh)
 # and `android_apk` (App-relative path of the APK that the App's
 # `make android-release` signs: `make deploy-<key>-apk` builds it locally and
-# publishes it as the one-<key>-android-v<version> release).
+# publishes it as the one-<key>-android-v<version> release) and
+# `android_updater_key` (App-relative minisign key of the in-app updater, its
+# password next to it as <key without .key>.password: the APK is signed with
+# it and the release carries android.json, the app's update manifest).
 
 APP_MANIFEST="${APP_MANIFEST:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/apps.json}"
 
@@ -70,6 +73,7 @@ load_app() {
   APP_UPDATER_CONFIG="$(jq -r --arg key "$APP_KEY" '.[$key].updater_config // ""' "$APP_MANIFEST")"
   APP_STAMP_SOURCE="$(jq -r --arg key "$APP_KEY" '.[$key].stamp_source // false' "$APP_MANIFEST")"
   APP_ANDROID_APK="$(jq -r --arg key "$APP_KEY" '.[$key].android_apk // ""' "$APP_MANIFEST")"
+  APP_ANDROID_UPDATER_KEY="$(jq -r --arg key "$APP_KEY" '.[$key].android_updater_key // ""' "$APP_MANIFEST")"
 
   app_require "$APP_TITLE" '^One [A-Za-z0-9 ]+$' title
   app_require "$APP_REPOSITORY" '^voiceofhu/[a-z0-9-]+$' repository
@@ -85,6 +89,7 @@ load_app() {
   app_require "$APP_UPDATER_CONFIG" '^(src-tauri/[a-z0-9.-]+\.json)?$' updater_config
   app_require "$APP_STAMP_SOURCE" '^(true|false)$' stamp_source
   app_require "$APP_ANDROID_APK" '^(src-tauri/gen/android/([A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.apk)?$' android_apk
+  app_require "$APP_ANDROID_UPDATER_KEY" '^(([a-z0-9_-]+/)*[a-z0-9_-]+\.key)?$' android_updater_key
 
   APP_RELEASE_PREFIX="one-$APP_KEY-app"
   APP_WORKFLOW="$APP_KEY-app.yml"

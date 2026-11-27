@@ -32,6 +32,7 @@
     "go_version_file": "client/go.mod",
     "updater_config": "src-tauri/tauri.updater.conf.json",
     "stamp_source": true,
-    "android_apk": "src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
+    "android_apk": "src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk",
+    "android_updater_key": "updater-signing/one-node-updater.key"
   }
 }

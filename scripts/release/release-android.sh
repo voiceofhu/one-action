@@ -163,6 +163,10 @@ if [[ -n "$APP_ANDROID_UPDATER_KEY" ]]; then
 fi
 [[ -z "$r2_bucket" ]] || require_tool pnpm
 
+# Use the App's Homebrew JDK default for both Gradle and the SDK verifier.
+java_home=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}
+[[ -x "$java_home/bin/java" ]] ||
+  die "Java not found at $java_home/bin/java; set JAVA_HOME to your JDK 17"
 android_home=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 build_tools="$(find "$android_home/build-tools" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1)"
 [[ -n "$build_tools" && -x "$build_tools/apksigner" && -x "$build_tools/aapt2" ]] ||
@@ -178,10 +182,10 @@ trap 'rm -f "$existing"; restore_app' EXIT
 apk="$app_dir/$APP_ANDROID_APK"
 rm -f -- "$apk"
 printf 'Building the signed APK (make android-release)...\n' >&2
-make -C "$app_dir" android-release
+make -C "$app_dir" android-release "JAVA_HOME=$java_home"
 [[ -f "$apk" ]] || die "build did not produce $APP_ANDROID_APK"
 
-"$build_tools/apksigner" verify --min-sdk-version 26 "$apk" ||
+JAVA_HOME="$java_home" "$build_tools/apksigner" verify --min-sdk-version 26 "$apk" ||
   die 'APK signature does not verify'
 apk_version="$("$build_tools/aapt2" dump badging "$apk" | sed -nE "s/.* versionName='([^']*)'.*/\1/p" | head -n 1)"
 [[ "$apk_version" == "$VERSION" ]] || die "APK versionName is $apk_version, expected $VERSION"
